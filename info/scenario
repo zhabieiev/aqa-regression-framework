@@ -1,0 +1,6 @@
+Scenario: 1234567 Name
+ - 1234567(1-unique project id, 23-folder number, 45-file number,67-scenario number)
+ - 1-Video Manager, 2-Traffic Manager, 3-Marketplace, 4-Campaign Manager
+
+Definition:
+ - # field(required),*field(optional),f̶i̶e̶l̶d̶(deprecated),field(VALUE)(field with a default value set)

@@ -1,0 +1,6 @@
+*.iml
+.idea
+**/target/
+**/reports/
+.DS_Store
+**/.openapi-generator/*.sha256

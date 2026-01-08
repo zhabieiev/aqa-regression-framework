@@ -1,0 +1,6 @@
+Feature file name:
+ - GET  /serviceName: _Get_01.feature
+ - POST /serviceName/subService1/subService2: subService1subService2_Post_03.feature
+ - DELETE /serviceName/{id}: {Id}_Delete_02.feature
+ - Setup, E2E, Examples, etc.: Name_04.feature
+ !The numbering is incremented when a new feature file is added to the current folder

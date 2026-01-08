@@ -1,0 +1,36 @@
+1. Name path variable same as path
+2. Use CRUD to start the method name, except for specific actions like search, validate, etc.
+
+/service
+/service/{id}/entity/action
+
+final private static String SERVICE = "/service";
+final private static String SERVICE_ID_ENTITY_ACTION = SERVICE + "/%s/entity/action";
+
+public ResponseDto create(final Map<String, ?> params, final RequestDto body) {
+        return getResponse(request().method(POST)
+                                    .path(SERVICE)
+                                    .queryParams(params)
+                                    .body(body)
+                                    .statusCode(HTTP_OK)
+                                    .build()).readEntity(ResponseDto.class);
+
+public String create(final Map<String, ?> params, final RequestDto body, int statusCode) {
+        return getResponse(request().method(POST)
+                                    .path(SERVICE)
+                                    .queryParams(params)
+                                    .body(body)
+                                    .statusCode(statusCode)
+                                    .build()).readEntity(String.class);
+
+public ResponseDto actionEntity(final String) {
+        return getResponse(request().method(POST)
+                                    .path(SERVICE_ID_ENTITY_ACTION)
+                                    .statusCode(HTTP_OK)
+                                    .build()).readEntity(ResponseDto.class);
+
+public String actionEntity(final String, int statusCode) {
+        return getResponse(request().method(POST)
+                                    .path(SERVICE_ID_ENTITY_ACTION)
+                                    .statusCode(statusCode)
+                                    .build()).readEntity(String.class);

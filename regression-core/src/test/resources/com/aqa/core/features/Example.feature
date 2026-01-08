@@ -30,7 +30,7 @@ Feature: Example
                              # Property inside string
       | list[2].string  | Prefix${env.property}Suffix                                                                    |
                              # Property and parent property
-      | list[3].string  | ${env.property}+${url.anyclip}                                                                 |
+      | list[3].string  | ${env.property}+${url.aqa}                                                                     |
                              # Variable inside string
       | list[4].string  | Prefix@{variable}Suffix                                                                        |
                              # File inside string. File contains property and variable

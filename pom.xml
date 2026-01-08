@@ -8,8 +8,6 @@
     <version>1.0.0</version>
     <modules>
         <module>regression-core</module>
-        <module>regression-api</module>
-        <module>regression-ui</module>
     </modules>
     <packaging>pom</packaging>
     <properties>

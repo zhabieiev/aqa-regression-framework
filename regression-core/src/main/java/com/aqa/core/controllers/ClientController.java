@@ -3,9 +3,9 @@ package com.aqa.core.controllers;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-import javax.ws.rs.client.Client;
-import javax.ws.rs.client.ClientBuilder;
-import javax.ws.rs.ext.ContextResolver;
+import jakarta.ws.rs.client.Client;
+import jakarta.ws.rs.client.ClientBuilder;
+import jakarta.ws.rs.ext.ContextResolver;
 
 import static com.aqa.core.utils.FileParseUtils.writeJson;
 import static org.glassfish.jersey.client.ClientProperties.SUPPRESS_HTTP_COMPLIANCE_VALIDATION;

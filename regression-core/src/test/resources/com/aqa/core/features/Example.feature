@@ -34,11 +34,11 @@ Feature: Example
                              # Variable inside string
       | list[4].string  | Prefix@{variable}Suffix                                                                        |
                              # File inside string. File contains property and variable
-      | list[5].string  | Prefixfile:{regression-core/src/test/resources/files/Example.txt}Suffix                        |
+      | list[5].string  | Prefixfile:{src/test/resources/files/Example.txt}Suffix                        |
                              # Multiple files
-      | list[6].string  | file:{regression-core/${path.file}/Example.txt}file:{regression-core/${path.file}/Example.txt} |
+      | list[6].string  | file:{${path.file}/Example.txt}file:{${path.file}/Example.txt} |
                              # Property+variable+date+file
-      | list[7].string  | ${env.property}@{variable}date:{now-0h/h}file:{regression-core/${path.file}/Example.txt}       |
+      | list[7].string  | ${env.property}@{variable}date:{now-0h/h}file:{${path.file}/Example.txt}       |
                              # DateTime epoch format
       | list[8].string  | date:{now+1h/h(epoch)}                                                                         |
                              # DateTime as string

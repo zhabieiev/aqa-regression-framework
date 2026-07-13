@@ -12,6 +12,4 @@ import org.junit.platform.suite.api.Suite;
         value = "pretty, html:target/cucumber-reports/cucumber.html"
 )
 public class RunCucumberTest {
-    // Этот класс остается пустым.
-    // Аннотации выше заставят JUnit Platform найти фичи в ресурсах и запустить их.
 }

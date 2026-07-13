@@ -21,12 +21,10 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
-      # Запуск тестов конкретного модуля
       - name: Run tests with Maven
-        run: mvn clean verify -pl regression-core -am
+        run: mvn clean verify -Denv=dev
         continue-on-error: true
 
-      # Сборка и выгрузка отчетов
       - name: Upload Test Reports
         uses: actions/upload-artifact@v4
         with:

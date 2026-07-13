@@ -93,24 +93,14 @@
     </dependencies>
 
     <build>
+        <testSourceDirectory>${project.basedir}/../info</testSourceDirectory>
+
         <plugins>
             <plugin>
                 <groupId>org.codehaus.mojo</groupId>
                 <artifactId>build-helper-maven-plugin</artifactId>
                 <version>3.5.0</version>
                 <executions>
-                    <execution>
-                        <id>add-test-source</id>
-                        <phase>generate-test-sources</phase>
-                        <goals>
-                            <goal>add-test-source</goal>
-                        </goals>
-                        <configuration>
-                            <sources>
-                                <source>${project.basedir}/../info</source>
-                            </sources>
-                        </configuration>
-                    </execution>
                     <execution>
                         <id>add-test-resource</id>
                         <phase>generate-test-resources</phase>
@@ -121,6 +111,10 @@
                             <resources>
                                 <resource>
                                     <directory>${project.basedir}/../info</directory>
+                                    <includes>
+                                        <include>**/*.feature</include>
+                                        <include>**/*.properties</include>
+                                    </includes>
                                 </resource>
                             </resources>
                         </configuration>
@@ -136,7 +130,6 @@
                     <includes>
                         <include>**/*Test.java</include>
                         <include>**/*Runner.java</include>
-                        <include>**/RunCucumberTest.java</include>
                     </includes>
                     <properties>
                         <configurationParameters>

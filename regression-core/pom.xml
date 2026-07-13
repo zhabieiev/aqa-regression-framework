@@ -93,35 +93,7 @@
     </dependencies>
 
     <build>
-        <testSourceDirectory>${project.basedir}/../info</testSourceDirectory>
-
         <plugins>
-            <plugin>
-                <groupId>org.codehaus.mojo</groupId>
-                <artifactId>build-helper-maven-plugin</artifactId>
-                <version>3.5.0</version>
-                <executions>
-                    <execution>
-                        <id>add-test-resource</id>
-                        <phase>generate-test-resources</phase>
-                        <goals>
-                            <goal>add-test-resource</goal>
-                        </goals>
-                        <configuration>
-                            <resources>
-                                <resource>
-                                    <directory>${project.basedir}/../info</directory>
-                                    <includes>
-                                        <include>**/*.feature</include>
-                                        <include>**/*.properties</include>
-                                    </includes>
-                                </resource>
-                            </resources>
-                        </configuration>
-                    </execution>
-                </executions>
-            </plugin>
-
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
@@ -134,7 +106,6 @@
                     <properties>
                         <configurationParameters>
                             cucumber.plugin = pretty, html:target/cucumber-reports/cucumber.html
-                            cucumber.features = target/test-classes
                         </configurationParameters>
                     </properties>
                 </configuration>

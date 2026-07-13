@@ -21,15 +21,17 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
+      # Запуск тестов конкретного модуля
       - name: Run tests with Maven
         run: mvn clean verify -pl regression-core -am
         continue-on-error: true
 
+      # Сборка и выгрузка отчетов
       - name: Upload Test Reports
         uses: actions/upload-artifact@v4
         with:
           name: test-reports-java21
           path: |
-            **/target/surefire-reports/
-            **/target/cucumber-reports/
+            regression-core/target/surefire-reports/
+            regression-core/target/cucumber-reports/
           retention-days: 5

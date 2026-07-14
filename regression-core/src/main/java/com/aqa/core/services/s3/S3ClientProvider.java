@@ -3,6 +3,7 @@ package com.aqa.core.services.s3;
 import software.amazon.awssdk.auth.credentials.*;
 import software.amazon.awssdk.http.apache.ApacheHttpClient;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.core.retry.RetryPolicy;
 
 import java.time.Duration;
 import java.util.Objects;
@@ -27,7 +28,9 @@ public class S3ClientProvider {
                 .region(US_EAST_1)
                 .httpClientBuilder(getHttpClient())
                 .credentialsProvider(getProvider())
-                .overrideConfiguration(c -> c.retryStrategy(r -> r.maxAttempts(5)))
+                .overrideConfiguration(c -> c.retryPolicy(RetryPolicy.builder()
+                        .numRetries(5)
+                        .build()))
                 .build();
     }
 

@@ -1,66 +1,110 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xmlns="http://maven.apache.org/POM/4.0.0"
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
+
     <groupId>com.aqa</groupId>
     <artifactId>regression</artifactId>
     <version>1.0.0</version>
+    <packaging>pom</packaging>
+
     <modules>
         <module>regression-core</module>
+        <module>regression-petstore-api</module>
     </modules>
-    <packaging>pom</packaging>
 
     <properties>
         <java>21</java>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <packaging>jar</packaging>
         <env>dev</env>
-        <apache-client>2.36.3</apache-client>
-        <cucumber.java>7.18.1</cucumber.java>
-        <jackson.version>2.15.1</jackson.version>
+
+        <properties.path>${project.basedir}/src/main/resources/properties/${env}.properties</properties.path>
+
+        <properties.maven.plugin>1.1.0</properties.maven.plugin>
+        <openapi.generator.maven.plugin>7.2.0</openapi.generator.maven.plugin>
+        <maven.compiler.plugin>3.10.1</maven.compiler.plugin>
+        <maven.surefire.plugin>3.5.4</maven.surefire.plugin>
+
+        <jackson.databind>2.15.1</jackson.databind>
+        <swagger.annotations>2.2.15</swagger.annotations>
         <jakarta.ws.rs.api>3.1.0</jakarta.ws.rs.api>
         <jakarta.annotation.api>2.1.1</jakarta.annotation.api>
-        <jersey.client>3.1.3</jersey.client>
+        <jersey.client>3.1.3</jersey.client> <lombok>1.18.32</lombok>
+        <amazon.awssdk>2.20.162</amazon.awssdk>
         <json>20231013</json>
-        <assertj.core>3.26.3</assertj.core>
-        <lombok>1.18.32</lombok>
-        <commons-text>1.14.0</commons-text>
-        <amazon.awssdk>2.36.2</amazon.awssdk>
         <commons-beanutils>1.9.4</commons-beanutils>
-        <maven.compiler.plugin>3.10.1</maven.compiler.plugin>
-        <exec.maven.plugin>3.1.0</exec.maven.plugin>
-        <slf4j.version>1.7.36</slf4j.version>
+        <commons-text>1.14.0</commons-text>
+        <assertj.core>3.26.3</assertj.core>
+        <slf4j.version>2.0.9</slf4j.version>
+
+        <regression.core>1.0.0</regression.core>
+        <regression.petstore.api>1.0.0</regression.petstore.api>
+        <cucumber.java>7.18.1</cucumber.java>
+        <junit.platform.suite>1.10.3</junit.platform.suite>
+
+        <cucumber.picocontainer>${cucumber.java}</cucumber.picocontainer>
+        <models.skip.generate>true</models.skip.generate>
+        <models.petstore.api.skip.generate>${models.skip.generate}</models.petstore.api.skip.generate>
     </properties>
 
     <dependencyManagement>
         <dependencies>
             <dependency>
-                <groupId>org.junit.platform</groupId>
-                <artifactId>junit-platform-suite</artifactId>
-                <version>1.10.3</version>
-                <scope>test</scope>
+                <groupId>com.aqa</groupId>
+                <artifactId>regression-core</artifactId>
+                <version>${regression.core}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.aqa</groupId>
+                <artifactId>regression-petstore-api</artifactId>
+                <version>${regression.petstore.api}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.slf4j</groupId>
+                <artifactId>slf4j-api</artifactId>
+                <version>${slf4j.version}</version>
             </dependency>
             <dependency>
                 <groupId>org.slf4j</groupId>
                 <artifactId>slf4j-simple</artifactId>
                 <version>${slf4j.version}</version>
-                <scope>test</scope>
             </dependency>
+            <dependency>
+                <groupId>org.projectlombok</groupId>
+                <artifactId>lombok</artifactId>
+                <version>${lombok}</version>
+                <scope>provided</scope>
+            </dependency>
+
+            <dependency>
+                <groupId>com.fasterxml.jackson.core</groupId>
+                <artifactId>jackson-databind</artifactId>
+                <version>${jackson.databind}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.fasterxml.jackson.core</groupId>
+                <artifactId>jackson-annotations</artifactId>
+                <version>${jackson.databind}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.fasterxml.jackson.core</groupId>
+                <artifactId>jackson-core</artifactId>
+                <version>${jackson.databind}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.fasterxml.jackson.dataformat</groupId>
+                <artifactId>jackson-dataformat-xml</artifactId>
+                <version>${jackson.databind}</version>
+            </dependency>
+
             <dependency>
                 <groupId>jakarta.ws.rs</groupId>
                 <artifactId>jakarta.ws.rs-api</artifactId>
                 <version>${jakarta.ws.rs.api}</version>
             </dependency>
-            <dependency>
-                <groupId>jakarta.annotation</groupId>
-                <artifactId>jakarta.annotation-api</artifactId>
-                <version>${jakarta.annotation.api}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.json</groupId>
-                <artifactId>json</artifactId>
-                <version>${json}</version>
-            </dependency>
+
             <dependency>
                 <groupId>org.glassfish.jersey.core</groupId>
                 <artifactId>jersey-client</artifactId>
@@ -76,26 +120,53 @@
                 <artifactId>jersey-media-json-jackson</artifactId>
                 <version>${jersey.client}</version>
             </dependency>
+
+            <dependency>
+                <groupId>software.amazon.awssdk</groupId>
+                <artifactId>bom</artifactId>
+                <version>${amazon.awssdk}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
+            <dependency>
+                <groupId>org.json</groupId>
+                <artifactId>json</artifactId>
+                <version>${json}</version>
+            </dependency>
             <dependency>
                 <groupId>commons-beanutils</groupId>
                 <artifactId>commons-beanutils</artifactId>
                 <version>${commons-beanutils}</version>
             </dependency>
             <dependency>
-                <groupId>com.fasterxml.jackson.core</groupId>
-                <artifactId>jackson-databind</artifactId>
-                <version>${jackson.version}</version>
+                <groupId>org.apache.commons</groupId>
+                <artifactId>commons-text</artifactId>
+                <version>${commons-text}</version>
             </dependency>
             <dependency>
-                <groupId>com.fasterxml.jackson.dataformat</groupId>
-                <artifactId>jackson-dataformat-xml</artifactId>
-                <version>${jackson.version}</version>
+                <groupId>org.apache.commons</groupId>
+                <artifactId>commons-lang3</artifactId>
+                <version>3.12.0</version>
             </dependency>
             <dependency>
-                <groupId>com.fasterxml.jackson.datatype</groupId>
-                <artifactId>jackson-datatype-jdk8</artifactId>
-                <version>${jackson.version}</version>
+                <groupId>org.assertj</groupId>
+                <artifactId>assertj-core</artifactId>
+                <version>${assertj.core}</version>
             </dependency>
+
+            <dependency>
+                <groupId>io.swagger.core.v3</groupId>
+                <artifactId>swagger-annotations</artifactId>
+                <version>${swagger.annotations}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>jakarta.annotation</groupId>
+                <artifactId>jakarta.annotation-api</artifactId>
+                <version>${jakarta.annotation.api}</version>
+            </dependency>
+
             <dependency>
                 <groupId>io.cucumber</groupId>
                 <artifactId>cucumber-java</artifactId>
@@ -109,34 +180,12 @@
             <dependency>
                 <groupId>io.cucumber</groupId>
                 <artifactId>cucumber-picocontainer</artifactId>
-                <version>${cucumber.java}</version>
+                <version>${cucumber.picocontainer}</version>
             </dependency>
             <dependency>
-                <groupId>software.amazon.awssdk</groupId>
-                <artifactId>apache-client</artifactId>
-                <version>${apache-client}</version>
-            </dependency>
-            <dependency>
-                <groupId>software.amazon.awssdk</groupId>
-                <artifactId>bom</artifactId>
-                <version>${amazon.awssdk}</version>
-                <type>pom</type>
-                <scope>import</scope>
-            </dependency>
-            <dependency>
-                <groupId>org.apache.commons</groupId>
-                <artifactId>commons-text</artifactId>
-                <version>${commons-text}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.assertj</groupId>
-                <artifactId>assertj-core</artifactId>
-                <version>${assertj.core}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.projectlombok</groupId>
-                <artifactId>lombok</artifactId>
-                <version>${lombok}</version>
+                <groupId>org.junit.platform</groupId>
+                <artifactId>junit-platform-suite</artifactId>
+                <version>${junit.platform.suite}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>
@@ -149,10 +198,29 @@
                     <artifactId>maven-compiler-plugin</artifactId>
                     <version>${maven.compiler.plugin}</version>
                     <configuration>
-                        <encoding>UTF-8</encoding>
+                        <encoding>${project.build.sourceEncoding}</encoding>
                         <source>${java}</source>
                         <target>${java}</target>
-                        <compilerArgs>--enable-preview</compilerArgs>
+                    </configuration>
+                </plugin>
+
+                <plugin>
+                    <groupId>org.openapitools</groupId>
+                    <artifactId>openapi-generator-maven-plugin</artifactId>
+                    <version>${openapi.generator.maven.plugin}</version>
+                    <configuration>
+                        <generatorName>java</generatorName>
+                        <library>native</library>
+                        <output>${project.basedir}</output>
+                        <generateApis>false</generateApis>
+                        <generateModelTests>false</generateModelTests>
+                        <generateModelDocumentation>false</generateModelDocumentation>
+                        <generateSupportingFiles>false</generateSupportingFiles>
+                        <skipValidateSpec>true</skipValidateSpec>
+                        <configOptions>
+                            <openApiNullable>false</openApiNullable>
+                            <hideGenerationTimestamp>true</hideGenerationTimestamp>
+                            <useJakartaEe>true</useJakartaEe> </configOptions>
                     </configuration>
                 </plugin>
             </plugins>

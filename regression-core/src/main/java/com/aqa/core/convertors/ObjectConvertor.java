@@ -1,6 +1,8 @@
 package com.aqa.core.convertors;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 
 import java.util.List;
 import java.util.Map;
@@ -8,6 +10,10 @@ import java.util.Map;
 import static java.util.Objects.nonNull;
 
 public class ObjectConvertor {
+
+    private static final ObjectMapper comparisonMapper = new ObjectMapper()
+            .registerModule(new JavaTimeModule())
+            .configure(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS, false);
 
     public static Map<String, Object> convertObjToActualMap(Object actualObj, Map<String, Object> expected) {
         Map<String, Object> actual = convertObjToMapAndStringify(actualObj);
@@ -23,11 +29,11 @@ public class ObjectConvertor {
 
     @SuppressWarnings("unchecked")
     private static Map<String, Object> convertObjToMap(Object input) {
-        return new ObjectMapper().convertValue(input, Map.class);
+        return comparisonMapper.convertValue(input, Map.class);
     }
 
     private static List<Object> convertListToMapList(Object input) {
-        return (List) stringify(new ObjectMapper().convertValue(input, List.class));
+        return (List) stringify(comparisonMapper.convertValue(input, List.class));
     }
 
     @SuppressWarnings("unchecked")

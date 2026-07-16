@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.*;
 import com.fasterxml.jackson.dataformat.xml.XmlMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 
 import static jakarta.ws.rs.core.MediaType.APPLICATION_JSON;
 import static jakarta.ws.rs.core.MediaType.APPLICATION_XML;
@@ -23,9 +24,11 @@ public class FileParseUtils {
 
     public FileParseUtils() {
         jsonWriteObjMapper = new ObjectMapper()
+                .registerModule(new JavaTimeModule())
                 .configure(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS, false)
                 .setSerializationInclusion(JsonInclude.Include.NON_NULL);
         jsonReadObjMapper = new ObjectMapper()
+                .registerModule(new JavaTimeModule())
                 .configure(MapperFeature.USE_ANNOTATIONS, false)
                 .configure(MapperFeature.ACCEPT_CASE_INSENSITIVE_ENUMS, true)
                 .configure(MapperFeature.ACCEPT_CASE_INSENSITIVE_PROPERTIES, true)
@@ -33,7 +36,10 @@ public class FileParseUtils {
                 .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
                 .setSerializationInclusion(JsonInclude.Include.NON_NULL).setSerializationInclusion(
                         JsonInclude.Include.NON_EMPTY);
-        xmlMapper = XmlMapper.builder().defaultUseWrapper(false).build();
+        xmlMapper = XmlMapper.builder()
+                .addModule(new JavaTimeModule())
+                .defaultUseWrapper(false)
+                .build();
     }
 
     public static ObjectMapper writeJson() {

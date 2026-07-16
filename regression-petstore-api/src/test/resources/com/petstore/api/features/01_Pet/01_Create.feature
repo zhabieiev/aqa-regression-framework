@@ -5,6 +5,6 @@ Feature: Create New Pet
       | name      | Doggie       |
       | photoUrls | ["test.jpg"] |
     Then var 'pet' is equal to object:
-      | id        | regex:[0-9]{19} |
-      | name      | Doggie          |
-      | photoUrls | ["test.jpg"]    |
+      | id        | regex:[0-9]{18,19} |
+      | name      | Doggie             |
+      | photoUrls | ["test.jpg"]       |

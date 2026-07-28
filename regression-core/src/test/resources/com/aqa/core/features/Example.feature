@@ -13,10 +13,10 @@ Feature: Example
       | integer          | 2147483647           |
       | longPrimitive    | -9223372036854775808 |
       | aLong            | 9223372036854775807  |
-      | floatPrimitive   | 0.0f                 |
-      | aFloat           | 0.0f                 |
-      | doublePrimitive  | 0.0d                 |
-      | aDouble          | 0.0d                 |
+      | floatPrimitive   | 1.25                 |
+      | aFloat           | -2.5                 |
+      | doublePrimitive  | 1.23456789012345     |
+      | aDouble          | -2.3456789012345     |
       | array            | [1,2]                |
     Then example primitives must be properly converted
 
@@ -24,30 +24,30 @@ Feature: Example
     Given example var 'variable' has value 'Variable'
     And example var 'result' has values:
                              # Null:
-      | list[0].string  |                                                                                                |
+      | list[0].string  |                                                                          |
                              # Empty string:
-      | list[1].string  | ""                                                                                             |
+      | list[1].string  | ""                                                                       |
                              # Property inside string
-      | list[2].string  | Prefix${env.property}Suffix                                                                    |
+      | list[2].string  | Prefix${env.property}Suffix                                              |
                              # Property and parent property
-      | list[3].string  | ${env.property}+${url.aqa}                                                                     |
+      | list[3].string  | ${env.property}+${url.aqa}                                               |
                              # Variable inside string
-      | list[4].string  | Prefix@{variable}Suffix                                                                        |
+      | list[4].string  | Prefix@{variable}Suffix                                                  |
                              # File inside string. File contains property and variable
-      | list[5].string  | Prefixfile:{src/test/resources/files/Example.txt}Suffix                        |
+      | list[5].string  | Prefixfile:{src/test/resources/files/Example.txt}Suffix                  |
                              # Multiple files
-      | list[6].string  | file:{${path.file}/Example.txt}file:{${path.file}/Example.txt} |
+      | list[6].string  | file:{${path.file}/Example.txt}file:{${path.file}/Example.txt}           |
                              # Property+variable+date+file
-      | list[7].string  | ${env.property}@{variable}date:{now-0h/h}file:{${path.file}/Example.txt}       |
+      | list[7].string  | ${env.property}@{variable}date:{now-0h/h}file:{${path.file}/Example.txt} |
                              # DateTime epoch format
-      | list[8].string  | date:{now+1h/h(epoch)}                                                                         |
+      | list[8].string  | date:{now+1h/h(epoch)}                                                   |
                              # DateTime as string
-      | list[9].string  | date:{now-3w(asString)}                                                                        |
+      | list[9].string  | date:{now-3w(asString)}                                                  |
                              # DateTime with timeZone
-      | list[10].string | date:{now-2m/m (EST)}                                                                          |
+      | list[10].string | date:{now-2m/m (EST)}                                                    |
                              # Formatted DateTime
-      | list[11].string | date:{now-1d (yyyy-MM-dd HH:00:00)}                                                            |
+      | list[11].string | date:{now-1d (yyyy-MM-dd HH:00:00)}                                      |
                              # DateTime inside string, two DateTime variables
-      | list[12].string | Prefixdate:{now-1d/d}Suffix date:{now+0d/d}                                                    |
+      | list[12].string | Prefixdate:{now-1d/d}Suffix date:{now+0d/d}                              |
     Then example string must be properly converted
 

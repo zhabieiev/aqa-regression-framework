@@ -9,7 +9,6 @@ import java.util.Set;
 
 @Getter
 @Setter
-
 public class Example {
     private boolean booleanPrimitive;
     private Boolean aBoolean;

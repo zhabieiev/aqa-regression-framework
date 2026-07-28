@@ -43,10 +43,10 @@ public record ExampleDefinitions(VariablesController variablesController) {
         expected.setInteger(2147483647);
         expected.setLongPrimitive(-9223372036854775808L);
         expected.setALong(9223372036854775807L);
-        expected.setFloatPrimitive(0.0F);
-        expected.setAFloat(0.0F);
-        expected.setDoublePrimitive(0.0D);
-        expected.setADouble(0.0D);
+        expected.setFloatPrimitive(1.25F);
+        expected.setAFloat(-2.5F);
+        expected.setDoublePrimitive(1.23456789012345D);
+        expected.setADouble(-2.3456789012345D);
         expected.setArray(new Integer[]{1, 2});
         AssertionsForClassTypes.assertThat(variablesController.getVar("result"))
                 .usingRecursiveComparison()

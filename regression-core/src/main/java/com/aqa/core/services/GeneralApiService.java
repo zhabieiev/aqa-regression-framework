@@ -10,6 +10,7 @@ import jakarta.ws.rs.client.Invocation;
 import jakarta.ws.rs.client.WebTarget;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
+
 import java.util.List;
 import java.util.Map;
 
@@ -34,16 +35,14 @@ public abstract class GeneralApiService {
 
     private void validateResponse(final Response response, final Integer statusCode, final String startTime) {
         if (response.getStatus() != statusCode) {
-            throw new AssertionError(
-                    String.format("%s\n%s\n->[%s]\n<-[%s]", response.readEntity(String.class),
-                            String.format("Expected status code <%s> but was <%s>.", statusCode, response.getStatus()),
-                            startTime, DateConverter.currentDateToString()));
+            throw new AssertionError(String.format("%s\n%s\n->[%s]\n<-[%s]", response.readEntity(String.class),
+                    String.format("Expected status code <%s> but was <%s>.", statusCode, response.getStatus()),
+                    startTime, DateConverter.currentDateToString()));
         }
     }
 
     private Response invokeResponse(final Request parameters) {
-        WebTarget target = new WebTargetWrapper(client.target(baseUri))
-                .properties(parameters.getProperties())
+        WebTarget target = new WebTargetWrapper(client.target(baseUri)).properties(parameters.getProperties())
                 .path(parameters.getPath())
                 .pathParams(parameters.getPathParams())
                 .queryParams(parameters.getQueryParams())
@@ -55,9 +54,7 @@ public abstract class GeneralApiService {
             parameters.getHeaders().forEach(builder::header);
         }
 
-        return builder
-                .build(parameters.getMethod(), Entity.json(parameters.getBody()))
-                .invoke();
+        return builder.build(parameters.getMethod(), Entity.json(parameters.getBody())).invoke();
     }
 
     private static class WebTargetWrapper {
@@ -81,21 +78,19 @@ public abstract class GeneralApiService {
         }
 
         private WebTargetWrapper pathParams(final Map<String, ?> pathParams) {
-            ofNullable(pathParams).ifPresent(params ->
-                    params.entrySet().forEach(param -> webTarget = webTarget.resolveTemplate(param.getKey(), param.getValue())));
+            ofNullable(pathParams).ifPresent(params -> params.entrySet()
+                    .forEach(param -> webTarget = webTarget.resolveTemplate(param.getKey(), param.getValue())));
             return this;
         }
 
         private WebTargetWrapper queryParams(final Map<String, ?> queryParams) {
-            ofNullable(queryParams).ifPresent(params ->
-                    params.entrySet().forEach(param -> {
-                        if (param.getValue() instanceof List) {
-                            webTarget = webTarget.queryParam(param.getKey(), ((List) param.getValue()).toArray());
-                        } else {
-                            webTarget = webTarget.queryParam(param.getKey(), param.getValue());
-                        }
-                    })
-            );
+            ofNullable(queryParams).ifPresent(params -> params.entrySet().forEach(param -> {
+                if (param.getValue() instanceof List) {
+                    webTarget = webTarget.queryParam(param.getKey(), ((List) param.getValue()).toArray());
+                } else {
+                    webTarget = webTarget.queryParam(param.getKey(), param.getValue());
+                }
+            }));
             return this;
         }
 

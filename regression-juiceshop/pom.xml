@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
     <parent>
@@ -10,7 +10,12 @@
         <version>1.0.0</version>
     </parent>
 
-    <artifactId>regression-petstore-api</artifactId>
+    <artifactId>regression-juiceshop</artifactId>
+
+    <properties>
+        <juiceshop.openapi.spec>${project.basedir}/src/main/resources/openapi/swagger.yml</juiceshop.openapi.spec>
+        <models.juiceshop.api.skip.generate>true</models.juiceshop.api.skip.generate>
+    </properties>
 
     <dependencies>
         <dependency>
@@ -19,17 +24,23 @@
         </dependency>
 
         <dependency>
+            <groupId>com.microsoft.playwright</groupId>
+            <artifactId>playwright</artifactId>
+        </dependency>
+
+        <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.fasterxml.jackson.datatype</groupId>
-            <artifactId>jackson-datatype-jsr310</artifactId>
         </dependency>
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-annotations</artifactId>
         </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.datatype</groupId>
+            <artifactId>jackson-datatype-jsr310</artifactId>
+        </dependency>
+
         <dependency>
             <groupId>io.swagger.core.v3</groupId>
             <artifactId>swagger-annotations</artifactId>
@@ -37,14 +48,6 @@
         <dependency>
             <groupId>jakarta.annotation</groupId>
             <artifactId>jakarta.annotation-api</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.commons</groupId>
-            <artifactId>commons-text</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.commons</groupId>
-            <artifactId>commons-lang3</artifactId>
         </dependency>
     </dependencies>
 
@@ -56,10 +59,10 @@
                 <version>${properties.maven.plugin}</version>
                 <executions>
                     <execution>
+                        <phase>initialize</phase>
                         <goals>
                             <goal>read-project-properties</goal>
                         </goals>
-                        <phase>initialize</phase>
                         <configuration>
                             <files>
                                 <file>${properties.path}</file>
@@ -74,17 +77,23 @@
                 <artifactId>openapi-generator-maven-plugin</artifactId>
                 <executions>
                     <execution>
-                        <id>generate_petstore_v2</id>
+                        <id>generate-juiceshop-api-models</id>
                         <goals>
                             <goal>generate</goal>
                         </goals>
                         <configuration>
-                            <inputSpec>${url.api}/v2/swagger.json</inputSpec>
-                            <skip>${models.petstore.api.skip.generate}</skip>
-                            <modelPackage>com.aqa.petstore.api.models.generated</modelPackage>
+                            <inputSpec>${juiceshop.openapi.spec}</inputSpec>
+                            <skip>${models.juiceshop.api.skip.generate}</skip>
+                            <modelPackage>com.aqa.juiceshop.api.models.generated</modelPackage>
                         </configuration>
                     </execution>
                 </executions>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>${maven.surefire.plugin}</version>
             </plugin>
         </plugins>
     </build>

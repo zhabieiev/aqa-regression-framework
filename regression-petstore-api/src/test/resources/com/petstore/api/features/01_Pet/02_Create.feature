@@ -1,6 +1,6 @@
 Feature: Create New Pet
 
-  Scenario: 010101 Create new pet with valid data
+  Scenario: 0201 Create new pet with valid data
     Given api user creates pet and saves to 'pet':
       | name      | Doggie       |
       | photoUrls | ["test.jpg"] |

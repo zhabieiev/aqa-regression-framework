@@ -1,6 +1,6 @@
 Feature: Create Store Order
 
-  Scenario: 020101 Create new store order with valid data
+  Scenario: 0201 Create new store order with valid data
     Given api user creates store order and saves to 'storeOrder':
       | petId    | 1234567890123456789   |
       | quantity | 1                     |

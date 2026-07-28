@@ -3,4 +3,4 @@ Scenario: 1234567 Name
  - 1-Video Manager, 2-Traffic Manager, 3-Marketplace, 4-Campaign Manager
 
 Definition:
- - # field(required),*field(optional),f̶i̶e̶l̶d̶(deprecated),field(VALUE)(field with a default value set)
+ - # field(required),*field(optional),field(VALUE)(field with a default value set)

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>com.aqa</groupId>
@@ -27,19 +27,23 @@
         <maven.compiler.plugin>3.10.1</maven.compiler.plugin>
         <maven.surefire.plugin>3.5.4</maven.surefire.plugin>
 
-        <jackson.databind>2.15.1</jackson.databind>
-        <jackson.datatype>2.15.2</jackson.datatype>
+        <jackson.version>2.21.2</jackson.version>
+        <jackson.databind>${jackson.version}</jackson.databind>
+        <jackson.datatype>${jackson.version}</jackson.datatype>
+        <netty.version>4.1.132.Final</netty.version>
         <swagger.annotations>2.2.15</swagger.annotations>
         <jakarta.ws.rs.api>3.1.0</jakarta.ws.rs.api>
         <jakarta.annotation.api>2.1.1</jakarta.annotation.api>
-        <jersey.client>3.1.3</jersey.client> <lombok>1.18.32</lombok>
+        <jersey.client>3.1.3</jersey.client>
+        <lombok>1.18.32</lombok>
         <amazon.awssdk>2.20.162</amazon.awssdk>
         <json>20231013</json>
-        <commons-beanutils>1.9.4</commons-beanutils>
+        <commons-beanutils>1.11.0</commons-beanutils>
         <commons-text>1.14.0</commons-text>
-        <commons-lang3>3.14.0</commons-lang3>
-        <assertj.core>3.26.3</assertj.core>
+        <commons-lang3>3.18.0</commons-lang3>
+        <assertj.core>3.27.7</assertj.core>
         <slf4j.version>2.0.9</slf4j.version>
+        <jna.version>5.19.1</jna.version>
 
         <regression.core>1.0.0</regression.core>
         <regression.petstore.api>1.0.0</regression.petstore.api>
@@ -53,6 +57,21 @@
 
     <dependencyManagement>
         <dependencies>
+            <dependency>
+                <groupId>com.fasterxml.jackson</groupId>
+                <artifactId>jackson-bom</artifactId>
+                <version>${jackson.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>io.netty</groupId>
+                <artifactId>netty-bom</artifactId>
+                <version>${netty.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
             <dependency>
                 <groupId>com.aqa</groupId>
                 <artifactId>regression-core</artifactId>
@@ -80,30 +99,6 @@
                 <scope>provided</scope>
             </dependency>
 
-            <dependency>
-                <groupId>com.fasterxml.jackson.core</groupId>
-                <artifactId>jackson-databind</artifactId>
-                <version>${jackson.databind}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.fasterxml.jackson.core</groupId>
-                <artifactId>jackson-annotations</artifactId>
-                <version>${jackson.databind}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.fasterxml.jackson.core</groupId>
-                <artifactId>jackson-core</artifactId>
-                <version>${jackson.databind}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.fasterxml.jackson.dataformat</groupId>
-                <artifactId>jackson-dataformat-xml</artifactId>
-                <version>${jackson.databind}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.fasterxml.jackson.datatype</groupId>
-                <artifactId>jackson-datatype-jsr310</artifactId>
-                <version>${jackson.datatype}</version> </dependency>
             <dependency>
                 <groupId>jakarta.ws.rs</groupId>
                 <artifactId>jakarta.ws.rs-api</artifactId>
@@ -192,6 +187,12 @@
                 <artifactId>junit-platform-suite</artifactId>
                 <version>${junit.platform.suite}</version>
             </dependency>
+
+            <dependency>
+                <groupId>net.java.dev.jna</groupId>
+                <artifactId>jna</artifactId>
+                <version>${jna.version}</version>
+            </dependency>
         </dependencies>
     </dependencyManagement>
 
@@ -206,6 +207,17 @@
                         <encoding>${project.build.sourceEncoding}</encoding>
                         <source>${java}</source>
                         <target>${java}</target>
+                    </configuration>
+                </plugin>
+
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-surefire-plugin</artifactId>
+                    <version>${maven.surefire.plugin}</version>
+                    <configuration>
+                        <systemPropertyVariables>
+                            <env>${env}</env>
+                        </systemPropertyVariables>
                     </configuration>
                 </plugin>
 
@@ -225,7 +237,8 @@
                         <configOptions>
                             <openApiNullable>false</openApiNullable>
                             <hideGenerationTimestamp>true</hideGenerationTimestamp>
-                            <useJakartaEe>true</useJakartaEe> </configOptions>
+                            <useJakartaEe>true</useJakartaEe>
+                        </configOptions>
                     </configuration>
                 </plugin>
             </plugins>

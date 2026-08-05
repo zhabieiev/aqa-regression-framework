@@ -89,10 +89,6 @@
                             <inputSpec>${url.api}/v3/api-docs</inputSpec>
                             <skip>${models.jhipster.api.skip.generate}</skip>
                             <modelPackage>com.aqa.jhipster.api.models.generated</modelPackage>
-                            <generateModels>true</generateModels>
-                            <globalProperties>
-                                <models/>
-                            </globalProperties>
                             <configOptions>
                                 <dateLibrary>java8</dateLibrary>
                                 <supportUrlQuery>false</supportUrlQuery>
@@ -100,39 +96,6 @@
                         </configuration>
                     </execution>
                 </executions>
-            </plugin>
-
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-antrun-plugin</artifactId>
-                <version>3.1.0</version>
-                <executions>
-                    <execution>
-                        <id>remove-openapi-empty-directories</id>
-                        <phase>generate-sources</phase>
-                        <goals>
-                            <goal>run</goal>
-                        </goals>
-                        <configuration>
-                            <target>
-                                <delete
-                                        dir="${project.basedir}/gradle"
-                                        failonerror="false"/>
-                                <delete
-                                        dir="${project.basedir}/api"
-                                        failonerror="false"/>
-                                <delete
-                                        dir="${project.basedir}/.github"
-                                        failonerror="false"/>
-                            </target>
-                        </configuration>
-                    </execution>
-                </executions>
-            </plugin>
-
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-surefire-plugin</artifactId>
             </plugin>
         </plugins>
     </build>

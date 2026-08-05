@@ -54,7 +54,8 @@
 
         <cucumber.picocontainer>${cucumber.java}</cucumber.picocontainer>
         <models.skip.generate>true</models.skip.generate>
-        <models.petstore.api.skip.generate>${models.skip.generate}</models.petstore.api.skip.generate>
+        <models.petstore.api.skip.generate>true</models.petstore.api.skip.generate>
+        <models.jhipster.api.skip.generate>true</models.jhipster.api.skip.generate>
     </properties>
 
     <dependencyManagement>

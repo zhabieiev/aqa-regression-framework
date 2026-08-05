@@ -1,0 +1,12 @@
+src/main/java/com/aqa/jhipster/api/models/generated/AdminUserDTO.java
+src/main/java/com/aqa/jhipster/api/models/generated/Authority.java
+src/main/java/com/aqa/jhipster/api/models/generated/BankAccount.java
+src/main/java/com/aqa/jhipster/api/models/generated/JWTToken.java
+src/main/java/com/aqa/jhipster/api/models/generated/KeyAndPasswordVM.java
+src/main/java/com/aqa/jhipster/api/models/generated/Label.java
+src/main/java/com/aqa/jhipster/api/models/generated/LoginVM.java
+src/main/java/com/aqa/jhipster/api/models/generated/ManagedUserVM.java
+src/main/java/com/aqa/jhipster/api/models/generated/Operation.java
+src/main/java/com/aqa/jhipster/api/models/generated/PasswordChangeDTO.java
+src/main/java/com/aqa/jhipster/api/models/generated/User.java
+src/main/java/com/aqa/jhipster/api/models/generated/UserDTO.java

@@ -12,7 +12,7 @@
     <modules>
         <module>regression-core</module>
         <module>regression-petstore-api</module>
-        <module>regression-juiceshop</module>
+        <module>regression-toolshop</module>
     </modules>
 
     <properties>

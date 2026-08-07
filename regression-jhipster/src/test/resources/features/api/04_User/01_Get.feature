@@ -1,3 +1,4 @@
+@api
 Feature: Get User
 
   Scenario: 4010101 Get user

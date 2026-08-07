@@ -1,3 +1,4 @@
+@api
 Feature: Create User
 
   Scenario: 040601 Create user

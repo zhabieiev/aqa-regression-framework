@@ -1,3 +1,4 @@
+@api
 Feature: Delete User
 
   Scenario: 040301 Delete user

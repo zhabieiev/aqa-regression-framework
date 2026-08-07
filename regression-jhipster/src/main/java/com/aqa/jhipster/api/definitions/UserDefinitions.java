@@ -34,4 +34,10 @@ public record UserDefinitions(VariablesController variablesController, UserSteps
                         userSteps.authService().getAdminHeaders(),
                         Integer.parseInt(map.get(RESPONSE.getValue() + STATUS_CODE.getValue()))));
     }
+
+    @Given("api user deletes user:")
+    public void apiUserDeletesUser(Map<String, String> map) {
+         userSteps().userService()
+                .delete(populate(map, AdminUserDTO.class).getLogin(), userSteps.authService().getAdminHeaders());
+    }
 }

@@ -1,6 +1,6 @@
 Feature: Get User
 
-  Scenario: 4010101 Get user by login
+  Scenario: 4010101 Get user
     Given api user creates new user and saves to 'user':
       | login       | user_4010101               |
       | email       | user_4010101@aqa.email.com |
@@ -21,7 +21,7 @@ Feature: Get User
       | lastName         |                                                    |
       | login            | @{user.login}                                      |
 
-  Scenario: 4010102 Get user by login with invalid data
+  Scenario: 4010102 Get user with invalid data
     When api user tries to get user and saves to 'result':
       | path:login          | invalid_login |
       | response:statusCode | 404           |

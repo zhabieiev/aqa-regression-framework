@@ -10,8 +10,7 @@ import java.util.Map;
 import static com.aqa.core.models.Request.request;
 import static jakarta.ws.rs.HttpMethod.*;
 import static java.lang.String.format;
-import static java.net.HttpURLConnection.HTTP_CREATED;
-import static java.net.HttpURLConnection.HTTP_NO_CONTENT;
+import static java.net.HttpURLConnection.*;
 
 @Slf4j
 public class BankAccountService extends ApiService {
@@ -48,6 +47,15 @@ public class BankAccountService extends ApiService {
         return getResponse(request().method(GET)
                 .path(format(BANK_ACCOUNTS_ID, id))
                 .headers(headers)
+                .statusCode(HTTP_OK)
                 .build()).readEntity(BankAccount.class);
+    }
+
+    public Map<String, Object> getBankAccount(final Long id, final Map<String, String> headers, int statusCode) {
+        return getResponse(request().method(GET)
+                .path(format(BANK_ACCOUNTS_ID, id))
+                .headers(headers)
+                .statusCode(statusCode)
+                .build()).readEntity(new GenericType<>() {});
     }
 }

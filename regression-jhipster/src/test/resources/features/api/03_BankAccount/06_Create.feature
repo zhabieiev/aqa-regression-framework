@@ -1,3 +1,4 @@
+@api
 Feature: Create Bank Account
 
     Scenario: 030601 Create bank account

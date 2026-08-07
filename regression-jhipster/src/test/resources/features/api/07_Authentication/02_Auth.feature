@@ -1,3 +1,4 @@
+@api
 Feature: Authenticate Controller
 
   Scenario: 070201 User authenticates as admin

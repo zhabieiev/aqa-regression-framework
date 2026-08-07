@@ -19,5 +19,9 @@ public enum Property implements PropertyReader {
     USER_EMAIL,
     USER_PASSWORD,
     URL_API,
+    URL_UI,
+    UI_BROWSER,
+    UI_HEADLESS,
+    UI_SLOW_MOTION,
     V2;
 }

@@ -6,5 +6,5 @@ public enum Property implements PropertyReader {
     ADMIN,
     USER,
     ADMIN_PASSWORD,
-    USER_PASSWORD;
+    USER_PASSWORD
 }

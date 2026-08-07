@@ -15,7 +15,6 @@ public class LoginPage extends BasePage {
 
     private static final String USERNAME = "username";
     private static final String PASSWORD = "password";
-
     private static final String SUBMIT_BUTTON = "submit";
     private static final String AUTHENTICATION_ERROR = "loginError";
 
@@ -49,22 +48,24 @@ public class LoginPage extends BasePage {
     }
 
     public HomePage login(final LoginBean credentials, final List<String> headers) {
-        fillCredentials(credentials, headers);
-        submitButton.click();
+        submitCredentials(credentials, headers);
 
         return new HomePage(page).waitUntilAuthenticated();
     }
 
     public LoginPage loginExpectingFailure(final LoginBean credentials, final List<String> headers) {
-        fillCredentials(credentials, headers);
-        submitButton.click();
-
+        submitCredentials(credentials, headers);
         return this;
     }
 
     public LoginPage assertAuthenticationError() {
         assertThat(authenticationError).isVisible();
         return this;
+    }
+
+    private void submitCredentials(final LoginBean credentials, final List<String> headers) {
+        fillCredentials(credentials, headers);
+        submitButton.click();
     }
 
     private void fillCredentials(final LoginBean credentials, final List<String> headers) {

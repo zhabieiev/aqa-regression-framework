@@ -1,52 +1,50 @@
 # regression-jhipster Hybrid API/UI Automation Framework
 
-## Purpose
+## 1. Purpose
 
-`regression-jhipster` is a child module of the multi-module Maven project `com.aqa:regression:1.0.0`. It is a practice and demonstration framework for API, UI, and hybrid test automation against a locally deployed `jhipster-sample-app`.
+`regression-jhipster` is a Java 21 Maven module for API, UI, and hybrid test automation against a locally deployed JHipster application.
 
-JHipster replaced earlier test applications such as Juice Shop and Toolshop because it provides:
+The framework combines:
 
-- full CRUD operations;
-- JWT authentication and role-based authorization;
-- runtime Swagger/OpenAPI documentation;
-- no artificial limit on the number of test records;
-- a real web UI suitable for Playwright automation;
-- Docker-based local deployment.
+- Cucumber for executable specifications;
+- Jersey for REST API calls;
+- Jackson and OpenAPI-generated transport models;
+- Playwright for browser automation;
+- PicoContainer for scenario-scoped dependency injection;
+- Lombok for concise test-data models and logging;
+- Docker for the tested JHipster application.
 
-The framework uses Java 21, Maven, Cucumber, Jersey, Jackson, OpenAPI Generator, AssertJ, Lombok, and Playwright.
+The main architectural goal is strict separation of responsibilities while allowing API operations to prepare and clean data for UI scenarios.
 
-## Current Status
+## 2. Current State
 
 ### Confirmed and working
 
-- JHipster is available locally at `http://localhost:8080`.
-- `/v3/api-docs` is available without authentication.
-- OpenAPI 3.1 models are generated successfully.
-- Admin and regular-user JWT authentication works.
-- Admin user creation and deletion work through API.
-- Negative authentication with `401` and a problem response works.
-- Bank Account API CRUD infrastructure works.
-- Bank Accounts can be searched by name and all duplicates can be deleted through API.
-- Strict Jackson deserialization detects undocumented response fields.
-- The JHipster `BankAccount` response was aligned with its OpenAPI schema by hiding `operations` and `user` from JSON serialization.
-- Playwright browser lifecycle works from Cucumber hooks.
-- UI login with valid credentials works.
-- UI scenarios are isolated with a separate browser context and page.
-- Screenshots and traces are supported on failure.
-- Shared UI components and Page Objects have been introduced.
+- JHipster runs locally at `http://localhost:8080`.
+- Swagger UI is available at `/admin/docs`.
+- OpenAPI is available at `/v3/api-docs`.
+- Admin and regular-user JWT authentication work through API.
+- Admin user management works through API.
+- Bank Account API create, read, and delete operations work.
+- Cleanup deletes every Bank Account matching an exact name, including duplicates.
+- Generated API models remain strict about undocumented response fields.
+- The JHipster `BankAccount` response was aligned with its OpenAPI schema.
+- Playwright starts and closes correctly for `@ui` scenarios.
+- UI login works for a regular user and administrator.
+- Invalid UI login is covered.
+- Bank Account UI creation and deletion flows work with API test-data preparation.
+- Screenshots and Playwright traces are collected for failed UI scenarios.
 
-### Implemented but still being stabilized
+### Not part of the finalized structure
 
-- Bank Account creation and deletion through UI.
-- Hybrid scenarios that prepare or clean data through API and verify behavior through UI.
-- Login data population through `Populator` and a UI bean.
-- Bank Account data population through `Populator` and a UI bean.
+- `AccountSettingsPage`: the page was based on an assumption and was not confirmed in the actual UI.
+- `AlertComponent`: removed because no current Page Object uses it.
+- `UserManagementPage`: should remain absent until a real scenario and actual DOM are inspected.
+- speculative edit, logout, settings, counting, and generic navigation methods without scenario usage.
 
-### Explicitly excluded
+The framework follows YAGNI: a Page Object, component, or method is added only for confirmed application behavior used by a test.
 
-`AccountSettingsPage` was initially designed based on a common JHipster route, but the page was not confirmed in the actual application. It must not be treated as part of the current framework. Related account-settings classes and scenarios should be removed unless the route is later verified in the real UI.
-
-## Maven Module Structure
+## 3. Maven Project Context
 
 ```text
 regression
@@ -57,12 +55,28 @@ regression
 └── regression-jhipster
 ```
 
-Responsibilities:
+### `regression-core`
 
-- `regression-core`: shared configuration, HTTP request infrastructure, converters, `Populator`, `VariablesController`, and reusable Cucumber functionality.
-- `regression-jhipster`: JHipster-specific API services, generated models, UI Page Objects, components, steps, definitions, hooks, and feature files.
+Shared infrastructure includes:
 
-## Recommended Module Layout
+- `PropertiesController` and the `Property` enumeration;
+- Jersey request construction and response validation;
+- `FileParseUtils`;
+- `Populator`;
+- common converters and scenario utilities;
+- shared Cucumber infrastructure.
+
+### `regression-jhipster`
+
+Owns only JHipster-specific functionality:
+
+- API authentication, services, steps, and definitions;
+- generated JHipster API models;
+- Playwright context and lifecycle;
+- JHipster Page Objects and components;
+- UI beans, steps, definitions, and feature files.
+
+## 4. Finalized Module Layout
 
 ```text
 regression-jhipster
@@ -78,12 +92,29 @@ regression-jhipster
 │   │   │       │   └── steps
 │   │   │       └── ui
 │   │   │           ├── components
+│   │   │           │   ├── BaseComponent.java
+│   │   │           │   ├── DataTableComponent.java
+│   │   │           │   └── NavigationBar.java
 │   │   │           ├── context
+│   │   │           │   ├── PlaywrightManager.java
+│   │   │           │   └── UiScenarioContext.java
 │   │   │           ├── definitions
+│   │   │           │   ├── BankAccountDefinitions.java
+│   │   │           │   └── LoginDefinitions.java
 │   │   │           ├── hooks
+│   │   │           │   └── UiHooks.java
 │   │   │           ├── models
+│   │   │           │   ├── BankAccountBean.java
+│   │   │           │   └── LoginBean.java
 │   │   │           ├── pages
+│   │   │           │   ├── BasePage.java
+│   │   │           │   ├── BankAccountFormPage.java
+│   │   │           │   ├── BankAccountPage.java
+│   │   │           │   ├── HomePage.java
+│   │   │           │   └── LoginPage.java
 │   │   │           └── steps
+│   │   │               ├── BankAccountSteps.java
+│   │   │               └── LoginSteps.java
 │   │   └── resources
 │   │       └── properties
 │   │           └── dev.properties
@@ -92,40 +123,41 @@ regression-jhipster
 │           └── features
 │               ├── api
 │               └── ui
-│                   ├── authentication
-│                   └── bank_account
+│                   ├── 01_Login
+│                   └── 02_BankAccount
 ├── pom.xml
 └── README.md
 ```
 
-The existing module keeps definitions and framework implementation under `src/main/java`. New UI code currently follows that convention to remain consistent with the API module.
+Definitions currently remain under `src/main/java` because this is the established convention of the parent framework.
 
-## Core Dependencies
+## 5. Dependencies
 
-### Runtime and test stack
+### Main stack
 
 - Java 21
 - Maven multi-module build
 - Cucumber Java
-- Cucumber PicoContainer for scenario-scoped constructor injection
+- Cucumber PicoContainer
 - Jakarta REST/Jersey Client
-- Jackson Databind and Java Time module
+- Jackson Databind and Java Time
 - OpenAPI Generator
-- Swagger annotations
 - AssertJ
 - Lombok
 - Microsoft Playwright for Java
-- Docker Compose and Jib for the JHipster application
+- Docker Compose and Jib
 
-### Important dependency behavior
+### Important constraints
 
-- Most versions are inherited from the parent POM.
-- `regression-jhipster` overrides OpenAPI Generator with version `7.24.0` because the JHipster runtime specification uses OpenAPI 3.1.
-- The parent generator version must not be globally upgraded without checking other modules. Earlier global changes broke Petstore and Toolshop generated sources.
-- `cucumber-picocontainer` is required for constructor injection and scenario-scoped state objects.
-- `jersey-media-json-jackson` must remain available for Jersey response deserialization.
+- Most dependency versions are inherited from the root POM.
+- JHipster model generation uses the runtime OpenAPI document.
+- Generated models must never be edited manually.
+- A global OpenAPI Generator upgrade must be verified against every module; previous global upgrades broke generated Petstore and Toolshop sources.
+- `cucumber-picocontainer` is required for constructor injection and scenario-scoped state.
+- `jersey-media-json-jackson` is required for Jersey entity deserialization.
+- Lombok must be available both in Maven dependencies and as enabled annotation processing in IntelliJ.
 
-## Configuration
+## 6. Configuration
 
 Example `properties/dev.properties`:
 
@@ -145,13 +177,19 @@ ui.slow.motion=0
 ui.trace=true
 ```
 
-The project currently also uses the shared `Property` enumeration from `regression-core`. Calling `Property.read()` already returns the resolved value. Do not pass the result into `PropertiesController.getProperty()` again.
+Recommended property constants:
 
-Incorrect:
-
-```java
-PropertiesController.getProperty(UI_BROWSER.read());
+```text
+URL_API
+URL_UI
+UI_BROWSER
+UI_HEADLESS
+UI_TIMEOUT
+UI_SLOW_MOTION
+UI_TRACE
 ```
+
+`Property.read()` already resolves a property value through the shared configuration layer.
 
 Correct:
 
@@ -159,7 +197,13 @@ Correct:
 UI_BROWSER.read();
 ```
 
-`data-cy` is a stable JHipster UI convention, not an environment property. It is configured as a Playwright test ID attribute:
+Incorrect:
+
+```java
+PropertiesController.getProperty(UI_BROWSER.read());
+```
+
+`data-cy` is an application locator convention, not an environment-dependent setting. It remains a constant in `PlaywrightManager`:
 
 ```java
 private static final String TEST_ID_ATTRIBUTE = "data-cy";
@@ -167,18 +211,13 @@ private static final String TEST_ID_ATTRIBUTE = "data-cy";
 playwright.selectors().setTestIdAttribute(TEST_ID_ATTRIBUTE);
 ```
 
-Page Objects and components then use:
+Page Objects and components then use `page.getByTestId(value)`.
 
-```java
-page.getByTestId("accountMenu");
-```
-
-## API Architecture
-
-The API responsibility chain is:
+## 7. API Architecture
 
 ```text
-Cucumber Definition
+Cucumber Feature
+    → API Definition
     → API Steps
     → Domain Service
     → ApiService
@@ -188,40 +227,40 @@ Cucumber Definition
 
 ### Responsibilities
 
-- Definitions bind Gherkin to Java, convert DataTables, and save named values.
-- Steps orchestrate business operations across one or more services.
-- Domain services define endpoint paths, methods, request bodies, response types, and expected status codes.
-- `ApiService` supplies the configured base URI.
-- `GeneralApiService` builds and sends requests and validates expected status codes.
-- `ClientController` creates the Jersey Client and supplies Jackson configuration.
+| Layer | Responsibility |
+| --- | --- |
+| Feature | Business behavior and test data |
+| Definition | Gherkin binding, DataTable conversion, named-variable handling |
+| Steps | Business orchestration across services |
+| Domain service | Endpoint, HTTP method, body, headers, response model, expected status |
+| General service | Request execution and common status validation |
+| Client controller | Jersey client and JSON provider configuration |
 
-Definitions must not expose `bankAccountService()` or `authService()` accessors from Steps. Instead, Steps should provide meaningful operations such as:
+Definitions must call business-level Steps operations. They must not reach into Steps to extract `BankAccountService` or `AuthService`.
+
+Preferred:
 
 ```java
-deleteAllByName(name);
+bankAccountSteps.deleteAllByName(name);
 ```
 
-## Authentication
+Avoid:
+
+```java
+bankAccountSteps.bankAccountService().delete(...);
+```
+
+## 8. API Authentication
 
 - Endpoint: `POST /api/authenticate`
-- Request model: `LoginVM`
-- Response model: `JWTToken`
-- Token JSON property: `id_token`
-- Authorization header: `Authorization: Bearer <token>`
+- Request: `LoginVM`
+- Response: `JWTToken`
+- Token property: `id_token`
+- Header: `Authorization: Bearer <token>`
 
-`AuthService` caches admin and regular-user tokens separately and can also authenticate arbitrary credentials.
+Admin and regular-user tokens are cached separately. Headers remain explicit per request because authorization tests must be able to send different identities, invalid tokens, or no token.
 
-Headers are passed explicitly per request rather than attached through a global Jersey filter. This is intentional because security tests need to send:
-
-- an admin token;
-- a regular-user token;
-- no token;
-- an invalid token;
-- a token with insufficient authority.
-
-## Strict OpenAPI Contract Strategy
-
-Generated models are treated as the transport contract and must never be edited manually.
+## 9. Strict OpenAPI Contract Strategy
 
 Source specification:
 
@@ -235,13 +274,13 @@ Generated package:
 com.aqa.jhipster.api.models.generated
 ```
 
-The framework intentionally keeps strict Jackson behavior:
+The Jersey response mapper must remain strict:
 
 ```text
 FAIL_ON_UNKNOWN_PROPERTIES = true
 ```
 
-An undocumented response property must fail deserialization. This behavior previously detected that the runtime `BankAccount` response contained:
+This strictness detected that the Bank Account runtime response contained undocumented relationship fields:
 
 ```json
 {
@@ -250,15 +289,9 @@ An undocumented response property must fail deserialization. This behavior previ
 }
 ```
 
-while the OpenAPI schema contained only:
+while OpenAPI described only `id`, `name`, and `balance`.
 
-```text
-id
-name
-balance
-```
-
-The generated model was correct. The JHipster response was fixed at the source by adding a class-level Jackson exclusion to `BankAccount`:
+The contract was fixed in the JHipster source instead of weakening the client:
 
 ```java
 @JsonIgnoreProperties(
@@ -267,43 +300,32 @@ The generated model was correct. The JHipster response was fixed at the source b
 )
 ```
 
-This change belongs in the JHipster source project, must be committed there, and requires rebuilding the Docker image. Editing a running container is not persistent and does not change already compiled Java classes.
+The JHipster application image must be rebuilt after this source change. Modifying a running container is not persistent and cannot replace compiled Java bytecode.
 
-The field-level annotation on `operations` has a different purpose: it prevents recursive serialization of nested relationship properties. It does not hide the `operations` property itself.
+Jackson strict DTO deserialization is necessary but is not a complete OpenAPI validator. It does not validate every required field, media type, status response, format, or numeric boundary. Full schema validation can be added later as a separate contract-testing layer.
 
-## API Bank Account Operations
+## 10. API Bank Account Cleanup
 
-`BankAccountService` owns transport-level calls such as:
+Cleanup by name performs:
 
-- list accounts;
-- create an account;
-- delete an account by ID;
-- validate `204 No Content` for deletion.
+```text
+GET accounts
+    → filter by exact name
+    → collect every matching ID
+    → DELETE every match
+```
 
-Deletion logs only after successful status validation:
+`findFirst()` is intentionally not used because duplicate names are allowed. Cleanup is idempotent: zero matches is a successful outcome.
+
+Deletion logs only after `204 No Content` is validated:
 
 ```java
 log.info("Bank account with {} id is deleted", id);
 ```
 
-The API Steps layer provides orchestration such as deleting every account with a matching name:
+If the list endpoint becomes paginated, cleanup must either use a server-side name filter or traverse every page.
 
-```text
-GET all accounts
-    → filter by exact name
-    → collect IDs
-    → DELETE every matching ID
-```
-
-`findFirst()` must not be used for cleanup because duplicate names are allowed by the database and it would delete only one record.
-
-The cleanup operation is intentionally idempotent: when no records match, it succeeds without deleting anything.
-
-Known limitation: JHipster list endpoints may be paginated. A cleanup implementation that reads only the first page cannot guarantee removal of matches on later pages. Prefer a server-side name filter when available, otherwise iterate over all pages.
-
-## UI Architecture
-
-The UI responsibility chain is:
+## 11. UI Architecture
 
 ```text
 Cucumber Feature
@@ -314,109 +336,151 @@ Cucumber Feature
     → Playwright
 ```
 
-### Layer rules
+### Layer responsibilities
 
-- Definitions contain Cucumber annotations and DataTable conversion only.
-- Steps own scenario orchestration and current Page Object state.
-- Page Objects describe page-level behavior and navigation.
-- Components describe reusable UI regions.
-- UI beans contain test data only; they never contain Playwright `Page` or locators.
-- Hooks own browser lifecycle, traces, screenshots, and resource cleanup.
+| Layer | Owns | Must not own |
+| --- | --- | --- |
+| Feature | Behavior and readable data | Technical browser operations |
+| Definition | Cucumber annotations and table conversion | Locators or Playwright calls |
+| Steps | Scenario workflow and current page state | CSS selectors |
+| Page Object | Page behavior and page-level assertions | Cucumber annotations |
+| Component | Reusable page region behavior | Scenario orchestration |
+| UI bean | Input data | `Page`, `Locator`, or browser logic |
+| Hooks | Browser lifecycle and failure artifacts | Business test steps |
 
-## Playwright Lifecycle
+## 12. Finalized Playwright Lifecycle
 
-Current safe lifecycle:
+For every `@ui` scenario:
 
 ```text
-Each @ui scenario
-    → Playwright.create()
-    → launch Browser
-    → create BrowserContext
+Playwright.create()
+    → select data-cy as test ID
+    → launch configured Browser
+    → create isolated BrowserContext
+    → configure base URL and timeouts
     → create Page
+    → atomically initialize UiScenarioContext
     → execute scenario
-    → screenshot on failure
+    → attach screenshot on failure
     → save trace on failure
     → close BrowserContext
+    → clear UiScenarioContext
     → close Browser
     → close Playwright
 ```
 
-Key classes:
+### `PlaywrightManager`
 
-- `PlaywrightManager`
-- `UiScenarioContext`
-- `UiHooks`
+Owns:
 
-`UiScenarioContext` is scenario-scoped through PicoContainer and holds the current `BrowserContext` and `Page`.
+- `Playwright`;
+- launched `Browser`;
+- browser selection;
+- launch options;
+- BrowserContext creation and configuration;
+- `data-cy` test-ID configuration.
 
-The initial lifecycle creates a browser per scenario. This is slower but correctly isolated and safe. Playwright Java objects are not thread-safe. Future optimization may reuse one browser per execution thread, but a single global static `Page` or `BrowserContext` must never be shared across parallel scenarios.
+It supports `chromium`, `firefox`, and `webkit` and rejects unsupported values.
 
-`BrowserContext` implements `AutoCloseable`. IntelliJ may suggest try-with-resources at every getter call, but the context must remain alive for the complete scenario. It is closed centrally in the `@After` hook. Local try-with-resources inside tracing methods would close it too early.
+Configuration parsing should fail fast:
 
-## UI Components
+- `ui.headless` accepts only `true` or `false`;
+- timeout and slow motion must be numeric and non-negative;
+- browser names are trimmed and normalized with `Locale.ROOT`.
+
+If startup fails after a resource has been created, `start()` closes already-created resources before rethrowing the failure.
+
+### `UiScenarioContext`
+
+Scenario-scoped mutable holder for exactly one `BrowserContext` and one `Page`.
+
+Initialization is atomic:
+
+```java
+scenarioContext.initialize(browserContext, page);
+```
+
+Separate `setBrowserContext()` and `setPage()` methods are removed to prevent partially initialized state.
+
+Guarded getters throw clear exceptions when the context is unavailable. `clear()` removes references after resources have been closed.
+
+### `UiHooks`
+
+Owns:
+
+- `@Before("@ui")` startup;
+- tracing startup when enabled;
+- failure screenshot attachment;
+- trace saving for failed scenarios;
+- cleanup in `finally` blocks.
+
+Tracing state should be tracked explicitly so `stop()` is never called when tracing did not start. Screenshot or trace failures must not prevent browser cleanup.
+
+`BrowserContext` is deliberately not opened with a local try-with-resources block. It must remain alive for the whole scenario and is closed centrally in the `@After` hook.
+
+### Isolation and parallelism
+
+The current implementation launches a browser per scenario. It is slower but simple, isolated, and safe.
+
+Playwright Java objects are not thread-safe. Never share a static `Page` or `BrowserContext` across parallel scenarios. Browser reuse may be considered later only with explicit per-thread ownership and isolated contexts.
+
+## 13. Finalized UI Components
 
 ### `BaseComponent`
 
-Stores:
+Owns:
 
-- Playwright `Page`;
-- mandatory root `Locator`.
+- non-null `Page`;
+- non-null root `Locator`.
 
-It provides:
+Provides:
 
-- `waitUntilDisplayed()` using Playwright web-first assertions;
-- `byDataCy()` implemented through `page.getByTestId()`.
+- inherited `waitUntilDisplayed()` based on a Playwright web-first assertion;
+- `byDataCy(value)` using `page.getByTestId(value)`.
 
-Thin wrappers such as `assertVisible(locator)` were removed because they add no behavior over Playwright assertions.
+Thin assertion wrappers such as `assertVisible(locator)` are intentionally absent because they add no domain behavior.
 
 ### `NavigationBar`
 
-Uses `accountMenu` as its root. It supports:
+The current tested responsibility is authentication verification. Its root is `accountMenu`; it opens the account menu and verifies that `logoutButton` is visible.
 
-- account menu access;
-- logout;
-- administration menu navigation;
-- user-management navigation;
-- entity menu navigation;
-- Bank Account navigation;
-- authentication-state verification.
+The minimized component contains only locators and methods required by existing scenarios. Settings, logout execution, User Management navigation, and entity navigation are added only when corresponding scenarios need them.
 
 ### `DataTableComponent`
 
-Wraps a table locator and provides:
+Wraps its inherited table root and provides only currently needed operations:
 
-- readiness assertion;
-- row lookup by text;
-- row-present and row-absent assertions;
-- row count.
+- find a row containing text;
+- assert that a matching row is absent;
+- optionally count data rows when a real scenario needs it.
 
-Important: the Bank Account list page does not render a table when the list is empty. It renders an empty-state message instead. Therefore, `BankAccountPage.waitUntilLoaded()` must not require the table. It waits for the heading and create button. Methods that require data wait for `DataTableComponent` locally.
+It must not duplicate the inherited root with a second `table` field or override `waitUntilDisplayed()` with identical behavior.
 
-### `AlertComponent`
+The Bank Account page does not render a table when the list is empty. Therefore table visibility is not part of general page readiness. Operations that require rows wait for the table locally.
 
-Uses a logical union of success and error alerts as the root. It provides success/error visibility and message assertions.
+### Removed components
 
-## Page Object Conventions
+`AlertComponent` is removed from the finalized structure because no current Page Object uses it. It can be reintroduced when an implemented scenario verifies success or error alerts across more than one page.
+
+## 14. Finalized Page Objects
 
 ### `BasePage`
 
-Responsibilities:
+Owns only the non-null Playwright `Page` and common mechanics:
 
-- store the Playwright `Page`;
-- navigate using the `baseURL` configured in `BrowserContext`;
-- call the target page's readiness check;
-- provide `byDataCy()` through Playwright test IDs;
-- provide URL assertions.
+- `navigateTo(path)`;
+- covariant `waitUntilLoaded()` contract;
+- `byDataCy(value)`;
+- URL assertion;
+- path normalization.
 
-`BasePage` does not read `url.ui`; configuration belongs to `PlaywrightManager`.
+It does not read `url.ui`; base URL belongs to `BrowserContext` configuration in `PlaywrightManager`.
 
-The internal navigation method is named `navigateTo(path)`, not `open(path)`, to avoid ambiguity with public page methods.
+Blank paths normalize to `/`. A nonblank path receives a leading slash when missing.
 
-`Pattern.quote()` must not be used for Playwright URL regex assertions because it produces Java-specific `\Q...\E` syntax that is not supported when the pattern is evaluated by browser-side JavaScript.
+`Pattern.quote()` is not used in Playwright URL assertions. It produces Java-specific `\Q...\E` syntax that does not work when Playwright transfers the regular expression to JavaScript.
 
-### Fluent return types
-
-`BasePage` declares:
+### Fluent return convention
 
 ```java
 public abstract BasePage waitUntilLoaded();
@@ -425,72 +489,128 @@ public abstract BasePage waitUntilLoaded();
 Concrete pages use covariant returns:
 
 ```java
-public BankAccountPage waitUntilLoaded();
 public LoginPage waitUntilLoaded();
 public HomePage waitUntilLoaded();
+public BankAccountPage waitUntilLoaded();
+public BankAccountFormPage waitUntilLoaded();
 ```
 
 Rules:
 
-- an action remaining on the same page returns `this`;
+- same-page action or assertion returns `this`;
 - navigation returns the target Page Object;
-- a query returns a value;
-- internal low-level helpers may return `void`.
+- data query returns its value;
+- private mechanics may return `void`.
 
-### Confirmed pages
+### `LoginPage`
 
-- `LoginPage`
-- `HomePage`
-- `UserManagementPage`
-- `BankAccountPage`
-- `BankAccountFormPage`
+Confirmed responsibilities:
 
-### Bank Account empty state
+- open `/login`;
+- verify URL and mandatory fields;
+- fill credentials from `LoginBean` using supplied DataTable headers;
+- submit a successful login and return `HomePage`;
+- submit an expected failure and remain on `LoginPage`;
+- assert authentication error.
 
-Correct readiness condition:
+The strict header switch rejects unsupported columns and protects against silent typos ignored by the shared Jackson reader.
+
+### `HomePage`
+
+`HomePage` represents the authenticated landing state, not every possible application navigation route.
+
+Confirmed responsibilities:
+
+- wait for `NavigationBar`;
+- wait until URL no longer contains `/login`;
+- verify authenticated state through `NavigationBar`.
+
+Unused `open()`, logout, settings, User Management, and Bank Account navigation methods are removed. Bank Account scenarios may open their confirmed route directly through `BankAccountPage.open()`.
+
+### `BankAccountPage`
+
+Confirmed responsibilities:
+
+- open `/bank-account`;
+- verify URL, heading, and create button;
+- open the create form;
+- assert an account by exact test name and balance;
+- delete the uniquely matching account;
+- assert that an account is absent.
+
+Readiness requires only mandatory elements:
 
 ```text
 URL contains /bank-account
-heading is visible
-create button is visible
+BankAccountHeading is visible
+entityCreateButton is visible
 ```
 
-The table is optional. After creating a record, account assertions explicitly wait for the table.
+The table is optional in the empty state.
 
-### Strict row selection
+Before destructive operations, the page asserts that exactly one row matches the name. This exposes dirty data instead of clicking an arbitrary duplicate.
 
-Operations that edit, delete, or assert a specific account should first assert that exactly one row matches the test name. This detects leftover duplicates rather than allowing Playwright to click an arbitrary match.
+Unused edit, boolean presence, raw row exposure, and count methods are removed.
 
-## UI Data Population
+### `BankAccountFormPage`
 
-UI forms follow the same pattern as existing API tests:
+Confirmed responsibilities:
+
+- verify the create/update form;
+- fill explicitly supplied fields from `BankAccountBean` and headers;
+- save and return `BankAccountPage`.
+
+Supported headers:
+
+```text
+name
+balance
+user
+```
+
+Every supplied header is validated by a strict switch. Every required value is checked before interacting with its locator.
+
+The unused cancel flow and field getter methods are removed until a scenario needs them.
+
+### Deferred pages
+
+`UserManagementPage` is not part of the finalized active structure. API user management does not justify a UI Page Object. Add it only after defining a UI scenario and inspecting the real table, row actions, pagination, and empty state.
+
+## 15. UI Data Population
+
+The UI uses the shared core population pattern:
 
 ```text
 Cucumber DataTable
     → List<Map<String, String>>
     → Populator.populateList()
     → UI bean
-    → headers
-    → Steps
+    → explicit headers
+    → UI Steps
     → Page Object
 ```
 
-Mutable Lombok beans are preferred here over records because the framework already uses Jackson-based `Populator`, supports partial tables, and sometimes needs to distinguish an absent column from a default primitive value.
-
 Current UI beans:
 
-- `LoginBean`
-- `BankAccountBean`
+- `LoginBean` — `username`, `password`;
+- `BankAccountBean` — `name`, `balance`, `user`.
 
-`LoginBean.password` must be excluded from `toString()` to reduce accidental credential logging.
+Mutable Lombok beans are retained because they integrate with the existing Jackson-based `Populator` and support partial tables.
 
-Headers are passed separately because they identify which fields were explicitly included in a DataTable. Page Objects use a strict `switch` over headers. Unknown headers throw `IllegalArgumentException`.
+`LoginBean.password` must be excluded from generated `toString()` output.
 
-This strict switch is important because the shared JSON reader currently ignores unknown properties; without explicit header validation, a typo such as `firstNeme` could be silently ignored by `Populator`.
+Headers are passed separately because they indicate which fields were explicitly present. Page Objects reject unknown headers even though the shared JSON reader ignores unknown JSON properties.
 
-## Login UI Flow
+DataTables for `populateList()` are horizontal:
 
-Feature style:
+```gherkin
+| username | password |
+| admin    | admin    |
+```
+
+A vertical table would interpret `admin` as a header in this flow and can cause `Unsupported login field: admin`.
+
+## 16. Login Flow
 
 ```gherkin
 @ui
@@ -503,52 +623,39 @@ Feature: Login
       | username | password |
       | user     | user     |
     Then ui user is authenticated
-```
 
-The `ui user` prefix intentionally distinguishes UI steps from existing `api user` steps and prevents ambiguous Cucumber definitions in hybrid scenarios.
+  Scenario: Administrator signs in
+    Given ui user opens the login page
+    When ui user signs in with credentials:
+      | username | password |
+      | admin    | admin    |
+    Then ui user is authenticated
+
+  Scenario: User cannot sign in with an invalid password
+    Given ui user opens the login page
+    When ui user signs in expecting failure:
+      | username | password         |
+      | user     | invalid-password |
+    Then the authentication error is displayed
+```
 
 Responsibilities:
 
-- `LoginDefinitions`: populate one `LoginBean`, extract headers, delegate.
-- `LoginSteps`: keep the current `LoginPage` and `HomePage` for the scenario.
-- `LoginPage`: fill fields based on headers, submit credentials, and expose authentication-error assertions.
-- `HomePage`: confirm that navigation left `/login` and that the logout action is available in `NavigationBar`.
+- `LoginDefinitions` converts exactly one row to `LoginBean` and extracts headers;
+- `LoginSteps` keeps current `LoginPage` and successful `HomePage` state;
+- `LoginPage` performs browser interaction;
+- `HomePage` verifies authenticated application state.
 
-Action and verification should be separated for negative login:
+Negative login keeps action and assertion separate:
 
 ```text
 When → submit invalid credentials
-Then → assert authentication error
+Then → verify authentication error
 ```
 
-## Bank Account UI and Hybrid Flows
+## 17. Bank Account Hybrid Flow
 
-`BankAccountBean` fields:
-
-```text
-name
-balance
-user
-```
-
-`BankAccountFormPage.fillAccount(bean, headers)` fills only explicitly supplied fields and rejects unsupported headers.
-
-Recommended scenarios:
-
-1. UI creation:
-   - API deletes all pre-existing accounts with the test name.
-   - UI opens the Bank Account list.
-   - UI creates an account.
-   - UI verifies the row.
-
-2. UI deletion:
-   - API deletes pre-existing accounts with the test name.
-   - API creates the precondition account.
-   - UI opens the Bank Account list.
-   - UI verifies and deletes the account.
-   - UI verifies absence.
-
-Example:
+API is used for data setup and cleanup; UI is used only for the behavior under test.
 
 ```gherkin
 @ui
@@ -588,42 +695,45 @@ Feature: Bank account management
     Then ui bank account "UI Bank Account For Deletion" is not displayed
 ```
 
-`Background` contains only authentication. The Bank Account page is opened inside each scenario so that API preconditions can be prepared before the UI list loads.
+`Background` contains authentication only. Each scenario opens the list after its own API preconditions are complete.
 
-## Test Data Cleanup
+## 18. Test Data Cleanup
 
-API pre-cleanup by name makes fixed-name tests repeatable and removes leftovers from previous failed runs.
+Pre-cleanup by exact name removes leftovers from previous interrupted runs and makes fixed-name tests repeatable.
 
-It does not replace post-cleanup:
+Pre-cleanup does not replace post-cleanup:
 
 ```text
-pre-cleanup
-    → remove previous leftovers
-
-post-cleanup
-    → remove records created by the current run
+pre-cleanup  → remove old leftovers
+test         → create and verify current data
+post-cleanup → remove data created by this scenario
 ```
 
-The preferred long-term design is a scenario-scoped cleanup registry that stores IDs of all created test entities and an `@After` hook that deletes them through API even after UI failure.
+The preferred next implementation is a scenario-scoped cleanup registry:
 
-Until that is implemented, hybrid scenarios should explicitly clean preconditions and avoid names that could match legitimate environment data. Test names should use a clear dedicated prefix.
+- store IDs of entities created by API or UI;
+- delete them through API in an `@After` hook;
+- execute cleanup even when the UI scenario fails;
+- log cleanup failures without hiding the original test failure.
 
-## Assertions and Waiting Strategy
+Until then, use a dedicated test-data name prefix and exact matching to avoid deleting legitimate environment data.
 
-- Prefer Playwright web-first assertions such as `assertThat(locator).isVisible()`.
+## 19. Assertions and Waiting
+
+- Use Playwright web-first assertions.
 - Do not add Selenium-style explicit waits around normal Playwright actions.
-- Page readiness must be based on mandatory elements only.
-- Optional empty/non-empty page states must be handled in the operation that requires them.
-- Do not expose raw `Locator` objects from Page Objects unless a reusable component genuinely requires them.
-- Business assertions may return `this` for fluent composition.
-- Avoid thin custom assertion wrappers that only rename Playwright APIs.
-- Add domain-specific assertions only when they combine or normalize meaningful business checks.
+- Page readiness checks only mandatory elements.
+- Optional empty/non-empty states are handled by the operation that needs them.
+- Do not expose raw `Locator` objects from Page Objects without a genuine reuse case.
+- Avoid thin assertion wrappers that only rename Playwright APIs.
+- Add domain assertions when they combine meaningful business checks.
+- Validate unique matches before edit or delete operations.
 
-The configured BrowserContext timeout and Playwright assertion timeout may differ. Failure logs previously showed a default assertion timeout of 5000 ms. If a project-wide assertion timeout is required, configure Playwright assertions explicitly rather than assuming `BrowserContext.setDefaultTimeout()` changes assertion defaults.
+`BrowserContext.setDefaultTimeout()` does not necessarily replace Playwright assertion defaults. Earlier failure logs showed a 5000 ms assertion timeout. If a common assertion timeout is required, configure Playwright assertions explicitly rather than assuming BrowserContext timeout controls them.
 
-## Running JHipster
+## 20. Running JHipster
 
-Run commands from the `jhipster-sample-app` root directory in PowerShell.
+Run from the `jhipster-sample-app` root in PowerShell.
 
 Start an existing stopped container:
 
@@ -637,14 +747,14 @@ Start after `docker compose down`:
 docker compose -f .\src\main\docker\app.yml up -d
 ```
 
-Rebuild after application source changes:
+Rebuild after JHipster source changes:
 
 ```powershell
 .\mvnw.cmd -ntp verify "-DskipTests" "-Pprod,api-docs" jib:dockerBuild
 docker compose -f .\src\main\docker\app.yml up -d --force-recreate
 ```
 
-Check status and logs:
+Status and logs:
 
 ```powershell
 docker compose -f .\src\main\docker\app.yml ps
@@ -656,16 +766,16 @@ Endpoints:
 - UI: `http://localhost:8080`
 - Swagger UI: `http://localhost:8080/admin/docs`
 - OpenAPI: `http://localhost:8080/v3/api-docs`
-- API base URL: `http://localhost:8080/api`
+- API: `http://localhost:8080/api`
 
-Default local credentials:
+Default credentials:
 
 - administrator: `admin / admin`
 - regular user: `user / user`
 
-## Installing Playwright Chromium
+## 21. Installing Playwright Browsers
 
-Run once from `regression-jhipster`:
+From `regression-jhipster`:
 
 ```powershell
 mvn exec:java `
@@ -673,7 +783,9 @@ mvn exec:java `
   "-Dexec.args=install chromium"
 ```
 
-## Rebuilding Shared Framework Changes
+Install Firefox or WebKit as well before selecting them through `ui.browser`.
+
+## 22. Rebuilding Shared Framework Changes
 
 After changing `regression-core`:
 
@@ -681,53 +793,58 @@ After changing `regression-core`:
 mvn -pl regression-core -am clean install -DskipTests
 ```
 
-Then reload Maven in IntelliJ and rebuild or run the JHipster module.
+Then reload Maven in IntelliJ and rebuild or rerun `regression-jhipster`.
 
-## Artifacts
+## 23. Playwright Artifacts
 
-Playwright artifacts are stored under:
+Failure artifacts are stored under:
 
 ```text
 target/playwright
-├── screenshots
 └── traces
 ```
 
-`target` must not be committed.
+Screenshots are attached directly to the Cucumber scenario. Traces are stored as ZIP archives for failed scenarios. `target` must not be committed.
 
-Traces should normally be persisted only on failure. Video is not currently required because Playwright trace contains more useful action, DOM, network, and screenshot information for this framework stage.
+## 24. Remaining Work in Priority Order
 
-## Known Risks and Follow-up Work
+1. Apply atomic `UiScenarioContext.initialize(browserContext, page)` and remove separate setters.
+2. Harden `PlaywrightManager` startup rollback and strict property parsing.
+3. Harden `UiHooks` so screenshot and trace failures cannot block resource cleanup.
+4. Introduce dedicated `UI_TIMEOUT` instead of reusing a generic interval property.
+5. Implement ID-based post-scenario cleanup registry.
+6. Ensure API name cleanup handles pagination.
+7. Configure Playwright assertion timeout explicitly if 5000 ms is insufficient.
+8. Add logout only when its scenario is implemented.
+9. Add User Management UI coverage only after inspecting the actual DOM.
+10. Consider browser reuse per execution thread only after the current lifecycle is stable.
+11. Add full OpenAPI response-schema validation as a distinct contract layer.
+12. Extract generic Playwright infrastructure into `regression-core` only after it has proven reusable in another module.
 
-1. Implement reliable post-scenario API cleanup using created entity IDs.
-2. Ensure API cleanup traverses all pages or uses server-side filtering.
-3. Verify every `data-cy` selector against the actual JHipster DOM. Values are case-sensitive; for example, the confirmed list heading is `BankAccountHeading`, not `bankAccountHeading`.
-4. Stabilize Bank Account UI creation and deletion after the empty-table readiness fix.
-5. Configure assertion timeout explicitly if 5000 ms is insufficient.
-6. Add logout coverage.
-7. Add admin authorization coverage for User Management.
-8. Add screenshots and trace verification tests.
-9. Decide whether browser reuse per worker thread is worth the additional lifecycle complexity.
-10. Consider extracting truly generic Playwright infrastructure into `regression-core` only after the JHipster implementation is stable.
-11. Add strict OpenAPI response validation in addition to strict DTO deserialization. Jackson alone does not validate every schema constraint, required field, media type, status response, format, or numeric boundary.
-12. Avoid calling one Steps class from another long-term. Shared hybrid test-data preparation should move into a dedicated test-data service used by both API/UI orchestration and cleanup hooks.
+## 25. Design Rules for Future Development
 
-## Design Principles for Further Work
-
-- Model only UI pages and components confirmed in the real application.
+- Model only UI confirmed in the running application.
+- Add code from scenario demand, not anticipated reuse.
 - Keep environment configuration outside Page Objects.
-- Keep transport logic in API services.
-- Keep business orchestration in Steps.
-- Keep Cucumber binding and table conversion in Definitions.
-- Keep generated OpenAPI models immutable and regenerate them from the runtime specification.
-- Fix contract mismatches at the JHipster source, not by weakening strict deserialization.
-- Use API for fast test-data preparation and cleanup; use UI only for the behavior being verified.
-- Keep scenarios independent, repeatable, and safe after failures.
-- Prefer exact, stable `data-cy` locators and Playwright web-first assertions.
-- Treat absence of a table as a valid empty state when the real application behaves that way.
+- Keep locators inside Page Objects or components.
+- Keep Cucumber annotations inside Definitions.
+- Keep scenario orchestration inside Steps.
+- Keep HTTP transport inside API services.
+- Keep generated OpenAPI models untouched.
+- Fix contract mismatches in the tested application, not by weakening the client.
+- Use API for fast data preparation and cleanup.
+- Use UI for the behavior the scenario intends to verify.
+- Use exact stable `data-cy` locators and remember that values are case-sensitive.
+- Treat a missing table as a valid empty state when that matches the real UI.
+- Keep scenarios independent and safe after failures.
+- Prefer explicit failure over silent tolerance of configuration or DataTable mistakes.
 
-## Handoff Summary
+## 26. Final Handoff Summary
 
-The framework now has a mature API foundation and a working Playwright/Cucumber UI foundation. Authentication is operational, shared UI abstractions are established, strict OpenAPI behavior is preserved, and Bank Account hybrid scenarios define the next integration boundary.
+The project now has a stable hybrid architecture with a mature API layer and a deliberately small Playwright UI layer.
 
-The immediate priority is to finish Bank Account UI stabilization and implement ID-based post-scenario cleanup. After that, the framework can expand coverage without changing its core layering.
+The finalized active UI model contains three shared components (`BaseComponent`, `NavigationBar`, and `DataTableComponent`), four concrete pages (`LoginPage`, `HomePage`, `BankAccountPage`, and `BankAccountFormPage`), scenario-scoped browser state, UI hooks, and strict bean/header-driven form population.
+
+API and UI responsibilities are separated, while hybrid scenarios use API setup and cleanup to keep browser tests fast and deterministic. Strict OpenAPI deserialization remains enabled, and the earlier Bank Account contract mismatch was fixed in the JHipster application rather than hidden in the framework.
+
+The next work should improve lifecycle failure safety and post-scenario cleanup. New Page Objects and components should be introduced only when a confirmed scenario and inspected DOM require them.

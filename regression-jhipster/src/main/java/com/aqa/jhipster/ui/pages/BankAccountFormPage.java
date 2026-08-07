@@ -5,7 +5,6 @@ import com.microsoft.playwright.Locator;
 import com.microsoft.playwright.Page;
 import com.microsoft.playwright.options.SelectOption;
 
-import java.math.BigDecimal;
 import java.util.List;
 
 import static com.microsoft.playwright.assertions.PlaywrightAssertions.assertThat;
@@ -21,14 +20,12 @@ public class BankAccountFormPage extends BasePage {
 
     private static final String HEADING = "BankAccountCreateUpdateHeading";
     private static final String SAVE_BUTTON = "entityCreateSaveButton";
-    private static final String CANCEL_BUTTON = "entityCreateCancelButton";
 
     private final Locator heading;
     private final Locator nameInput;
     private final Locator balanceInput;
     private final Locator userSelect;
     private final Locator saveButton;
-    private final Locator cancelButton;
 
     public BankAccountFormPage(final Page page) {
         super(page);
@@ -38,7 +35,6 @@ public class BankAccountFormPage extends BasePage {
         balanceInput = byDataCy(BALANCE);
         userSelect = byDataCy(USER);
         saveButton = byDataCy(SAVE_BUTTON);
-        cancelButton = byDataCy(CANCEL_BUTTON);
     }
 
     @Override
@@ -48,7 +44,6 @@ public class BankAccountFormPage extends BasePage {
         assertThat(nameInput).isVisible();
         assertThat(balanceInput).isVisible();
         assertThat(saveButton).isVisible();
-        assertThat(cancelButton).isVisible();
 
         return this;
     }
@@ -76,12 +71,6 @@ public class BankAccountFormPage extends BasePage {
 
     public BankAccountPage save() {
         saveButton.click();
-
-        return new BankAccountPage(page).waitUntilLoaded();
-    }
-
-    public BankAccountPage cancel() {
-        cancelButton.click();
 
         return new BankAccountPage(page).waitUntilLoaded();
     }

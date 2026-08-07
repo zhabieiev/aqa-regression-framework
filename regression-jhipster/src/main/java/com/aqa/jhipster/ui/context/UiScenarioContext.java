@@ -3,35 +3,37 @@ package com.aqa.jhipster.ui.context;
 import com.microsoft.playwright.BrowserContext;
 import com.microsoft.playwright.Page;
 
-public class UiScenarioContext {
+import static java.util.Objects.requireNonNull;
+
+public final class UiScenarioContext {
 
     private BrowserContext browserContext;
     private Page page;
 
-    public BrowserContext browserContext() {
-        if (browserContext == null) {
-            throw new IllegalStateException(
-                    "Browser context has not been initialized"
-            );
+    public void initialize(final BrowserContext browserContext, final Page page) {
+        if (isInitialized()) {
+            throw new IllegalStateException("UI scenario context has already been initialized");
         }
-        return browserContext;
+
+        this.browserContext = requireNonNull(browserContext, "Browser context must not be null");
+
+        this.page = requireNonNull(page, "Playwright page must not be null");
     }
 
-    public void setBrowserContext(final BrowserContext browserContext) {
-        this.browserContext = browserContext;
+    public BrowserContext browserContext() {
+        if (browserContext == null) {
+            throw new IllegalStateException("Browser context has not been initialized");
+        }
+
+        return browserContext;
     }
 
     public Page page() {
         if (page == null) {
-            throw new IllegalStateException(
-                    "Playwright page has not been initialized"
-            );
+            throw new IllegalStateException("Playwright page has not been initialized");
         }
-        return page;
-    }
 
-    public void setPage(final Page page) {
-        this.page = page;
+        return page;
     }
 
     public boolean isInitialized() {

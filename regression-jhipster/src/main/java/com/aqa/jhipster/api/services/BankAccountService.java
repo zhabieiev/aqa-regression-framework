@@ -43,4 +43,11 @@ public class BankAccountService extends ApiService {
                 .headers(headers)
                 .build()).readEntity(new GenericType<>() {});
     }
+
+    public BankAccount getBankAccount(final Long id, final Map<String, String> headers) {
+        return getResponse(request().method(GET)
+                .path(format(BANK_ACCOUNTS_ID, id))
+                .headers(headers)
+                .build()).readEntity(BankAccount.class);
+    }
 }

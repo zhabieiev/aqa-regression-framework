@@ -11,12 +11,10 @@ public record BankAccountSteps(BankAccountService bankAccountService, AuthServic
 
     public BankAccount deleteAndCreate(final BankAccount body) {
         final Map<String, String> headers = authService.getAdminHeaders();
-
         bankAccountService.getBankAccounts(headers).stream()
                 .filter(account -> Objects.equals(account.getName(), body.getName()))
                 .map(BankAccount::getId)
                 .forEach(id -> bankAccountService.delete(id, headers));
-
         return bankAccountService.create(body, headers);
     }
 }

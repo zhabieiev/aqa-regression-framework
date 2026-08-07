@@ -15,4 +15,11 @@ public record BankAccountDefinitions(VariablesController variablesController, Ba
     public void apiUserCreatesNewBankAccountAndSavesTo(String var, Map<String, String> map) {
         variablesController.setVar(var, bankAccountSteps.deleteAndCreate(populate(map, BankAccount.class)));
     }
+
+    @Given("api user gets bank account and saves to {string}:")
+    public void apiUserGetBankAccountAndSavesTo(String var, Map<String, String> map) {
+        variablesController.setVar(var, bankAccountSteps().bankAccountService()
+                .getBankAccount(populate(map, BankAccount.class).getId(),
+                        bankAccountSteps().authService().getAdminHeaders()));
+    }
 }

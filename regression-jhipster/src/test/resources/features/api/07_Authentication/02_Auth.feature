@@ -12,7 +12,7 @@ Feature: Authenticate Controller
 
   Scenario: 070203 Header validation for user authentication
     Given api user authenticates with credentials and saves headers to 'headers':
-      | username | ${user.email}    |
+      | username | ${user}          |
       | password | ${user.password} |
     Then var 'headers' is equal to object:
       | Authorization | regex:(.+) |
@@ -24,12 +24,12 @@ Feature: Authenticate Controller
     Then var 'token' is equal to object:
       | id_token | <id_token> |
     Examples:
-      | username            | password               | id_token   |
-      | ${user.admin.email} | ${user.admin.password} | regex:(.+) |
-      | ${user.email}       | ${user.password}       | regex:(.+) |
+      | username | password          | id_token   |
+      | ${admin} | ${admin.password} | regex:(.+) |
+      | ${user}  | ${user.password}  | regex:(.+) |
 
   Scenario Outline: 070205 User authenticates with invalid credentials
-    Given api user try to authenticate with invalid credentials and saves to 'result':
+    Given api user tries to authenticate with invalid credentials and saves to 'result':
       | body:username       | <username>   |
       | body:password       | <password>   |
       | response:statusCode | <statusCode> |

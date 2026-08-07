@@ -3,7 +3,7 @@ package com.aqa.jhipster.api.services;
 import com.aqa.core.services.GeneralApiService;
 import jakarta.ws.rs.core.UriBuilder;
 
-import static com.aqa.jhipster.api.enumeration.Property.URL_API;
+import static com.aqa.core.enumerations.Property.URL_API;
 
 public abstract class ApiService extends GeneralApiService {
 

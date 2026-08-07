@@ -6,8 +6,8 @@ import jakarta.ws.rs.core.GenericType;
 
 import java.util.Map;
 
-import static com.aqa.core.enumerations.Property.*;
 import static com.aqa.core.models.Request.request;
+import static com.aqa.jhipster.api.enumeration.Property.*;
 import static jakarta.ws.rs.HttpMethod.POST;
 import static jakarta.ws.rs.core.HttpHeaders.AUTHORIZATION;
 import static java.net.HttpURLConnection.HTTP_OK;
@@ -23,14 +23,14 @@ public class AuthService extends ApiService {
 
     public Map<String, String> getAdminHeaders() {
         if (adminToken == null) {
-            adminToken = login(USER_ADMIN_EMAIL.read(), USER_ADMIN_PASSWORD.read());
+            adminToken = login(ADMIN.read(), ADMIN_PASSWORD.read());
         }
         return authorizationHeaders(adminToken);
     }
 
     public Map<String, String> getUserHeaders() {
         if (userToken == null) {
-            userToken = login(USER_EMAIL.read(), USER_PASSWORD.read());
+            userToken = login(USER.read(), USER_PASSWORD.read());
         }
         return authorizationHeaders(userToken);
     }

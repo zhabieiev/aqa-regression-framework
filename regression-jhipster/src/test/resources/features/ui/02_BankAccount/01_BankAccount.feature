@@ -4,8 +4,8 @@ Feature: Bank account management
   Background:
     Given ui user opens the login page
     When ui user signs in with credentials:
-      | username | admin |
-      | password | admin |
+      | username | password |
+      | admin    | admin    |
     Then ui user is authenticated
 
   @hybrid

@@ -2,7 +2,6 @@ package com.aqa.jhipster.api.services;
 
 import com.aqa.jhipster.api.models.generated.BankAccount;
 import jakarta.ws.rs.core.GenericType;
-import lombok.extern.slf4j.Slf4j;
 
 import java.util.List;
 import java.util.Map;
@@ -12,7 +11,6 @@ import static jakarta.ws.rs.HttpMethod.*;
 import static java.lang.String.format;
 import static java.net.HttpURLConnection.*;
 
-@Slf4j
 public class BankAccountService extends ApiService {
 
     private static final String BANK_ACCOUNTS = "/api/bank-accounts";
@@ -33,7 +31,6 @@ public class BankAccountService extends ApiService {
                 .headers(headers)
                 .statusCode(HTTP_NO_CONTENT)
                 .build());
-        log.info("Bank account with {} id is deleted", id);
     }
 
     public List<BankAccount> getBankAccounts(final Map<String, String> headers) {

@@ -33,14 +33,14 @@ public record AuthDefinitions(VariablesController variablesController, AuthSteps
 
     @Given("api user authenticates with credentials and saves token to {string}:")
     public void apiUserAuthenticatesWithCredentialsAndSavesToken(String var, Map<String, String> credentials) {
-        variablesController.setVar(var, authSteps.authService().login(populate(credentials, LoginVM.class)));
+        variablesController.setVar(var, authSteps.login(populate(credentials, LoginVM.class)));
     }
 
     @Given("api user tries to authenticate with invalid credentials and saves to {string}:")
-    public void apiUserTriesToAuthenticatesWithAdminCredentialsAndSavesToken(final String var,
-                                                                           final Map<String, String> credentials) {
-        variablesController.setVar(var, authSteps.authService()
-                .login(populate(convertMapKeysWithPrefix(credentials, of(BODY.getValue())), LoginVM.class),
+    public void apiUserTriesToAuthenticateWithInvalidCredentialsAndSaves(final String var,
+                                                                         final Map<String, String> credentials) {
+        variablesController.setVar(var,
+                authSteps.login(populate(convertMapKeysWithPrefix(credentials, of(BODY.getValue())), LoginVM.class),
                         Integer.parseInt(credentials.get(RESPONSE.getValue() + STATUS_CODE.getValue()))));
     }
 }

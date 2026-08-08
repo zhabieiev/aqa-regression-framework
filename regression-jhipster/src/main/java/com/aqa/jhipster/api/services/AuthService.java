@@ -53,7 +53,8 @@ public class AuthService extends ApiService {
     }
 
     public Map<String, Object> login(final LoginVM body, int statusCode) {
-        return getResponse(request().method(POST).path(LOGIN_PATH).body(body).statusCode(statusCode).build()).readEntity(
+        return getResponse(
+                request().method(POST).path(LOGIN_PATH).body(body).statusCode(statusCode).build()).readEntity(
                 new GenericType<>() {});
     }
 

@@ -26,6 +26,10 @@ The main architectural goal is strict separation of responsibilities while allow
 - Admin and regular-user JWT authentication work through API.
 - Admin user management works through API.
 - Bank Account API create, read, and delete operations work.
+- API Definitions call business-level Steps methods and do not obtain services or authorization headers through record accessors.
+- Bank Account, User, and Auth orchestration resolves authorization inside Steps.
+- Successful API business operations are logged at the Steps layer; endpoint services remain free of business logging.
+- Admin and regular-user JWT tokens are cached per Cucumber scenario through PicoContainer-managed `AuthService` instances.
 - Cleanup deletes every Bank Account matching an exact name, including duplicates.
 - Generated API models remain strict about undocumented response fields.
 - The JHipster `BankAccount` response was aligned with its OpenAPI schema.
@@ -231,7 +235,7 @@ Cucumber Feature
 | --- | --- |
 | Feature | Business behavior and test data |
 | Definition | Gherkin binding, DataTable conversion, named-variable handling |
-| Steps | Business orchestration across services |
+| Steps | Business orchestration, authorization selection, and business-result logging |
 | Domain service | Endpoint, HTTP method, body, headers, response model, expected status |
 | General service | Request execution and common status validation |
 | Client controller | Jersey client and JSON provider configuration |
@@ -241,14 +245,36 @@ Definitions must call business-level Steps operations. They must not reach into 
 Preferred:
 
 ```java
-bankAccountSteps.deleteAllByName(name);
+bankAccountSteps.deleteByName(name);
 ```
 
 Avoid:
 
 ```java
 bankAccountSteps.bankAccountService().delete(...);
+bankAccountSteps.authService().getAdminHeaders();
 ```
+
+The same rule applies to every API domain:
+
+```java
+bankAccountSteps.getBankAccount(id);
+userSteps.getUser(login);
+authSteps.login(body);
+```
+
+API Steps remain Java records with constructor injection. Record component accessors such as `authService()` and `userService()` technically exist, but Definitions must not use them. This architectural boundary is maintained by calling only public business-level Steps methods.
+
+Authorization headers are resolved inside Steps and are passed explicitly only from Steps to endpoint services:
+
+```text
+Definition
+    → Steps business method
+        → AuthService.getAdminHeaders()
+        → DomainService.operation(..., headers)
+```
+
+For a compound operation such as cleanup followed by creation, Steps obtains headers once and reuses them for the complete logical operation.
 
 ## 8. API Authentication
 
@@ -259,6 +285,84 @@ bankAccountSteps.bankAccountService().delete(...);
 - Header: `Authorization: Bearer <token>`
 
 Admin and regular-user tokens are cached separately. Headers remain explicit per request because authorization tests must be able to send different identities, invalid tokens, or no token.
+
+### Authorization ownership
+
+`AuthDefinitions` calls only `AuthSteps` methods. It does not access `authSteps.authService()` directly.
+
+`AuthSteps` exposes the operations required by authentication scenarios:
+
+- obtain administrator headers;
+- obtain regular-user headers;
+- authenticate with supplied credentials and obtain headers;
+- authenticate and return `JWTToken`;
+- execute an expected unsuccessful authentication and return `Map<String, Object>`.
+
+Domain Steps such as `BankAccountSteps` and `UserSteps` inject `AuthService` directly. They must not depend on `AuthSteps`, because that would create a dependency between orchestration classes.
+
+`AuthService` owns:
+
+- calls to `POST /api/authenticate`;
+- separate administrator and regular-user token caches;
+- conversion of a JWT token into an immutable `Authorization` header map.
+
+It intentionally remains the only endpoint service with token-cache and authorization-header responsibilities. Moving those responsibilities into `AuthSteps` would prevent other domain Steps from sharing the same per-scenario token cache.
+
+### Scenario-scoped token cache
+
+`AuthService` is scenario-scoped through Cucumber PicoContainer constructor injection. No explicit scope annotation is required.
+
+Within one scenario, every Steps object that declares an `AuthService` constructor dependency receives the same instance:
+
+```text
+BankAccountSteps ─┐
+UserSteps ───────├─→ one AuthService instance per scenario
+AuthSteps ───────┘
+```
+
+The first call to `getAdminHeaders()` or `getUserHeaders()` authenticates and caches the returned token. Later calls in the same scenario reuse that token. The next scenario receives a new `AuthService` instance with empty caches.
+
+The cached fields must remain instance fields. `AuthService`, its tokens, and its headers must not be placed in static or suite-wide singleton state. This preserves isolation and parallel-scenario safety.
+
+### Explicit headers remain intentional
+
+Headers are not injected globally through a mutable Jersey request filter. Explicit headers at the Steps-to-Service boundary preserve support for:
+
+- administrator and regular-user identities;
+- custom credentials;
+- invalid tokens;
+- requests without authorization.
+
+`ApiService` continues to configure only the base API URI through `URL_API`. It does not depend on `AuthService` and does not add authorization automatically.
+
+The JHipster API property enumeration remains responsible only for credential properties:
+
+```text
+ADMIN
+USER
+ADMIN_PASSWORD
+USER_PASSWORD
+```
+
+### API logging boundary
+
+Endpoint services build requests, execute them, validate expected status codes, and deserialize responses. They do not log successful business operations.
+
+Steps log confirmed orchestration results after the service call returns successfully:
+
+- Bank Account creation and deletion;
+- User creation and completed deletion requests;
+- explicit authentication outcomes exercised by `AuthSteps`.
+
+GET operations are not logged by default because they add noise without representing a state change.
+
+Authentication logging must never include:
+
+- passwords;
+- JWT token values;
+- complete `Authorization` headers.
+
+Because administrator and regular-user header methods may return cached values, their log messages state that authorization headers were obtained, not that a new authentication request necessarily occurred.
 
 ## 9. Strict OpenAPI Contract Strategy
 
@@ -317,11 +421,13 @@ GET accounts
 
 `findFirst()` is intentionally not used because duplicate names are allowed. Cleanup is idempotent: zero matches is a successful outcome.
 
-Deletion logs only after `204 No Content` is validated:
+Deletion is logged by `BankAccountSteps` only after `BankAccountService.delete()` returns, which means that `204 No Content` has already been validated:
 
 ```java
 log.info("Bank account with {} id is deleted", id);
 ```
+
+`BankAccountService` itself does not contain this business log. The same rule is used for creation: Steps reads the successful service result, logs the created entity ID, and returns that result.
 
 If the list endpoint becomes paginated, cleanup must either use a server-side name filter or traverse every page.
 
@@ -829,7 +935,12 @@ Screenshots are attached directly to the Cucumber scenario. Traces are stored as
 - Keep locators inside Page Objects or components.
 - Keep Cucumber annotations inside Definitions.
 - Keep scenario orchestration inside Steps.
+- Keep authorization selection and successful business-operation logging inside API Steps.
 - Keep HTTP transport inside API services.
+- Do not access endpoint services or `AuthService` from API Definitions through record accessors.
+- Keep authorization headers explicit between Steps and services.
+- Keep `AuthService` token caches non-static and scenario-scoped.
+- Never log passwords, token values, or complete authorization headers.
 - Keep generated OpenAPI models untouched.
 - Fix contract mismatches in the tested application, not by weakening the client.
 - Use API for fast data preparation and cleanup.
@@ -846,5 +957,7 @@ The project now has a stable hybrid architecture with a mature API layer and a d
 The finalized active UI model contains three shared components (`BaseComponent`, `NavigationBar`, and `DataTableComponent`), four concrete pages (`LoginPage`, `HomePage`, `BankAccountPage`, and `BankAccountFormPage`), scenario-scoped browser state, UI hooks, and strict bean/header-driven form population.
 
 API and UI responsibilities are separated, while hybrid scenarios use API setup and cleanup to keep browser tests fast and deterministic. Strict OpenAPI deserialization remains enabled, and the earlier Bank Account contract mismatch was fixed in the JHipster application rather than hidden in the framework.
+
+The finalized API orchestration keeps Definitions transport-agnostic. Bank Account, User, and Auth Definitions call only business methods exposed by their Steps records. Steps obtain authorization from the scenario-scoped `AuthService`, pass explicit headers to endpoint services, and log successful business results. Endpoint services remain responsible for request construction, execution, status validation, and deserialization without business logging.
 
 The next work should improve lifecycle failure safety and post-scenario cleanup. New Page Objects and components should be introduced only when a confirmed scenario and inspected DOM require them.

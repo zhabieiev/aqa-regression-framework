@@ -1,10 +1,10 @@
 @api
 Feature: Get User
 
-  Scenario: 4010101 Get user
+  Scenario: 040101 Get user
     Given api user creates new user and saves to 'user':
-      | login       | user_4010101               |
-      | email       | user_4010101@aqa.email.com |
+      | login       | user_040101               |
+      | email       | user_040101@aqa.email.com |
       | authorities | [ROLE_USER]                |
     When api user gets user and saves to 'result':
       | login | @{user.login} |
@@ -12,7 +12,7 @@ Feature: Get User
       | activated        | true                                               |
       | createdBy        | ${admin}                                           |
       | createdDate      | regex:\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z |
-      | email            | user_4010101@aqa.email.com                         |
+      | email            | user_040101@aqa.email.com                         |
       | firstName        |                                                    |
       | id               | @{user.id}                                         |
       | imageUrl         |                                                    |
@@ -22,7 +22,7 @@ Feature: Get User
       | lastName         |                                                    |
       | login            | @{user.login}                                      |
 
-  Scenario: 4010102 Get user with invalid data
+  Scenario: 040102 Get user with invalid data
     When api user tries to get user and saves to 'result':
       | path:login          | invalid_login |
       | response:statusCode | 404           |

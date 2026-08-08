@@ -23,30 +23,25 @@ public record BankAccountDefinitions(VariablesController variablesController, Ba
 
     @Given("api user gets bank account and saves to {string}:")
     public void apiUserGetBankAccountAndSavesTo(String var, Map<String, String> map) {
-        variablesController.setVar(var, bankAccountSteps().bankAccountService()
-                .getBankAccount(populate(map, BankAccount.class).getId(),
-                        bankAccountSteps().authService().getAdminHeaders()));
+        variablesController.setVar(var, bankAccountSteps.getBankAccount(populate(map, BankAccount.class).getId()));
     }
 
     @Given("api user tries to get bank account and saves to {string}:")
     public void apiUserTriesToGetBankAccountAndSavesTo(String var, Map<String, String> map) {
-        variablesController.setVar(var, bankAccountSteps.bankAccountService()
-                .getBankAccount(populate(convertMapKeysWithPrefix(map, of(PATH.getValue())), BankAccount.class).getId(),
-                        bankAccountSteps.authService().getAdminHeaders(),
-                        Integer.parseInt(map.get(RESPONSE.getValue() + STATUS_CODE.getValue()))));
+        variablesController.setVar(var, bankAccountSteps.getBankAccount(
+                populate(convertMapKeysWithPrefix(map, of(PATH.getValue())), BankAccount.class).getId(),
+                Integer.parseInt(map.get(RESPONSE.getValue() + STATUS_CODE.getValue()))));
     }
 
     @Given("api user deletes bank account with id:")
     public void apiUserDeletesBankAccount(Map<String, String> map) {
-        bankAccountSteps.bankAccountService()
-                .delete(populate(convertMapKeysWithPrefix(map, of(PATH.getValue())), BankAccount.class).getId(),
-                        bankAccountSteps.authService().getAdminHeaders());
+        bankAccountSteps.delete(
+                populate(convertMapKeysWithPrefix(map, of(PATH.getValue())), BankAccount.class).getId());
     }
 
     @Given("api user deletes bank account by name:")
     public void apiUserDeletesBankAccountByName(Map<String, String> map) {
         bankAccountSteps.deleteByName(
-                populate(convertMapKeysWithPrefix(map, of(PATH.getValue())), BankAccount.class).getName(),
-                bankAccountSteps.authService().getAdminHeaders());
+                populate(convertMapKeysWithPrefix(map, of(PATH.getValue())), BankAccount.class).getName());
     }
 }

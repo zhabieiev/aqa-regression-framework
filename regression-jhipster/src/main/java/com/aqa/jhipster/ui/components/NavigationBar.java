@@ -14,7 +14,6 @@ public class NavigationBar extends BaseComponent {
 
     public NavigationBar(final Page page) {
         super(page, page.getByTestId(ACCOUNT_MENU));
-
         logoutButton = byDataCy(LOGOUT_BUTTON);
     }
 

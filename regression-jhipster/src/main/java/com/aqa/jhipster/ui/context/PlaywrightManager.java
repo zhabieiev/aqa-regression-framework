@@ -27,9 +27,10 @@ public final class PlaywrightManager implements AutoCloseable {
     private Browser browser;
 
     public void start(final UiScenarioContext scenarioContext) {
-        requireNonNull(scenarioContext, "UI scenario context must not be null");
+        final UiScenarioContext context = requireNonNull(scenarioContext, "UI scenario context must not be null");
 
         assertNotStarted();
+        assertContextNotInitialized(context);
 
         try {
             playwright = Playwright.create();
@@ -44,16 +45,20 @@ public final class PlaywrightManager implements AutoCloseable {
 
             final Page page = browserContext.newPage();
 
-            scenarioContext.initialize(browserContext, page);
+            context.initialize(browserContext, page);
         } catch (RuntimeException exception) {
-            close();
+            try {
+                close();
+            } catch (RuntimeException closeException) {
+                exception.addSuppressed(closeException);
+            }
 
             throw new IllegalStateException("Failed to start Playwright", exception);
         }
     }
 
     private BrowserType browserType() {
-        final String browserName = UI_BROWSER.read().trim().toLowerCase(Locale.ROOT);
+        final String browserName = requiredProperty(UI_BROWSER.read(), UI_BROWSER.name()).toLowerCase(Locale.ROOT);
 
         return switch (browserName) {
             case CHROMIUM -> playwright.chromium();
@@ -72,7 +77,7 @@ public final class PlaywrightManager implements AutoCloseable {
     }
 
     private Browser.NewContextOptions contextOptions() {
-        return new Browser.NewContextOptions().setBaseURL(URL_UI.read());
+        return new Browser.NewContextOptions().setBaseURL(requiredProperty(URL_UI.read(), URL_UI.name()));
     }
 
     private void configure(final BrowserContext browserContext) {
@@ -82,8 +87,8 @@ public final class PlaywrightManager implements AutoCloseable {
         browserContext.setDefaultNavigationTimeout(timeout);
     }
 
-    private boolean booleanProperty(final String value, final String property) {
-        final String normalized = value.trim().toLowerCase(Locale.ROOT);
+    private static boolean booleanProperty(final String value, final String property) {
+        final String normalized = requiredProperty(value, property).toLowerCase(Locale.ROOT);
 
         return switch (normalized) {
             case "true" -> true;
@@ -94,13 +99,15 @@ public final class PlaywrightManager implements AutoCloseable {
         };
     }
 
-    private double doubleProperty(final String value, final String property) {
-        try {
-            final double result = Double.parseDouble(value.trim());
+    private static double doubleProperty(final String value, final String property) {
+        final String normalized = requiredProperty(value, property);
 
-            if (result < 0) {
+        try {
+            final double result = Double.parseDouble(normalized);
+
+            if (!Double.isFinite(result) || result < 0) {
                 throw new IllegalArgumentException(
-                        "Property '%s' must not be negative, but was '%s'".formatted(property, value));
+                        "Property '%s' must be a finite non-negative number, but was '%s'".formatted(property, value));
             }
 
             return result;
@@ -110,9 +117,25 @@ public final class PlaywrightManager implements AutoCloseable {
         }
     }
 
+    private static String requiredProperty(final String value, final String property) {
+        final String result = requireNonNull(value, "Property '%s' must not be null".formatted(property)).trim();
+
+        if (result.isBlank()) {
+            throw new IllegalArgumentException("Property '%s' must not be blank".formatted(property));
+        }
+
+        return result;
+    }
+
     private void assertNotStarted() {
         if (playwright != null || browser != null) {
             throw new IllegalStateException("Playwright has already been started");
+        }
+    }
+
+    private void assertContextNotInitialized(final UiScenarioContext scenarioContext) {
+        if (scenarioContext.isInitialized()) {
+            throw new IllegalStateException("UI scenario context has already been initialized");
         }
     }
 
@@ -125,8 +148,11 @@ public final class PlaywrightManager implements AutoCloseable {
         } finally {
             browser = null;
 
-            if (playwright != null) {
-                playwright.close();
+            try {
+                if (playwright != null) {
+                    playwright.close();
+                }
+            } finally {
                 playwright = null;
             }
         }

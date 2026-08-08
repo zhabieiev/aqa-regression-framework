@@ -18,7 +18,10 @@ public abstract class BasePage {
     }
 
     protected void navigateTo(final String path) {
-        page.navigate(normalizePath(path), new Page.NavigateOptions().setWaitUntil(WaitUntilState.DOMCONTENTLOADED));
+        page.navigate(
+                normalizePath(path),
+                new Page.NavigateOptions().setWaitUntil(WaitUntilState.DOMCONTENTLOADED)
+        );
 
         waitUntilLoaded();
     }
@@ -30,7 +33,15 @@ public abstract class BasePage {
     }
 
     protected void assertUrlContains(final String value) {
-        final Pattern expectedUrl = Pattern.compile(".*" + value + ".*");
+        final String expectedValue = requireNonNull(value, "Expected URL value must not be null");
+
+        if (expectedValue.isBlank()) {
+            throw new IllegalArgumentException("Expected URL value must not be blank");
+        }
+
+        final Pattern expectedUrl = Pattern.compile(
+                ".*" + expectedValue + ".*"
+        );
 
         assertThat(page).hasURL(expectedUrl);
     }

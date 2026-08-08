@@ -21,6 +21,6 @@ public abstract class BaseComponent {
     }
 
     protected Locator byDataCy(final String value) {
-        return page.getByTestId(value);
+        return root.getByTestId(value);
     }
 }

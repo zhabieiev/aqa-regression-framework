@@ -16,14 +16,12 @@ public class HomePage extends BasePage {
 
     @Override
     public HomePage waitUntilLoaded() {
+        page.waitForURL(url -> !url.contains(LOGIN_PATH));
         navigationBar.waitUntilDisplayed();
         return this;
     }
 
-    public HomePage waitUntilAuthenticated() {
-        page.waitForURL(url -> !url.contains(LOGIN_PATH));
-        waitUntilLoaded();
+    public void assertAuthenticated() {
         navigationBar.assertAuthenticated();
-        return this;
     }
 }

@@ -11,13 +11,18 @@ public final class UiScenarioContext {
     private Page page;
 
     public void initialize(final BrowserContext browserContext, final Page page) {
-        if (isInitialized()) {
-            throw new IllegalStateException("UI scenario context has already been initialized");
+        assertNotInitialized();
+
+        final BrowserContext initializedBrowserContext =
+                requireNonNull(browserContext, "Browser context must not be null");
+        final Page initializedPage = requireNonNull(page, "Playwright page must not be null");
+
+        if (initializedPage.context() != initializedBrowserContext) {
+            throw new IllegalArgumentException("Playwright page must belong to the provided browser context");
         }
 
-        this.browserContext = requireNonNull(browserContext, "Browser context must not be null");
-
-        this.page = requireNonNull(page, "Playwright page must not be null");
+        this.browserContext = initializedBrowserContext;
+        this.page = initializedPage;
     }
 
     public BrowserContext browserContext() {
@@ -43,5 +48,11 @@ public final class UiScenarioContext {
     public void clear() {
         page = null;
         browserContext = null;
+    }
+
+    private void assertNotInitialized() {
+        if (browserContext != null || page != null) {
+            throw new IllegalStateException("UI scenario context has already been initialized");
+        }
     }
 }

@@ -11,6 +11,7 @@ The primary design goal is not maximum abstraction. It is a clear separation of 
 ## Core Principles
 
 - Keep Gherkin readable and focused on behavior.
+- Use Cucumber for acceptance behavior, not as a mandatory wrapper for every technical check.
 - Keep Definitions thin: bind steps, convert data, and delegate.
 - Keep orchestration in Steps.
 - Keep HTTP transport in API Services.
@@ -87,7 +88,7 @@ regression-jhipster
 └── README.md
 ```
 
-Definitions currently follow the established parent-framework convention and remain under `src/main/java`.
+Definitions currently follow the established parent-framework convention and remain under `src/main/java`. This is a deliberate compatibility choice, not the standard Maven layout for an executable test module. A future move to `src/test/java` must be evaluated across the parent project, dependency scopes, generated sources, and Cucumber glue configuration rather than applied to this module in isolation.
 
 ## Architecture Overview
 
@@ -125,6 +126,12 @@ API precondition
 ```
 
 The API and UI implementations remain independent. Their intentional integration point is the business scenario, not a shared transport or browser abstraction.
+
+### BDD scope and rationale
+
+Cucumber is the acceptance-test layer and the established convention of the parent regression framework. It provides executable business scenarios, reusable tags, data-driven examples, and a consistent API/UI specification style.
+
+The framework does not assume that every test benefits from Gherkin or that non-technical stakeholders currently maintain the feature files. Unit, component, converter, schema, and other technical contract checks may use JUnit directly. Continued use of Cucumber should be evaluated against actual collaboration, reporting, and maintenance needs rather than treated as a goal by itself.
 
 ## API Layer
 
@@ -172,6 +179,20 @@ Transport models are generated from the application OpenAPI document. Generated 
 Jackson deserialization remains strict about unknown fields. If the runtime response differs from the documented contract, investigate and fix the OpenAPI definition or the application serialization. Do not weaken the client merely to make a mismatch disappear.
 
 Strict DTO deserialization is useful but does not replace complete OpenAPI response validation. Media types, required fields, formats, status definitions, and numeric constraints may require a separate contract-testing layer.
+
+The current Maven generation step does not by itself provide a complete contract-change workflow. A contract pipeline should treat the OpenAPI document as a versioned build input and perform the following stages before full regression execution:
+
+```text
+validate specification
+    → compare with the accepted contract
+    → classify breaking changes
+    → generate models with a pinned generator version
+    → compile consumers
+    → run focused contract/deserialization tests
+    → publish or approve the matching contract version
+```
+
+Regression execution should use an accepted contract version or checksum. It should not silently regenerate against an uncontrolled latest specification because that can hide when an incompatible backend change was introduced.
 
 ### API logging
 
@@ -269,7 +290,18 @@ Create Playwright
 
 The current implementation launches a browser per UI scenario. This prioritizes isolation and predictable cleanup over execution speed.
 
-Playwright objects are not stored in static fields and are not shared between parallel scenarios. Browser reuse should be considered only after lifecycle stability has been demonstrated and explicit thread ownership is designed.
+Playwright objects are not stored in static fields and are not shared between parallel scenarios. This is the safe baseline, but browser startup is a known performance cost for a larger UI suite.
+
+The target optimization is:
+
+```text
+execution worker → Playwright + Browser
+UI scenario      → BrowserContext + Page
+```
+
+`BrowserContext` and `Page` must remain scenario-owned and must always be closed after the scenario. `Playwright` and `Browser` may be reused only within an explicitly owned execution worker. The implementation must first define whether parallelism is provided by Maven forks, CI shards, or Cucumber threads because Playwright Java objects are not thread-safe.
+
+A single mutable static browser is not an acceptable optimization. Browser reuse requires worker lifecycle management, browser-disconnection recovery, deterministic final shutdown, and measured evidence that it improves the suite.
 
 Startup and shutdown are fail-safe:
 
@@ -293,6 +325,8 @@ Scenario-owned mutable state includes:
 - named test variables managed by the shared framework.
 
 This state must remain instance-based. Do not move it into static caches, global singletons, or shared mutable filters.
+
+Future worker-scoped browser infrastructure does not change this rule: scenario `BrowserContext`, `Page`, tracing, current Page Objects, variables, and authentication state must never be stored in the worker runtime.
 
 Constructor injection is preferred. Records are appropriate for immutable dependency holders; regular classes are appropriate when lifecycle or scenario state changes during execution.
 
@@ -322,6 +356,16 @@ post-cleanup → remove entities created by the current scenario
 
 Cleanup failures should be logged without hiding the original test failure.
 
+An `@After` hook is a best-effort cleanup mechanism, not a crash-recovery guarantee. It may not execute after JVM termination, a critical `OutOfMemoryError`, container loss, or a hard CI timeout. A resilient cleanup design therefore requires multiple layers:
+
+1. Register every created entity immediately after successful creation and delete it in scenario cleanup.
+2. Add a unique run identifier to discover all data created by a test run.
+3. Perform run-level bulk cleanup independently from individual scenario results.
+4. Use an external scheduled janitor or TTL policy for data left by terminated processes.
+5. Prefer tenant, schema, database, or container reset in disposable test environments.
+
+Deletes should be idempotent, and an already absent entity should normally be treated as successfully cleaned. Until the external recovery layers are implemented, interrupted runs may leave residual data; existing pre-cleanup reduces this risk only for entities and queries that support reliable discovery.
+
 ## Configuration
 
 Environment-specific values are read through the shared property layer. Page Objects and API Services do not load property files directly.
@@ -344,7 +388,7 @@ firefox
 webkit
 ```
 
-Boolean and numeric values are parsed strictly. Invalid, blank, negative, non-finite, or unsupported values fail before the scenario proceeds.
+Boolean values and supported browser names are parsed strictly. Blank, non-numeric, negative, or unsupported values fail before the scenario proceeds. Explicit rejection of non-finite numeric values such as `NaN` and `Infinity` remains a validation improvement.
 
 `data-cy` is an application locator convention and remains framework configuration rather than an environment property.
 
@@ -421,20 +465,53 @@ When adding UI coverage:
 7. Keep DOM assertions in Page Objects or Components.
 8. Confirm empty, loading, error, and duplicate-match states where relevant.
 
+## Current Limitations and Trade-offs
+
+The current implementation is a stable architectural baseline, not a claim that every production-scale concern has already been solved.
+
+| Area | Current state | Consequence |
+| --- | --- | --- |
+| Browser lifecycle | A new Playwright process and Browser are created for every UI scenario | Strong isolation, but increasing startup cost as the UI suite grows |
+| Parallel execution | Scenario state is isolated, but the Cucumber/Maven/CI parallel model has not been validated end to end | Browser reuse and execution concurrency must not be enabled speculatively |
+| Cleanup recovery | Explicit pre-cleanup and scenario cleanup are available; a persistent run registry and external janitor are not yet implemented | A terminated JVM or CI worker can leave test data behind |
+| OpenAPI evolution | Models are generated and deserialized strictly; version promotion and breaking-change detection are not yet automated | Contract drift may first appear as compilation or deserialization failure |
+| Schema coverage | Generated DTOs verify model compatibility but not the complete response contract | Status/media type/schema constraints may require dedicated contract validation |
+| UI tables | Exact column-aware lookup targets the confirmed DOM | Pagination, virtualization, localization, responsive columns, and the empty-table DOM require separate verification |
+| Source layout | Definitions remain under `src/main/java` for parent-project compatibility | The module does not currently follow the conventional Maven placement of executable test glue under `src/test/java` |
+| BDD cost | Cucumber provides a consistent acceptance layer | Gherkin and Definitions add maintenance cost when scenarios are purely technical or have no wider readership |
+| Diagnostics | Screenshots and optional traces are available on failure | Console errors, page errors, failed requests, and video are not yet collected centrally |
+| Configuration validation | Browser names, booleans, and negative/non-numeric timeout values are validated | Non-finite numeric values are not yet rejected explicitly |
+
+The core `DataTableConverter` is not coupled to HTML tables and does not remove the DOM limitations listed above. It converts Cucumber input into typed test data; browser table behavior remains the responsibility of UI Components based on inspected markup.
+
 ## Next Steps and Improvements
 
-### Framework roadmap
+### Priority 1 — correctness and recovery
 
-1. Introduce a dedicated UI timeout property instead of reusing a generic interval configuration.
-2. Configure Playwright assertion timeout explicitly and independently from action/navigation timeout.
-3. Implement a scenario-scoped cleanup registry that tracks created entity IDs and performs API cleanup in an `@After` hook.
-4. Add pagination-aware API cleanup or server-side filtering for list endpoints.
-5. Confirm and model the UI empty-table state so absence assertions work when the last entity is deleted.
-6. Add OpenAPI response-schema validation as a separate contract-testing layer.
-7. Add browser console, page error, request failure, and optional video diagnostics.
-8. Add CI execution matrices for API-only, UI smoke, and cross-browser suites.
-9. Validate scenario-level parallel execution before considering browser reuse.
-10. Extract generic Playwright infrastructure into `regression-core` only after a second module proves the same abstraction useful.
+1. Introduce a versioned OpenAPI contract pipeline: validation, breaking-change comparison, generation with a pinned tool version, compilation, focused contract tests, and approved contract checksum/version.
+2. Add response-schema validation where generated DTO deserialization is insufficient.
+3. Implement an immediate scenario cleanup registry for created entity IDs, followed by run-level cleanup using a unique run identifier.
+4. Add an external TTL-based janitor or disposable-environment reset so cleanup does not depend solely on Cucumber hooks.
+5. Add pagination-aware API discovery or server-side filtering for cleanup without broad, unsafe deletion.
+6. Introduce a dedicated UI timeout property, reject non-finite numeric values, and configure Playwright assertion timeout independently from action and navigation timeouts.
+7. Confirm the real empty-table, loading, error, pagination, and duplicate-row states before expanding the shared table behavior.
+
+### Priority 2 — execution scale and diagnostics
+
+1. Benchmark the existing browser-per-scenario lifecycle with representative smoke and regression suites.
+2. Define the actual parallel execution unit: Maven fork, CI shard, or Cucumber worker thread.
+3. If measurements justify reuse, implement one Playwright and Browser per execution worker while retaining a new BrowserContext and Page per scenario.
+4. Verify isolation under parallel execution for cookies, storage, downloads, tracing paths, generated test data, authentication, and cleanup.
+5. Add CI suites for API contract checks, API regression, UI smoke, and cross-browser coverage.
+6. Add browser console, page error, request failure, and optional video diagnostics with bounded artifact retention.
+
+### Priority 3 — maintainability decisions
+
+1. Review the source layout across the parent repository and decide whether executable Definitions, Hooks, and application-specific test code should move to `src/test/java`.
+2. Periodically review whether Cucumber continues to provide acceptance, collaboration, or reporting value; keep purely technical checks outside Gherkin where appropriate.
+3. Extract generic Playwright infrastructure into `regression-core` only after a second module proves the same abstraction and lifecycle requirements useful.
+
+A roadmap item is complete only when its behavior is tested, its failure mode is documented, and the relevant limitation above is removed or updated. Moving an item into code without validating runtime behavior does not close the architectural risk.
 
 ### Coverage roadmap
 
@@ -453,6 +530,7 @@ Before editing:
 - read this README and the relevant source files completely;
 - inspect the current feature, runtime OpenAPI document, or real DOM;
 - identify scenario scope and ownership of every dependency;
+- distinguish current implementation from roadmap intent and do not describe planned safeguards as already available;
 - check for existing uncommitted changes and preserve unrelated work;
 - distinguish confirmed facts from assumptions.
 
@@ -462,7 +540,11 @@ During implementation:
 - do not expose Steps dependencies merely to shorten a call chain;
 - keep API headers explicit between Steps and Services;
 - keep token, browser, and page state non-static and scenario-scoped;
+- never introduce a shared static Browser without a validated worker/thread ownership model;
+- keep a new BrowserContext and Page per scenario even if Browser reuse is introduced;
 - never edit generated OpenAPI models manually;
+- do not regenerate against an uncontrolled latest OpenAPI specification merely to hide a contract failure;
+- treat Cucumber `@After` cleanup as best effort and preserve run-level discoverability of created data;
 - do not introduce generic click, wait, or assertion wrappers without demonstrated reuse;
 - scope Component locators to their root;
 - use exact matching for entity identity and destructive operations;
@@ -475,7 +557,9 @@ Before handing off:
 - run the narrowest relevant tests and then the affected module build;
 - verify imports, formatting, and generated-source compatibility;
 - document any unverified runtime assumption;
+- include benchmark or failure-recovery evidence for lifecycle and cleanup changes;
 - update this README only for stable architectural or operational changes;
+- update the limitations table when a roadmap item is demonstrably completed;
 - report deferred work explicitly instead of implementing speculative code.
 
 ## Architectural Invariants
@@ -489,7 +573,9 @@ The following rules are intentional and should change only after an explicit arc
 - Page Objects and Components own DOM knowledge.
 - Components search within their root by default.
 - Scenario state is injected and non-static.
+- BrowserContext and Page remain scenario-owned even if the Browser lifecycle changes.
 - Generated API models remain generated.
+- OpenAPI contract changes must remain explicit and reviewable.
 - Authentication headers remain explicit.
 - Playwright actions use web-first synchronization.
 - Hybrid scenarios use API operations for fast setup and cleanup.
@@ -498,4 +584,6 @@ The following rules are intentional and should change only after an explicit arc
 
 ## Status
 
-The framework has a stable layered API implementation, a scenario-isolated Playwright lifecycle, and an intentionally compact UI model. It is ready to be extended incrementally from confirmed scenarios, runtime contracts, and inspected DOM structures.
+The framework has a stable layered API implementation, a scenario-isolated Playwright baseline, and an intentionally compact UI model. It is ready for incremental functional coverage based on confirmed scenarios, accepted contracts, and inspected DOM structures.
+
+Production-scale parallel execution, worker-level browser reuse, versioned contract promotion, and crash-resilient cleanup remain explicit improvement areas. They must be validated independently and must not weaken the current scenario isolation or failure transparency.

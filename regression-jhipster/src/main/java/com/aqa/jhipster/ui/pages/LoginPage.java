@@ -50,7 +50,7 @@ public class LoginPage extends BasePage {
     public HomePage login(final LoginBean credentials, final List<String> headers) {
         submitCredentials(credentials, headers);
 
-        return new HomePage(page).waitUntilAuthenticated();
+        return new HomePage(page).waitUntilLoaded();
     }
 
     public LoginPage loginExpectingFailure(final LoginBean credentials, final List<String> headers) {
@@ -58,9 +58,8 @@ public class LoginPage extends BasePage {
         return this;
     }
 
-    public LoginPage assertAuthenticationError() {
+    public void assertAuthenticationError() {
         assertThat(authenticationError).isVisible();
-        return this;
     }
 
     private void submitCredentials(final LoginBean credentials, final List<String> headers) {

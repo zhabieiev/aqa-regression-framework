@@ -13,6 +13,9 @@ public class BankAccountPage extends BasePage {
 
     private static final String PATH = "/bank-account";
 
+    private static final String NAME_COLUMN = "Name";
+    private static final String BALANCE_COLUMN = "Balance";
+
     private static final String HEADING = "BankAccountHeading";
     private static final String CREATE_BUTTON = "entityCreateButton";
     private static final String DELETE_BUTTON = "entityDeleteButton";
@@ -41,55 +44,38 @@ public class BankAccountPage extends BasePage {
         assertUrlContains(PATH);
         assertThat(heading).isVisible();
         assertThat(createButton).isVisible();
-
         return this;
     }
 
     public BankAccountFormPage openCreateForm() {
         createButton.click();
-
         return new BankAccountFormPage(page).waitUntilLoaded();
     }
 
-    public BankAccountPage assertAccountDisplayed(final String name, final BigDecimal balance) {
+    public void assertAccountDisplayed(final String name, final BigDecimal balance) {
         accountsTable.waitUntilDisplayed();
-
         final Locator row = uniqueRowByName(name);
-
         assertThat(row).isVisible();
-        assertThat(row).containsText(balance.toPlainString());
-
-        return this;
+        assertThat(accountsTable.cell(row, BALANCE_COLUMN)).hasText(balance.toPlainString());
     }
 
-    public BankAccountPage deleteAccount(final String name) {
+    public void deleteAccount(final String name) {
         accountsTable.waitUntilDisplayed();
-
         uniqueRowByName(name).getByTestId(DELETE_BUTTON).click();
-
-        final Locator confirmDeleteButton = byDataCy(CONFIRM_DELETE_BUTTON);
-
-        assertThat(confirmDeleteButton).isVisible();
-        confirmDeleteButton.click();
-
-        accountsTable.assertRowNotDisplayed(name);
-
-        return this;
+        byDataCy(CONFIRM_DELETE_BUTTON).click();
     }
 
-    public BankAccountPage assertAccountNotDisplayed(final String name) {
-        accountsTable.assertRowNotDisplayed(name);
-        return this;
+    public void assertAccountNotDisplayed(final String name) {
+        accountsTable.assertRowAbsent(NAME_COLUMN, name);
     }
 
     private Locator uniqueRowByName(final String name) {
         final Locator row = rowByName(name);
-
         assertThat(row).hasCount(1);
         return row;
     }
 
     private Locator rowByName(final String name) {
-        return accountsTable.rowContaining(name);
+        return accountsTable.rowByExactCellText(NAME_COLUMN, name);
     }
 }

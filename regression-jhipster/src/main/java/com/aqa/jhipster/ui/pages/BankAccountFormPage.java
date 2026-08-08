@@ -50,7 +50,6 @@ public class BankAccountFormPage extends BasePage {
 
     public BankAccountFormPage fillAccount(final BankAccountBean account, final List<String> headers) {
         requireNonNull(account, "Bank account must not be null");
-
         requireNonNull(headers, "Bank account headers must not be null");
 
         headers.forEach(header -> {
@@ -71,7 +70,6 @@ public class BankAccountFormPage extends BasePage {
 
     public BankAccountPage save() {
         saveButton.click();
-
         return new BankAccountPage(page).waitUntilLoaded();
     }
 

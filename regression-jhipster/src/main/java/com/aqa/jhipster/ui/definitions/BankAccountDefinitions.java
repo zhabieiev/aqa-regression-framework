@@ -7,33 +7,19 @@ import io.cucumber.java.en.Given;
 import io.cucumber.java.en.Then;
 import io.cucumber.java.en.When;
 
-import java.util.List;
+import static com.aqa.core.convertors.DataTableConverter.convertToSingle;
+import static com.aqa.core.convertors.DataTableConverter.getHeaders;
 
-import static com.aqa.core.Populator.populateList;
-
-public class BankAccountDefinitions {
-
-    private final BankAccountSteps bankAccountSteps;
-
-    public BankAccountDefinitions(final BankAccountSteps bankAccountSteps) {
-        this.bankAccountSteps = bankAccountSteps;
-    }
+public record BankAccountDefinitions(BankAccountSteps bankAccountSteps) {
 
     @When("ui user creates a bank account:")
     public void userCreatesBankAccount(final DataTable table) {
-        final List<BankAccountBean> accounts =
-                populateList(table.asMaps(String.class, String.class), BankAccountBean.class);
-        final BankAccountBean account = requireSingleAccount(accounts);
-        final List<String> headers = table.asLists(String.class).getFirst();
-        bankAccountSteps.createBankAccount(account, headers);
+        bankAccountSteps.createBankAccount(convertToSingle(table, BankAccountBean.class), getHeaders(table));
     }
 
     @Then("ui bank account is displayed:")
     public void bankAccountIsDisplayed(final DataTable table) {
-        final List<BankAccountBean> accounts =
-                populateList(table.asMaps(String.class, String.class), BankAccountBean.class);
-
-        bankAccountSteps.assertBankAccountDisplayed(requireSingleAccount(accounts));
+        bankAccountSteps.assertBankAccountDisplayed(convertToSingle(table, BankAccountBean.class));
     }
 
     @When("ui user deletes bank account {string}")
@@ -49,12 +35,5 @@ public class BankAccountDefinitions {
     @Given("ui user opens the bank accounts page")
     public void userOpensBankAccountsPage() {
         bankAccountSteps.openBankAccountsPage();
-    }
-
-    private BankAccountBean requireSingleAccount(final List<BankAccountBean> accounts) {
-        if (accounts.size() != 1) {
-            throw new IllegalArgumentException("Expected exactly one bank account, but found: " + accounts.size());
-        }
-        return accounts.getFirst();
     }
 }

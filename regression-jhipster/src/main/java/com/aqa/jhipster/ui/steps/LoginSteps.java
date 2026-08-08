@@ -31,7 +31,7 @@ public class LoginSteps {
     }
 
     public void assertAuthenticated() {
-        currentHomePage().waitUntilAuthenticated();
+        currentHomePage().assertAuthenticated();
     }
 
     public void assertAuthenticationError() {
@@ -42,7 +42,6 @@ public class LoginSteps {
         if (loginPage == null) {
             throw new IllegalStateException("The login page has not been opened");
         }
-
         return loginPage;
     }
 
@@ -50,7 +49,6 @@ public class LoginSteps {
         if (homePage == null) {
             throw new IllegalStateException("The user has not completed a successful login");
         }
-
         return homePage;
     }
 }

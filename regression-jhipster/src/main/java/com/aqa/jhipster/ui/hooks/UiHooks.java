@@ -14,9 +14,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Locale;
 import java.util.UUID;
 
 import static com.aqa.core.enumerations.Property.UI_TRACE;
+import static java.util.Objects.requireNonNull;
 
 @Slf4j
 @SuppressWarnings("resource")
@@ -32,15 +34,17 @@ public class UiHooks {
     private boolean tracingStarted;
 
     public UiHooks(final PlaywrightManager playwrightManager, final UiScenarioContext scenarioContext) {
-        this.playwrightManager = playwrightManager;
-        this.scenarioContext = scenarioContext;
+        this.playwrightManager = requireNonNull(playwrightManager, "Playwright manager must not be null");
+        this.scenarioContext = requireNonNull(scenarioContext, "UI scenario context must not be null");
     }
 
     @Before(value = "@ui", order = 0)
     public void startBrowser(final Scenario scenario) {
+        final boolean traceEnabled = isTraceEnabled();
+
         playwrightManager.start(scenarioContext);
 
-        if (isTraceEnabled()) {
+        if (traceEnabled) {
             startTracing();
             tracingStarted = true;
         }
@@ -71,12 +75,14 @@ public class UiHooks {
     }
 
     private void finishTracing(final Scenario scenario) {
-        if (!tracingStarted || !scenarioContext.isInitialized()) {
+        if (!tracingStarted) {
             return;
         }
 
         try {
-            stopTracing(scenario);
+            if (scenarioContext.isInitialized()) {
+                stopTracing(scenario);
+            }
         } catch (RuntimeException exception) {
             log.warn("Could not save Playwright trace for scenario '{}'", scenario.getName(), exception);
         } finally {
@@ -97,7 +103,6 @@ public class UiHooks {
             scenarioContext.browserContext().tracing().stop(new Tracing.StopOptions().setPath(tracePath));
 
             log.info("Playwright trace saved to '{}'", tracePath);
-
             return;
         }
 
@@ -118,9 +123,7 @@ public class UiHooks {
         createTraceDirectory();
 
         final String scenarioName = scenario.getName().replaceAll("[^a-zA-Z0-9-_]", "_");
-
         final String timestamp = LocalDateTime.now().format(TIMESTAMP_FORMAT);
-
         final String uniqueId = UUID.randomUUID().toString().substring(0, 8);
 
         return TRACE_DIRECTORY.resolve("%s-%s-%s.zip".formatted(scenarioName, timestamp, uniqueId));
@@ -162,6 +165,15 @@ public class UiHooks {
     }
 
     private boolean isTraceEnabled() {
-        return Boolean.parseBoolean(UI_TRACE.read());
+        final String value =
+                requireNonNull(UI_TRACE.read(), "Property '%s' must not be null".formatted(UI_TRACE.name()));
+
+        return switch (value.trim().toLowerCase(Locale.ROOT)) {
+            case "true" -> true;
+            case "false" -> false;
+
+            default -> throw new IllegalArgumentException(
+                    "Property '%s' must be 'true' or 'false', but was '%s'".formatted(UI_TRACE.name(), value));
+        };
     }
 }

@@ -1,6 +1,23 @@
+# IntelliJ IDEA
+.idea/
 *.iml
-.idea
+
+# Maven
 **/target/
 **/reports/
+
+# Allure
+**/.allure/
+**/allure-results/
+**/allure-report/
+**/allure-report-archive/
+**/local-allure-history/*
+!**/local-allure-history/.gitignore
+
+# OpenAPI Generator metadata
+**/.openapi-generator/
+
+# Operating systems
 .DS_Store
-**/.openapi-generator/*.sha256
+Thumbs.db
+Desktop.ini

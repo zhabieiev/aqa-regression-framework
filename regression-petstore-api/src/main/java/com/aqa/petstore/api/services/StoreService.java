@@ -1,44 +1,46 @@
 package com.aqa.petstore.api.services;
 
+import com.aqa.petstore.api.models.generated.ModelApiResponse;
 import com.aqa.petstore.api.models.generated.Order;
 
 import static com.aqa.core.models.Request.request;
+import static jakarta.ws.rs.HttpMethod.DELETE;
+import static jakarta.ws.rs.HttpMethod.GET;
+import static jakarta.ws.rs.HttpMethod.POST;
 import static java.lang.String.format;
-import static jakarta.ws.rs.HttpMethod.*;
 import static java.net.HttpURLConnection.HTTP_OK;
 
-public class StoreService extends StoreApiService {
+public class StoreService extends PetStoreApiService {
 
-    final private static String STORE = "/store";
-    final private static String STORE_ORDER = STORE + "/order";
-    final private static String STORE_ORDER_ID = STORE_ORDER + "/%s";
+    private static final String STORE_ORDERS = "/store/order";
+    private static final String STORE_ORDER_ID = STORE_ORDERS + "/%s";
 
     public Order create(final Order body) {
         return getResponse(request().method(POST)
-                .path(STORE_ORDER)
+                .path(STORE_ORDERS)
                 .body(body)
                 .statusCode(HTTP_OK)
                 .build()).readEntity(Order.class);
     }
 
-    public Order read(final String orderId) {
+    public Order get(final Long orderId) {
         return getResponse(request().method(GET)
                 .path(format(STORE_ORDER_ID, orderId))
                 .statusCode(HTTP_OK)
                 .build()).readEntity(Order.class);
     }
 
-    public String read(final String orderId, int statusCode) {
+    public ModelApiResponse get(final Long orderId, final int statusCode) {
         return getResponse(request().method(GET)
                 .path(format(STORE_ORDER_ID, orderId))
                 .statusCode(statusCode)
-                .build()).readEntity(String.class);
+                .build()).readEntity(ModelApiResponse.class);
     }
 
-    public String delete(final String orderId) {
+    public ModelApiResponse delete(final Long orderId) {
         return getResponse(request().method(DELETE)
                 .path(format(STORE_ORDER_ID, orderId))
                 .statusCode(HTTP_OK)
-                .build()).readEntity(String.class);
+                .build()).readEntity(ModelApiResponse.class);
     }
 }

@@ -43,6 +43,7 @@
         <commons-text>1.14.0</commons-text>
         <commons-lang3>3.18.0</commons-lang3>
         <assertj.core>3.27.7</assertj.core>
+        <datafaker>2.7.0</datafaker>
         <slf4j.version>2.0.9</slf4j.version>
         <jna.version>5.19.1</jna.version>
         <playwright.version>1.61.0</playwright.version>
@@ -50,6 +51,7 @@
         <regression.core>1.0.0</regression.core>
         <regression.petstore.api>1.0.0</regression.petstore.api>
         <cucumber.java>7.18.1</cucumber.java>
+        <junit.jupiter>5.10.3</junit.jupiter>
         <junit.platform.suite>1.10.3</junit.platform.suite>
 
         <cucumber.picocontainer>${cucumber.java}</cucumber.picocontainer>
@@ -162,6 +164,11 @@
                 <artifactId>assertj-core</artifactId>
                 <version>${assertj.core}</version>
             </dependency>
+            <dependency>
+                <groupId>net.datafaker</groupId>
+                <artifactId>datafaker</artifactId>
+                <version>${datafaker}</version>
+            </dependency>
 
             <dependency>
                 <groupId>io.swagger.core.v3</groupId>
@@ -189,6 +196,11 @@
                 <groupId>io.cucumber</groupId>
                 <artifactId>cucumber-picocontainer</artifactId>
                 <version>${cucumber.picocontainer}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.junit.jupiter</groupId>
+                <artifactId>junit-jupiter</artifactId>
+                <version>${junit.jupiter}</version>
             </dependency>
             <dependency>
                 <groupId>org.junit.platform</groupId>

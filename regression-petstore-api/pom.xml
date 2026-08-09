@@ -13,13 +13,39 @@
     <artifactId>regression-petstore-api</artifactId>
 
     <properties>
+        <allure.version>2.35.3</allure.version>
+        <allure.maven.plugin>3.0.2</allure.maven.plugin>
+        <allure.report.version>2.39.0</allure.report.version>
         <models.petstore.api.skip.generate>${models.skip.generate}</models.petstore.api.skip.generate>
     </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>io.qameta.allure</groupId>
+                <artifactId>allure-bom</artifactId>
+                <version>${allure.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 
     <dependencies>
         <dependency>
             <groupId>com.aqa</groupId>
             <artifactId>regression-core</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <scope>provided</scope>
         </dependency>
 
         <dependency>
@@ -56,6 +82,36 @@
             <groupId>org.apache.commons</groupId>
             <artifactId>commons-lang3</artifactId>
         </dependency>
+
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.assertj</groupId>
+            <artifactId>assertj-core</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>net.datafaker</groupId>
+            <artifactId>datafaker</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-simple</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>io.qameta.allure</groupId>
+            <artifactId>allure-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
@@ -90,12 +146,25 @@
                             <goal>generate</goal>
                         </goals>
                         <configuration>
-                            <inputSpec>${url.api}/v2/swagger.json</inputSpec>
+                            <inputSpec>${url.api}/swagger.json</inputSpec>
                             <skip>${models.petstore.api.skip.generate}</skip>
                             <modelPackage>com.aqa.petstore.api.models.generated</modelPackage>
                         </configuration>
                     </execution>
                 </executions>
+            </plugin>
+
+            <plugin>
+                <groupId>io.qameta.allure</groupId>
+                <artifactId>allure-maven</artifactId>
+                <version>${allure.maven.plugin}</version>
+                <configuration>
+                    <reportVersion>${allure.report.version}</reportVersion>
+                    <installDirectory>${project.basedir}/.allure</installDirectory>
+                    <resultsDirectory>${project.build.directory}/allure-results</resultsDirectory>
+                    <reportDirectory>${project.build.directory}/site/allure-maven-plugin</reportDirectory>
+                    <historyEnabled>false</historyEnabled>
+                </configuration>
             </plugin>
         </plugins>
     </build>

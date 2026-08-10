@@ -7,7 +7,7 @@ import jakarta.ws.rs.core.GenericType;
 import java.util.Map;
 
 import static com.aqa.core.models.Request.request;
-import static com.aqa.jhipster.enumeration.Property.*;
+import static com.aqa.jhipster.config.Property.*;
 import static jakarta.ws.rs.HttpMethod.POST;
 import static jakarta.ws.rs.core.HttpHeaders.AUTHORIZATION;
 import static java.net.HttpURLConnection.HTTP_OK;

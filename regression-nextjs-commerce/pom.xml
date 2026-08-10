@@ -16,22 +16,9 @@
 
     <properties>
         <selenium.version>4.46.0</selenium.version>
-        <allure.version>2.35.3</allure.version>
         <ui.mobile.enabled>false</ui.mobile.enabled>
         <ui.mobile.device>Pixel 7</ui.mobile.device>
     </properties>
-
-    <dependencyManagement>
-        <dependencies>
-            <dependency>
-                <groupId>io.qameta.allure</groupId>
-                <artifactId>allure-bom</artifactId>
-                <version>${allure.version}</version>
-                <type>pom</type>
-                <scope>import</scope>
-            </dependency>
-        </dependencies>
-    </dependencyManagement>
 
     <dependencies>
         <dependency>
@@ -74,12 +61,6 @@
         <dependency>
             <groupId>org.assertj</groupId>
             <artifactId>assertj-core</artifactId>
-            <scope>test</scope>
-        </dependency>
-
-        <dependency>
-            <groupId>io.qameta.allure</groupId>
-            <artifactId>allure-cucumber7-jvm</artifactId>
             <scope>test</scope>
         </dependency>
 

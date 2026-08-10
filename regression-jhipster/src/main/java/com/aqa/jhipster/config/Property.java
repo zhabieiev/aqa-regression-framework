@@ -1,4 +1,4 @@
-package com.aqa.jhipster.enumeration;
+package com.aqa.jhipster.config;
 
 import com.aqa.core.enumerations.PropertyReader;
 

@@ -16,6 +16,6 @@ import static io.cucumber.junit.platform.engine.Constants.PLUGIN_PROPERTY_NAME;
 @ConfigurationParameter(key = FILTER_TAGS_PROPERTY_NAME, value = "not @wip")
 @ConfigurationParameter(
         key = PLUGIN_PROPERTY_NAME,
-        value = "pretty, summary, io.qameta.allure.cucumber7jvm.AllureCucumber7Jvm")
+        value = "pretty, summary")
 public class RunCucumberTest {
 }

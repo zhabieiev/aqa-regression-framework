@@ -17,7 +17,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.Locale;
 import java.util.UUID;
 
-import static com.aqa.jhipster.enumeration.Property.UI_TRACE;
+import static com.aqa.jhipster.config.Property.UI_TRACE;
 import static java.util.Objects.requireNonNull;
 
 @Slf4j

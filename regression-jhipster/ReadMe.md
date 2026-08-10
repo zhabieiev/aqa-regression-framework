@@ -48,10 +48,8 @@ The module is part of a reusable regression project:
 ```text
 regression
 ├── regression-core
-├── regression-petstore-api
-├── regression-toolshop
-├── other regression modules
-└── regression-jhipster
+├── regression-jhipster
+└── other regression modules
 ```
 
 `regression-core` provides shared infrastructure such as configuration access, request execution, response validation, variables, object population, converters, and common Cucumber utilities.
@@ -72,14 +70,16 @@ regression-jhipster
 │   │   │   │   ├── services
 │   │   │   │   └── steps
 │   │   │   └── ui
-│   │   │       ├── components
-│   │   │       ├── context
-│   │   │       ├── definitions
-│   │   │       ├── hooks
-│   │   │       ├── models
-│   │   │       ├── pages
-│   │   │       └── steps
+│   │   │   │   ├── components
+│   │   │   │   ├── context
+│   │   │   │   ├── definitions
+│   │   │   │   ├── hooks
+│   │   │   │   ├── models
+│   │   │   │   ├── pages
+│   │   │   │   └── steps
+│   │   │   └── config
 │   │   └── resources/properties
+│   │
 │   └── test
 │       └── resources/features
 │           ├── api

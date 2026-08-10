@@ -13,6 +13,7 @@
         <module>regression-core</module>
         <module>regression-petstore-api</module>
         <module>regression-jhipster</module>
+        <module>regression-nextjs-commerce</module>
     </modules>
 
     <properties>
@@ -81,11 +82,6 @@
                 <groupId>com.aqa</groupId>
                 <artifactId>regression-core</artifactId>
                 <version>${regression.core}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.aqa</groupId>
-                <artifactId>regression-petstore-api</artifactId>
-                <version>${regression.petstore.api}</version>
             </dependency>
             <dependency>
                 <groupId>org.slf4j</groupId>

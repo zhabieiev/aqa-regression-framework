@@ -9,10 +9,8 @@ import com.microsoft.playwright.Playwright;
 import java.util.Locale;
 
 import static com.aqa.core.enumerations.Property.INTERVAL_10_SECONDS;
-import static com.aqa.core.enumerations.Property.UI_BROWSER;
-import static com.aqa.core.enumerations.Property.UI_HEADLESS;
-import static com.aqa.core.enumerations.Property.UI_SLOW_MOTION;
 import static com.aqa.core.enumerations.Property.URL_UI;
+import static com.aqa.jhipster.enumeration.Property.*;
 import static java.util.Objects.requireNonNull;
 
 public final class PlaywrightManager implements AutoCloseable {

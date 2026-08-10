@@ -10,5 +10,5 @@ public enum Property implements PropertyReader {
     UI_BROWSER,
     UI_HEADLESS,
     UI_SLOW_MOTION,
-    UI_TRACE;
+    UI_TRACE
 }

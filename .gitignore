@@ -21,3 +21,6 @@
 .DS_Store
 Thumbs.db
 Desktop.ini
+
+#MCP-Server
+/.codex/config.toml

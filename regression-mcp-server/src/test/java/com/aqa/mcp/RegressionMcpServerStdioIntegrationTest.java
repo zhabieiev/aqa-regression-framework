@@ -61,9 +61,11 @@ class RegressionMcpServerStdioIntegrationTest {
 
                 JsonNode toolsList = request(stdin, stdout, readerExecutor, 2, "tools/list", Map.of());
                 JsonNode tool = toolsList.path("result").path("tools").get(0);
+                JsonNode moduleListTool = toolsList.path("result").path("tools").get(1);
                 JsonNode annotations = tool.path("annotations");
-                assertThat(toolsList.path("result").path("tools").size()).isEqualTo(1);
-                assertThat(tool.path("name").asText()).isEqualTo(RegressionMcpServer.TOOL_NAME);
+                JsonNode moduleListAnnotations = moduleListTool.path("annotations");
+                assertThat(toolsList.path("result").path("tools").size()).isEqualTo(2);
+                assertThat(tool.path("name").asText()).isEqualTo(RegressionMcpServer.OVERVIEW_TOOL_NAME);
                 assertThat(tool.path("inputSchema").path("additionalProperties").asBoolean()).isFalse();
                 assertThat(tool.path("outputSchema").path("required").size()).isEqualTo(2);
                 assertThat(annotations.has("readOnlyHint")).isTrue();
@@ -74,16 +76,27 @@ class RegressionMcpServerStdioIntegrationTest {
                 assertThat(annotations.path("idempotentHint").asBoolean()).isTrue();
                 assertThat(annotations.has("openWorldHint")).isTrue();
                 assertThat(annotations.path("openWorldHint").asBoolean()).isFalse();
+                assertThat(moduleListTool.path("name").asText()).isEqualTo(RegressionMcpServer.LIST_MODULES_TOOL_NAME);
+                assertThat(moduleListTool.path("inputSchema").path("additionalProperties").asBoolean()).isFalse();
+                assertThat(moduleListTool.path("outputSchema").has("oneOf")).isTrue();
+                assertThat(moduleListAnnotations.path("readOnlyHint").asBoolean()).isTrue();
+                assertThat(moduleListAnnotations.path("destructiveHint").asBoolean()).isFalse();
+                assertThat(moduleListAnnotations.path("idempotentHint").asBoolean()).isTrue();
+                assertThat(moduleListAnnotations.path("openWorldHint").asBoolean()).isFalse();
 
                 JsonNode firstCall = request(stdin, stdout, readerExecutor, 3, "tools/call", Map.of(
-                        "name", RegressionMcpServer.TOOL_NAME,
+                        "name", RegressionMcpServer.OVERVIEW_TOOL_NAME,
                         "arguments", Map.of()));
                 JsonNode secondCall = request(stdin, stdout, readerExecutor, 4, "tools/call", Map.of(
-                        "name", RegressionMcpServer.TOOL_NAME,
+                        "name", RegressionMcpServer.OVERVIEW_TOOL_NAME,
                         "arguments", Map.of()));
                 JsonNode invalidCall = request(stdin, stdout, readerExecutor, 5, "tools/call", Map.of(
-                        "name", RegressionMcpServer.TOOL_NAME,
+                        "name", RegressionMcpServer.OVERVIEW_TOOL_NAME,
                         "arguments", Map.of("arbitraryPath", "D:/outside-the-root")));
+
+                JsonNode moduleListCall = request(stdin, stdout, readerExecutor, 6, "tools/call", Map.of(
+                        "name", RegressionMcpServer.LIST_MODULES_TOOL_NAME,
+                        "arguments", Map.of()));
 
                 assertThat(firstCall.path("jsonrpc").asText()).isEqualTo("2.0");
                 assertThat(firstCall.path("result").path("isError").asBoolean()).isFalse();
@@ -99,6 +112,10 @@ class RegressionMcpServerStdioIntegrationTest {
                                         "buildTool", "Maven",
                                         "availability", "AVAILABLE")))));
                 assertThat(invalidCall.path("result").path("isError").asBoolean()).isTrue();
+                assertThat(moduleListCall.path("result").path("isError").asBoolean()).isFalse();
+                assertThat(moduleListCall.path("result").path("structuredContent"))
+                        .isEqualTo(JSON.readTree(JSON.writeValueAsString(Map.of(
+                                "status", "ok", "data", Map.of("modules", java.util.List.of())))));
             }
 
             assertThat(process.waitFor(10, TimeUnit.SECONDS))

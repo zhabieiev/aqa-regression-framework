@@ -20,7 +20,7 @@ class RegressionMcpServerContractTest {
     void exposesAnExplicitNoArgumentInputContractAndStructuredOutputContract() {
         SyncToolSpecification toolSpecification = RegressionMcpServer.overviewTool(validRoot());
 
-        assertThat(toolSpecification.tool().name()).isEqualTo(RegressionMcpServer.TOOL_NAME);
+        assertThat(toolSpecification.tool().name()).isEqualTo(RegressionMcpServer.OVERVIEW_TOOL_NAME);
         assertThat(toolSpecification.tool().inputSchema()).isEqualTo(Map.of(
                 "type", "object",
                 "additionalProperties", false));
@@ -45,6 +45,21 @@ class RegressionMcpServerContractTest {
                                 "javaVersion", "21",
                                 "buildTool", "Maven",
                                 "availability", "AVAILABLE")));
+    }
+
+    @Test
+    void exposesTheReadOnlyModuleListContract() {
+        SyncToolSpecification toolSpecification = RegressionMcpServer.listModulesTool(validRoot());
+
+        assertThat(toolSpecification.tool().name()).isEqualTo(RegressionMcpServer.LIST_MODULES_TOOL_NAME);
+        assertThat(toolSpecification.tool().inputSchema()).isEqualTo(Map.of(
+                "type", "object",
+                "additionalProperties", false));
+        assertThat(toolSpecification.tool().outputSchema()).containsKey("oneOf");
+        assertThat(toolSpecification.tool().annotations().readOnlyHint()).isTrue();
+        assertThat(toolSpecification.tool().annotations().destructiveHint()).isFalse();
+        assertThat(toolSpecification.tool().annotations().idempotentHint()).isTrue();
+        assertThat(toolSpecification.tool().annotations().openWorldHint()).isFalse();
     }
 
     private RepositoryRoot validRoot() {

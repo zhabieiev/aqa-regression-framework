@@ -125,3 +125,16 @@ Each product module has its own documentation with its product-specific configur
 - `regression-petstore-api/README.md`
 - `regression-jhipster/README.MD`
 - `regression-nextjs-commerce/README.md`
+
+## MCP inspection server
+
+`regression-mcp-server` is an isolated Java 21 MCP Java SDK 2.0.0 server. It is a local, read-only STDIO server with one deterministic tool, `regression_get_framework_overview`; it has no dependency on `regression-core` or any product module and exposes no HTTP transport, resources, prompts, sampling, or elicitation.
+
+The server reads its only repository boundary from `REGRESSION_ROOT`. The value must resolve to an existing directory containing the reactor root `pom.xml`. Package the executable server and run it with:
+
+```bash
+mvn -pl regression-mcp-server -am clean verify
+REGRESSION_ROOT=D:/mytests java -jar regression-mcp-server/target/regression-mcp-server.jar
+```
+
+Standard output is reserved for MCP JSON-RPC. Diagnostics are written to standard error.

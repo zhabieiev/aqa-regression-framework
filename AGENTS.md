@@ -45,3 +45,10 @@
 - Before editing, inspect the relevant POM, implementation, resource configuration, and module documentation.
 - Before finishing, run the narrowest relevant Maven verification. For documentation-only work, use `mvn validate` unless a narrower task-specific Maven command is sufficient; for code changes, verify the affected module and its required reactor dependencies.
 - Report only files actually changed and the verification result. State any runtime prerequisite or unverified external assumption explicitly.
+
+## Regression MCP server
+
+- Keep `regression-mcp-server` isolated from `regression-core` and every product module.
+- Keep its transport local synchronous STDIO only: stdout is exclusively MCP JSON-RPC and diagnostics go only to stderr. Do not add HTTP transport, network access, shell/child-process execution, resources, prompts, sampling, or elicitation without explicit authorization.
+- Accept repository scope only from `REGRESSION_ROOT`; do not introduce arbitrary-path tool inputs. Normalize the configured directory with `Path.toRealPath()` and require its root `pom.xml`.
+- Keep tools closed-world, read-only, deterministic, schema-defined, and process-test their STDIO behavior when changing the server.

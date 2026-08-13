@@ -138,3 +138,5 @@ REGRESSION_ROOT=D:/mytests java -jar regression-mcp-server/target/regression-mcp
 ```
 
 Standard output is reserved for MCP JSON-RPC. Diagnostics are written to standard error.
+
+Stage 12 completes the read-only MVP gate. Every tool declares closed input and output schemas and the four read-only MCP annotations. Successful calls and recoverable inspection errors use structured `status` envelopes; validation and parser errors leave the STDIO server usable for later requests. The server normalizes `REGRESSION_ROOT`, rejects unsafe POM module paths, XML DTDs/external entities, feature-root and symlink escapes, malformed Gherkin, invalid tag expressions, and bounded file-count/file-size violations. It does not write repository files, launch child processes, or access the network. The focused GitHub Actions job runs the parent plus `regression-mcp-server` on Ubuntu and fails if any MCP security test is skipped, so the symlink-escape test is exercised on a symlink-capable environment.

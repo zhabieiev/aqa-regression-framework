@@ -7,6 +7,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -107,7 +108,7 @@ class ModuleListTest {
         writePom(temporaryDirectory.resolve("outside").toAbsolutePath().toString());
 
         assertThatIllegalArgumentException().isThrownBy(this::moduleList)
-                .withMessageStartingWith("Module path must be relative:");
+                .withMessage("Module path must be relative.");
     }
 
     @Test
@@ -124,6 +125,25 @@ class ModuleListTest {
 
         assertThatIllegalArgumentException().isThrownBy(this::moduleList)
                 .withMessage("Module path escapes REGRESSION_ROOT: nested/../../outside");
+    }
+
+    @Test
+    void rejectsSymlinkedModulePathsEscapingTheRepositoryRoot() throws Exception {
+        Path repository = Files.createDirectory(temporaryDirectory.resolve("repository"));
+        Path outside = Files.createDirectory(temporaryDirectory.resolve("outside"));
+        Files.writeString(outside.resolve("pom.xml"), "<project/>");
+        try {
+            Files.createSymbolicLink(repository.resolve("escaped"), outside);
+        }
+        catch (java.nio.file.FileSystemException exception) {
+            Assumptions.abort("Symbolic-link creation is not permitted by this Windows account.");
+        }
+        Files.writeString(repository.resolve("pom.xml"),
+                "<project><modules><module>escaped</module></modules></project>");
+
+        assertThatIllegalArgumentException().isThrownBy(() -> ModuleList.forRoot(RepositoryRootResolver.resolve(repository)))
+                .isInstanceOf(RepositoryInspectionException.class)
+                .withMessage("Module path escapes REGRESSION_ROOT: escaped");
     }
 
     private ModuleList moduleList() {

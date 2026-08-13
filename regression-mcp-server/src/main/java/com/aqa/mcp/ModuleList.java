@@ -118,7 +118,7 @@ record ModuleList(List<ModuleDescriptor> modules) {
         try {
             Path path = Path.of(declaration);
             if (path.isAbsolute()) {
-                throw pomError("Module path must be relative: " + declaration);
+                throw pomError("Module path must be relative.");
             }
             return path;
         }

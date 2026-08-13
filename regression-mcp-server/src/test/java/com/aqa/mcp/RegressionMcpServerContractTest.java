@@ -24,11 +24,7 @@ class RegressionMcpServerContractTest {
         assertThat(toolSpecification.tool().inputSchema()).isEqualTo(Map.of(
                 "type", "object",
                 "additionalProperties", false));
-        assertThat(toolSpecification.tool().outputSchema())
-                .containsEntry("type", "object")
-                .containsEntry("additionalProperties", false)
-                .containsEntry("required", List.of("status", "data"))
-                .containsKey("properties");
+        assertThat(toolSpecification.tool().outputSchema()).containsKey("oneOf");
     }
 
     @Test

@@ -60,7 +60,7 @@ final class FeatureDiscovery {
     private static ModuleDescriptor module(RepositoryRoot root, String name) {
         if (name == null || name.isBlank()) throw error("INVALID_ARGUMENTS", "module must be a non-blank string.");
         return ModuleList.forRoot(root).modules().stream().filter(module -> module.name().equals(name)).findFirst()
-                .orElseThrow(() -> error("UNKNOWN_MODULE", "Module is not declared in the root pom.xml: " + name));
+                .orElseThrow(() -> error("UNKNOWN_MODULE", "Module is not declared in the root pom.xml."));
     }
 
     private static List<Path> files(Path root, Path realRoot) {

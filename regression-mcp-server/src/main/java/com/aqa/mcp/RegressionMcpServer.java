@@ -60,7 +60,7 @@ public final class RegressionMcpServer {
                         .build())
                 .callHandler((exchange, request) -> {
                     if (request.arguments() != null && !request.arguments().isEmpty()) {
-                        return errorResult("This tool does not accept arguments.");
+                        return errorResult("INVALID_ARGUMENTS", "This tool does not accept arguments.");
                     }
                     try {
                         Map<String, Object> output = FrameworkOverview.forRoot(
@@ -68,7 +68,7 @@ public final class RegressionMcpServer {
                         return successResult(output);
                     }
                     catch (IllegalArgumentException exception) {
-                        return errorResult(exception.getMessage());
+                        return errorResult("REPOSITORY_ERROR", exception.getMessage());
                     }
                 })
                 .build();
@@ -189,7 +189,7 @@ public final class RegressionMcpServer {
                 "required", List.of("name", "language", "tags", "path", "line", "scenarioCount"), "properties", Map.of(
                         "name", Map.of("type", "string"), "language", Map.of("type", "string"), "tags", stringArray(),
                         "path", Map.of("type", "string"), "line", Map.of("type", "integer"), "scenarioCount", Map.of("type", "integer")));
-        return discoverySchema(Map.of("module", Map.of("type", "string"), "featureRoot", Map.of("type", "string"),
+        return structuredOutputSchema(Map.of("module", Map.of("type", "string"), "featureRoot", Map.of("type", "string"),
                 "featureRootExists", Map.of("type", "boolean"), "features", Map.of("type", "array", "items", feature)),
                 List.of("module", "featureRoot", "featureRootExists", "features"));
     }
@@ -199,11 +199,11 @@ public final class RegressionMcpServer {
                 "required", List.of("feature", "name", "type", "tags", "path", "line"), "properties", Map.of(
                         "feature", Map.of("type", "string"), "name", Map.of("type", "string"), "type", Map.of("type", "string"),
                         "tags", stringArray(), "path", Map.of("type", "string"), "line", Map.of("type", "integer")));
-        return discoverySchema(Map.of("module", Map.of("type", "string"), "scenarios", Map.of("type", "array", "items", scenario)),
+        return structuredOutputSchema(Map.of("module", Map.of("type", "string"), "scenarios", Map.of("type", "array", "items", scenario)),
                 List.of("module", "scenarios"));
     }
 
-    private static Map<String, Object> discoverySchema(Map<String, Object> dataProperties, List<String> requiredData) {
+    private static Map<String, Object> structuredOutputSchema(Map<String, Object> dataProperties, List<String> requiredData) {
         Map<String, Object> success = Map.of("type", "object", "additionalProperties", false, "required", List.of("status", "data"),
                 "properties", Map.of("status", Map.of("type", "string", "const", "ok"), "data", Map.of("type", "object",
                         "additionalProperties", false, "required", requiredData, "properties", dataProperties)));
@@ -226,17 +226,8 @@ public final class RegressionMcpServer {
                 "javaVersion", Map.of("type", "string"),
                 "buildTool", Map.of("type", "string"),
                 "availability", Map.of("type", "string"));
-        return Map.of(
-                "type", "object",
-                "additionalProperties", false,
-                "required", List.of("status", "data"),
-                "properties", Map.of(
-                        "status", Map.of("type", "string", "const", "ok"),
-                        "data", Map.of(
-                                "type", "object",
-                                "additionalProperties", false,
-                                "required", List.of("name", "root", "javaVersion", "buildTool", "availability"),
-                                "properties", dataProperties)));
+        return structuredOutputSchema(dataProperties,
+                List.of("name", "root", "javaVersion", "buildTool", "availability"));
     }
 
     static Map<String, Object> moduleListOutputSchema() {
@@ -251,31 +242,8 @@ public final class RegressionMcpServer {
                 "additionalProperties", false,
                 "required", List.of("name", "relativePath", "type", "directoryExists", "pomExists"),
                 "properties", moduleProperties);
-        Map<String, Object> successSchema = Map.of(
-                "type", "object",
-                "additionalProperties", false,
-                "required", List.of("status", "data"),
-                "properties", Map.of(
-                        "status", Map.of("type", "string", "const", "ok"),
-                        "data", Map.of(
-                                "type", "object",
-                                "additionalProperties", false,
-                                "required", List.of("modules"),
-                                "properties", Map.of("modules", Map.of("type", "array", "items", moduleSchema)))));
-        Map<String, Object> errorSchema = Map.of(
-                "type", "object",
-                "additionalProperties", false,
-                "required", List.of("status", "error"),
-                "properties", Map.of(
-                        "status", Map.of("type", "string", "const", "error"),
-                        "error", Map.of(
-                                "type", "object",
-                                "additionalProperties", false,
-                                "required", List.of("code", "message"),
-                                "properties", Map.of(
-                                        "code", Map.of("type", "string"),
-                                        "message", Map.of("type", "string")))));
-        return Map.of("oneOf", List.of(successSchema, errorSchema));
+        return structuredOutputSchema(Map.of("modules", Map.of("type", "array", "items", moduleSchema)),
+                List.of("modules"));
     }
 
     private static ToolAnnotations readOnlyAnnotations() {
@@ -315,10 +283,7 @@ public final class RegressionMcpServer {
                 .build();
     }
 
-    private static CallToolResult errorResult(String message) {
-        return CallToolResult.builder()
-                .content(List.of(TextContent.builder(message).build()))
-                .isError(true)
-                .build();
+    private static CallToolResult errorResult(String code, String message) {
+        return moduleErrorResult(code, message);
     }
 }

@@ -62,6 +62,22 @@ class RegressionMcpServerContractTest {
         assertThat(toolSpecification.tool().annotations().openWorldHint()).isFalse();
     }
 
+    @Test
+    void exposesClosedReadOnlyFeatureAndScenarioContracts() {
+        for (SyncToolSpecification tool : List.of(RegressionMcpServer.featureListTool(validRoot()),
+                RegressionMcpServer.scenarioListTool(validRoot()))) {
+            assertThat(tool.tool().inputSchema().get("additionalProperties")).isEqualTo(false);
+            assertThat(tool.tool().outputSchema()).containsKey("oneOf");
+            assertThat(tool.tool().annotations().readOnlyHint()).isTrue();
+            assertThat(tool.tool().annotations().destructiveHint()).isFalse();
+            assertThat(tool.tool().annotations().idempotentHint()).isTrue();
+            assertThat(tool.tool().annotations().openWorldHint()).isFalse();
+        }
+        assertThat(RegressionMcpServer.featureListTool(validRoot()).tool().name())
+                .isEqualTo(RegressionMcpServer.LIST_FEATURES_TOOL_NAME);
+        assertThat(RegressionMcpServer.scenarioListTool(validRoot()).tool().name())
+                .isEqualTo(RegressionMcpServer.LIST_SCENARIOS_TOOL_NAME);
+    }
     private RepositoryRoot validRoot() {
         try {
             Files.writeString(temporaryDirectory.resolve("pom.xml"), "<project/>");

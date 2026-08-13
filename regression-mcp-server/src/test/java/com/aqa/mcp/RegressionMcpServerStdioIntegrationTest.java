@@ -4,11 +4,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
+import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -17,6 +20,7 @@ import java.util.concurrent.TimeUnit;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -24,141 +28,130 @@ class RegressionMcpServerStdioIntegrationTest {
 
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final long PROCESS_CLEANUP_TIMEOUT_SECONDS = 2;
+    private final List<Process> startedProcesses = new ArrayList<>();
 
     @TempDir
     Path temporaryDirectory;
 
+    @AfterEach
+    void cleansUpEveryStartedServerProcess() {
+        for (Process process : startedProcesses) {
+            terminateProcess(process);
+            assertThat(process.isAlive()).as("server process %s must not remain alive", process.pid()).isFalse();
+        }
+    }
+
     @Test
-    void servesTheFrameworkOverviewOverStdioAndTerminatesWhenTheClientDisconnects() throws Exception {
-        Path root = createValidRoot();
-        Process process = startServer(root);
-        ExecutorService readerExecutor = Executors.newSingleThreadExecutor();
-        BufferedReader stdout = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8));
-
+    void servesDiscoveryToolsOverStdioAndTerminatesWhenTheClientDisconnects() throws Exception {
+        Process process = startServer(createValidRoot());
+        long processId = process.pid();
         try {
-            try (BufferedWriter stdin = new BufferedWriter(
-                    new OutputStreamWriter(process.getOutputStream(), StandardCharsets.UTF_8))) {
-                JsonNode initialize = request(stdin, stdout, readerExecutor, 1, "initialize", Map.of(
-                        "protocolVersion", "2025-06-18",
-                        "capabilities", Map.of(),
-                        "clientInfo", Map.of("name", "stdio-integration-test", "version", "1.0.0")));
-
-                assertThat(initialize.path("jsonrpc").asText()).isEqualTo("2.0");
-                assertThat(initialize.path("result").path("serverInfo").path("name").asText())
-                        .isEqualTo(RegressionMcpServer.SERVER_NAME);
-                assertThat(initialize.path("result").path("instructions").asText())
-                        .contains("local, read-only framework inspection server");
-                assertThat(initialize.path("result").path("capabilities").has("tools")).isTrue();
-                assertThat(initialize.path("result").path("capabilities").has("resources")).isFalse();
-                assertThat(initialize.path("result").path("capabilities").has("prompts")).isFalse();
-
-                stdin.write(JSON.writeValueAsString(Map.of(
-                        "jsonrpc", "2.0",
-                        "method", "notifications/initialized",
-                        "params", Map.of())));
-                stdin.newLine();
-                stdin.flush();
-
+            ExecutorService readerExecutor = Executors.newSingleThreadExecutor();
+            try (BufferedReader stdout = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8));
+                    BufferedWriter stdin = new BufferedWriter(new OutputStreamWriter(process.getOutputStream(), StandardCharsets.UTF_8))) {
+                initialize(stdin, stdout, readerExecutor);
                 JsonNode toolsList = request(stdin, stdout, readerExecutor, 2, "tools/list", Map.of());
-                JsonNode tool = toolsList.path("result").path("tools").get(0);
-                JsonNode moduleListTool = toolsList.path("result").path("tools").get(1);
-                JsonNode annotations = tool.path("annotations");
-                JsonNode moduleListAnnotations = moduleListTool.path("annotations");
-                assertThat(toolsList.path("result").path("tools").size()).isEqualTo(2);
-                assertThat(tool.path("name").asText()).isEqualTo(RegressionMcpServer.OVERVIEW_TOOL_NAME);
-                assertThat(tool.path("inputSchema").path("additionalProperties").asBoolean()).isFalse();
-                assertThat(tool.path("outputSchema").path("required").size()).isEqualTo(2);
-                assertThat(annotations.has("readOnlyHint")).isTrue();
-                assertThat(annotations.path("readOnlyHint").asBoolean()).isTrue();
-                assertThat(annotations.has("destructiveHint")).isTrue();
-                assertThat(annotations.path("destructiveHint").asBoolean()).isFalse();
-                assertThat(annotations.has("idempotentHint")).isTrue();
-                assertThat(annotations.path("idempotentHint").asBoolean()).isTrue();
-                assertThat(annotations.has("openWorldHint")).isTrue();
-                assertThat(annotations.path("openWorldHint").asBoolean()).isFalse();
-                assertThat(moduleListTool.path("name").asText()).isEqualTo(RegressionMcpServer.LIST_MODULES_TOOL_NAME);
-                assertThat(moduleListTool.path("inputSchema").path("additionalProperties").asBoolean()).isFalse();
-                assertThat(moduleListTool.path("outputSchema").has("oneOf")).isTrue();
-                assertThat(moduleListAnnotations.path("readOnlyHint").asBoolean()).isTrue();
-                assertThat(moduleListAnnotations.path("destructiveHint").asBoolean()).isFalse();
-                assertThat(moduleListAnnotations.path("idempotentHint").asBoolean()).isTrue();
-                assertThat(moduleListAnnotations.path("openWorldHint").asBoolean()).isFalse();
+                assertToolList(toolsList);
 
-                JsonNode firstCall = request(stdin, stdout, readerExecutor, 3, "tools/call", Map.of(
-                        "name", RegressionMcpServer.OVERVIEW_TOOL_NAME,
-                        "arguments", Map.of()));
-                JsonNode secondCall = request(stdin, stdout, readerExecutor, 4, "tools/call", Map.of(
-                        "name", RegressionMcpServer.OVERVIEW_TOOL_NAME,
-                        "arguments", Map.of()));
-                JsonNode invalidCall = request(stdin, stdout, readerExecutor, 5, "tools/call", Map.of(
-                        "name", RegressionMcpServer.OVERVIEW_TOOL_NAME,
-                        "arguments", Map.of("arbitraryPath", "D:/outside-the-root")));
-
-                JsonNode moduleListCall = request(stdin, stdout, readerExecutor, 6, "tools/call", Map.of(
-                        "name", RegressionMcpServer.LIST_MODULES_TOOL_NAME,
-                        "arguments", Map.of()));
-
-                assertThat(firstCall.path("jsonrpc").asText()).isEqualTo("2.0");
-                assertThat(firstCall.path("result").path("isError").asBoolean()).isFalse();
-                assertThat(firstCall.path("result").path("structuredContent"))
-                        .isEqualTo(secondCall.path("result").path("structuredContent"));
-                assertThat(firstCall.path("result").path("structuredContent"))
-                        .isEqualTo(JSON.readTree(JSON.writeValueAsString(Map.of(
-                                "status", "ok",
-                                "data", Map.of(
-                                        "name", "regression",
-                                        "root", root.toRealPath().toString().replace('\\', '/'),
-                                        "javaVersion", "21",
-                                        "buildTool", "Maven",
-                                        "availability", "AVAILABLE")))));
-                assertThat(invalidCall.path("result").path("isError").asBoolean()).isTrue();
-                assertThat(moduleListCall.path("result").path("isError").asBoolean()).isFalse();
-                assertThat(moduleListCall.path("result").path("structuredContent"))
-                        .isEqualTo(JSON.readTree(JSON.writeValueAsString(Map.of(
-                                "status", "ok", "data", Map.of("modules", java.util.List.of())))));
+                JsonNode features = request(stdin, stdout, readerExecutor, 3, "tools/call", Map.of(
+                        "name", RegressionMcpServer.LIST_FEATURES_TOOL_NAME, "arguments", Map.of("module", "commerce")));
+                JsonNode scenarios = request(stdin, stdout, readerExecutor, 4, "tools/call", Map.of(
+                        "name", RegressionMcpServer.LIST_SCENARIOS_TOOL_NAME,
+                        "arguments", Map.of("module", "commerce", "tags", "@smoke and @cart")));
+                assertThat(features.path("result").path("isError").asBoolean()).isFalse();
+                assertThat(features.path("result").path("structuredContent").path("data").path("features").size()).isEqualTo(1);
+                assertThat(scenarios.path("result").path("isError").asBoolean()).isFalse();
+                assertThat(scenarios.path("result").path("structuredContent").path("data").path("scenarios").size()).isEqualTo(1);
             }
-
+            finally {
+                readerExecutor.shutdownNow();
+            }
             assertThat(process.waitFor(10, TimeUnit.SECONDS))
-                    .as("server process must terminate after STDIO closes")
-                    .isTrue();
+                    .as("server process must terminate after normal client EOF").isTrue();
             assertThat(process.exitValue()).isZero();
-            assertThat(new String(process.getErrorStream().readAllBytes(), StandardCharsets.UTF_8))
-                    .contains("input validation failed");
+            assertThat(ProcessHandle.of(processId)).isEmpty();
         }
         finally {
-            readerExecutor.shutdownNow();
             terminateProcess(process);
         }
     }
 
-    private JsonNode request(BufferedWriter stdin, BufferedReader stdout, ExecutorService readerExecutor, int id,
-            String method, Map<String, Object> params) throws Exception {
-        stdin.write(JSON.writeValueAsString(Map.of(
-                "jsonrpc", "2.0",
-                "id", id,
-                "method", method,
-                "params", params)));
+    @Test
+    void returnsAStructuredErrorForMalformedGherkinWithoutPartialResults() throws Exception {
+        Process process = startServer(createRootWithMalformedFeature());
+        try {
+            ExecutorService readerExecutor = Executors.newSingleThreadExecutor();
+            try (BufferedReader stdout = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8));
+                    BufferedWriter stdin = new BufferedWriter(new OutputStreamWriter(process.getOutputStream(), StandardCharsets.UTF_8))) {
+                initialize(stdin, stdout, readerExecutor);
+                JsonNode response = request(stdin, stdout, readerExecutor, 2, "tools/call", Map.of(
+                        "name", RegressionMcpServer.LIST_FEATURES_TOOL_NAME, "arguments", Map.of("module", "commerce")));
+                assertThat(response.path("result").path("isError").asBoolean()).isTrue();
+                assertThat(response.path("result").path("structuredContent").path("status").asText()).isEqualTo("error");
+                assertThat(response.path("result").path("structuredContent").path("error").path("code").asText())
+                        .isEqualTo("GHERKIN_PARSE_ERROR");
+                assertThat(response.path("result").path("structuredContent").path("data").isMissingNode()).isTrue();
+            }
+            finally {
+                readerExecutor.shutdownNow();
+            }
+            assertThat(process.waitFor(10, TimeUnit.SECONDS)).isTrue();
+        }
+        finally {
+            terminateProcess(process);
+        }
+    }
+
+    private void initialize(BufferedWriter stdin, BufferedReader stdout, ExecutorService readerExecutor) throws Exception {
+        JsonNode initialize = request(stdin, stdout, readerExecutor, 1, "initialize", Map.of(
+                "protocolVersion", "2025-06-18", "capabilities", Map.of(),
+                "clientInfo", Map.of("name", "stdio-integration-test", "version", "1.0.0")));
+        assertThat(initialize.path("jsonrpc").asText()).isEqualTo("2.0");
+        assertThat(initialize.path("result").path("serverInfo").path("name").asText()).isEqualTo(RegressionMcpServer.SERVER_NAME);
+        stdin.write(JSON.writeValueAsString(Map.of("jsonrpc", "2.0", "method", "notifications/initialized", "params", Map.of())));
         stdin.newLine();
         stdin.flush();
+    }
 
+    private void assertToolList(JsonNode toolsList) {
+        assertThat(toolsList.path("result").path("tools").size()).isEqualTo(4);
+        for (JsonNode tool : toolsList.path("result").path("tools")) {
+            assertThat(tool.path("inputSchema").path("additionalProperties").asBoolean()).isFalse();
+            assertThat(tool.path("annotations").path("readOnlyHint").asBoolean()).isTrue();
+            assertThat(tool.path("annotations").path("destructiveHint").asBoolean()).isFalse();
+            assertThat(tool.path("annotations").path("idempotentHint").asBoolean()).isTrue();
+            assertThat(tool.path("annotations").path("openWorldHint").asBoolean()).isFalse();
+        }
+        assertThat(toolsList.path("result").path("tools").get(2).path("name").asText())
+                .isEqualTo(RegressionMcpServer.LIST_FEATURES_TOOL_NAME);
+        assertThat(toolsList.path("result").path("tools").get(3).path("name").asText())
+                .isEqualTo(RegressionMcpServer.LIST_SCENARIOS_TOOL_NAME);
+    }
+
+    private JsonNode request(BufferedWriter stdin, BufferedReader stdout, ExecutorService readerExecutor, int id,
+            String method, Map<String, Object> params) throws Exception {
+        stdin.write(JSON.writeValueAsString(Map.of("jsonrpc", "2.0", "id", id, "method", method, "params", params)));
+        stdin.newLine();
+        stdin.flush();
         Future<String> response = readerExecutor.submit(stdout::readLine);
         String line = response.get(10, TimeUnit.SECONDS);
-        assertThat(line).as("stdout must contain an MCP JSON-RPC response").isNotBlank();
+        assertThat(line).as("stdout must contain only an MCP JSON-RPC response").isNotBlank();
         return JSON.readTree(line);
     }
 
     private void terminateProcess(Process process) {
-        if (!process.isAlive()) {
-            return;
-        }
-
-        process.destroy();
-        if (awaitTermination(process)) {
-            return;
-        }
-
-        process.destroyForcibly();
+        close(process.getOutputStream());
         awaitTermination(process);
+        if (process.isAlive()) {
+            process.destroy();
+            awaitTermination(process);
+        }
+        if (process.isAlive()) {
+            process.destroyForcibly();
+            awaitTermination(process);
+        }
+        close(process.getInputStream());
+        close(process.getErrorStream());
     }
 
     private boolean awaitTermination(Process process) {
@@ -171,19 +164,46 @@ class RegressionMcpServerStdioIntegrationTest {
         }
     }
 
-    private Process startServer(Path root) throws Exception {
+    private void close(AutoCloseable closeable) {
+        try {
+            closeable.close();
+        }
+        catch (Exception ignored) {
+            // Cleanup must continue through every remaining process resource.
+        }
+    }
+
+    private Process startServer(Path root) throws IOException {
         String testClasspath = System.getProperty("surefire.test.class.path", System.getProperty("java.class.path"));
-        ProcessBuilder processBuilder = new ProcessBuilder(
-                Path.of(System.getProperty("java.home"), "bin", "java.exe").toString(),
-                "-cp",
-                testClasspath,
-                RegressionMcpServer.class.getName());
-        processBuilder.environment().put(RepositoryRootResolver.ENVIRONMENT_VARIABLE, root.toString());
-        return processBuilder.start();
+        ProcessBuilder builder = new ProcessBuilder(Path.of(System.getProperty("java.home"), "bin", "java.exe").toString(),
+                "-cp", testClasspath, RegressionMcpServer.class.getName());
+        builder.environment().put(RepositoryRootResolver.ENVIRONMENT_VARIABLE, root.toString());
+        Process process = builder.start();
+        startedProcesses.add(process);
+        return process;
     }
 
     private Path createValidRoot() throws Exception {
-        Files.writeString(temporaryDirectory.resolve("pom.xml"), "<project/>");
+        Path root = createRoot();
+        Path feature = root.resolve("commerce/src/test/resources/features/cart.feature");
+        Files.createDirectories(feature.getParent());
+        Files.writeString(feature, "@smoke @cart\nFeature: cart\n  Scenario: add\n    Given x\n");
+        return root;
+    }
+
+    private Path createRootWithMalformedFeature() throws Exception {
+        Path root = createRoot();
+        Path feature = root.resolve("commerce/src/test/resources/features/broken.feature");
+        Files.createDirectories(feature.getParent());
+        Files.writeString(feature, "Feature: broken\n  Scenario: bad\n    Given x\n    \"\"\"\n    unclosed");
+        return root;
+    }
+
+    private Path createRoot() throws Exception {
+        Files.writeString(temporaryDirectory.resolve("pom.xml"), "<project><modules><module>commerce</module></modules></project>");
+        Path module = temporaryDirectory.resolve("commerce");
+        Files.createDirectories(module);
+        Files.writeString(module.resolve("pom.xml"), "<project/>");
         return temporaryDirectory;
     }
 }

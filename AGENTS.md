@@ -20,7 +20,7 @@
 
 ## Architecture
 
-- Preserve the established direction: `Gherkin → definitions → steps → pages/services → components/clients`.
+- Preserve the established direction: `Gherkin â†’ definitions â†’ steps â†’ pages/services â†’ components/clients`.
 - Choose JUnit for technical checks and Cucumber when Gherkin is a useful executable specification; do not force one runner model onto every module.
 - Keep Cucumber definitions thin: bind Gherkin input, convert it when necessary, and delegate. Do not place browser calls, locators, assertions, services, or business branching in definitions.
 - Keep API transport, request construction, and response deserialization in services/clients. Keep scenario and business orchestration in steps.
@@ -52,3 +52,4 @@
 - Keep its transport local synchronous STDIO only: stdout is exclusively MCP JSON-RPC and diagnostics go only to stderr. Do not add HTTP transport, network access, shell/child-process execution, resources, prompts, sampling, or elicitation without explicit authorization.
 - Accept repository scope only from `REGRESSION_ROOT`; do not introduce arbitrary-path tool inputs. Normalize the configured directory with `Path.toRealPath()` and require its root `pom.xml`.
 - Keep tools closed-world, read-only, deterministic, schema-defined, and process-test their STDIO behavior when changing the server.
+- Gherkin discovery tools must resolve only root-POM-declared modules and inspect only `<module>/src/test/resources/features`. Use the official Cucumber parser and Tag Expressions library; preserve UTF-8 input, Pickle-based scenario expansion, bounded file count/size, deterministic order, and repository/module/feature-root path and symlink containment.

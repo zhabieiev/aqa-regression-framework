@@ -6,10 +6,10 @@ This repository is a Java 21 Maven reactor for regression automation across API 
 
 ```text
 regression (com.aqa:regression, packaging=pom)
-├── regression-core
-├── regression-petstore-api
-├── regression-jhipster
-└── regression-nextjs-commerce
+â”œâ”€â”€ regression-core
+â”œâ”€â”€ regression-petstore-api
+â”œâ”€â”€ regression-jhipster
+â””â”€â”€ regression-nextjs-commerce
 ```
 
 `regression` is the parent and reactor aggregator. It manages Java 21, shared dependency versions, common compiler and Surefire configuration, the default `env=dev` setting, and OpenAPI Generator defaults.
@@ -44,21 +44,21 @@ API-oriented flows use the following separation:
 
 ```text
 Gherkin or JUnit test
-  → definitions or domain steps
-    → product API service
-      → regression-core request model and Jersey client
-        → target API
+  â†’ definitions or domain steps
+    â†’ product API service
+      â†’ regression-core request model and Jersey client
+        â†’ target API
 ```
 
 UI-oriented Cucumber flows use:
 
 ```text
 Gherkin
-  → definitions
-    → steps
-      → pages
-        → components
-          → browser client
+  â†’ definitions
+    â†’ steps
+      â†’ pages
+        â†’ components
+          â†’ browser client
 ```
 
 Definitions bind Gherkin input and delegate. Steps orchestrate the scenario and own scenario-level assertions. Pages own route behaviour; components own reusable DOM regions. The Next.js Commerce module uses `WaitManager` and Selenium `WebDriverWait` for explicit synchronization. JHipster UI scenarios use Playwright pages, browser contexts, and hooks.
@@ -128,7 +128,7 @@ Each product module has its own documentation with its product-specific configur
 
 ## MCP inspection server
 
-`regression-mcp-server` is an isolated Java 21 MCP Java SDK 2.0.0 server. It is a local, read-only STDIO server with one deterministic tool, `regression_get_framework_overview`; it has no dependency on `regression-core` or any product module and exposes no HTTP transport, resources, prompts, sampling, or elicitation.
+`regression-mcp-server` is an isolated Java 21 MCP Java SDK 2.0.0 server. It is a local, read-only STDIO server with deterministic overview, module-listing, and stage-11 Gherkin-discovery tools: `regression_get_framework_overview`, `regression_list_modules`, `regression_list_features`, and `regression_list_scenarios`. Feature discovery is restricted to a module declared by the root POM and that module's `src/test/resources/features` tree. It uses the official Cucumber Gherkin parser and Tag Expressions library, returns parser-derived executable Pickles, applies deterministic ordering and bounded path/file-size/file-count validation, and has no dependency on `regression-core` or any product module. It exposes no HTTP transport, resources, prompts, sampling, or elicitation.
 
 The server reads its only repository boundary from `REGRESSION_ROOT`. The value must resolve to an existing directory containing the reactor root `pom.xml`. Package the executable server and run it with:
 

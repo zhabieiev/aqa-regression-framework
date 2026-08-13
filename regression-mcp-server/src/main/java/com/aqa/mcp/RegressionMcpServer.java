@@ -4,6 +4,9 @@ import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 
+import io.cucumber.tagexpressions.Expression;
+import io.cucumber.tagexpressions.TagExpressionParser;
+
 import io.modelcontextprotocol.json.McpJsonDefaults;
 import io.modelcontextprotocol.server.McpServer;
 import io.modelcontextprotocol.server.McpServerFeatures.SyncToolSpecification;
@@ -20,6 +23,8 @@ public final class RegressionMcpServer {
     static final String SERVER_VERSION = "1.0.0";
     static final String OVERVIEW_TOOL_NAME = "regression_get_framework_overview";
     static final String LIST_MODULES_TOOL_NAME = "regression_list_modules";
+    static final String LIST_FEATURES_TOOL_NAME = "regression_list_features";
+    static final String LIST_SCENARIOS_TOOL_NAME = "regression_list_scenarios";
     private static final String INSTRUCTIONS =
             "This is a local, read-only framework inspection server. It exposes only deterministic inspection "
                     + "tools for the repository configured by REGRESSION_ROOT.";
@@ -42,7 +47,7 @@ public final class RegressionMcpServer {
                 .serverInfo(SERVER_NAME, SERVER_VERSION)
                 .instructions(INSTRUCTIONS)
                 .capabilities(ServerCapabilities.builder().tools(false).build())
-                .tools(overviewTool(repositoryRoot), listModulesTool(repositoryRoot))
+                .tools(overviewTool(repositoryRoot), listModulesTool(repositoryRoot), featureListTool(repositoryRoot), scenarioListTool(repositoryRoot))
                 .build();
     }
 
@@ -94,6 +99,122 @@ public final class RegressionMcpServer {
                 .build();
     }
 
+    static SyncToolSpecification featureListTool(RepositoryRoot repositoryRoot) {
+        return SyncToolSpecification.builder()
+                .tool(Tool.builder(LIST_FEATURES_TOOL_NAME, moduleInputSchema(false))
+                        .description("Lists parsed Gherkin features below a declared module's feature root.")
+                        .annotations(readOnlyAnnotations()).outputSchema(featureOutputSchema()).build())
+                .callHandler((exchange, request) -> {
+                    try {
+                        String module = moduleArgument(request.arguments(), false);
+                        FeatureDiscovery.DiscoveryResult discovery = FeatureDiscovery.discover(
+                                RepositoryRootResolver.resolve(repositoryRoot.path()), module);
+                        return successResult(featureOutput(discovery));
+                    } catch (RepositoryInspectionException exception) {
+                        return moduleErrorResult(exception.code(), exception.getMessage());
+                    } catch (IllegalArgumentException exception) {
+                        return moduleErrorResult("REPOSITORY_ERROR", exception.getMessage());
+                    }
+                }).build();
+    }
+
+    static SyncToolSpecification scenarioListTool(RepositoryRoot repositoryRoot) {
+        return SyncToolSpecification.builder()
+                .tool(Tool.builder(LIST_SCENARIOS_TOOL_NAME, moduleInputSchema(true))
+                        .description("Lists executable Cucumber scenarios below a declared module's feature root.")
+                        .annotations(readOnlyAnnotations()).outputSchema(scenarioOutputSchema()).build())
+                .callHandler((exchange, request) -> {
+                    try {
+                        String module = moduleArgument(request.arguments(), true);
+                        Expression expression = tagExpression(request.arguments());
+                        FeatureDiscovery.DiscoveryResult discovery = FeatureDiscovery.discover(
+                                RepositoryRootResolver.resolve(repositoryRoot.path()), module);
+                        List<Map<String, Object>> scenarios = discovery.scenarios().stream()
+                                .filter(scenario -> expression == null || expression.evaluate(scenario.tags()))
+                                .map(RegressionMcpServer::scenarioOutput).toList();
+                        return successResult(Map.of("status", "ok", "data", Map.of("module", module, "scenarios", scenarios)));
+                    } catch (RepositoryInspectionException exception) {
+                        return moduleErrorResult(exception.code(), exception.getMessage());
+                    } catch (IllegalArgumentException exception) {
+                        return moduleErrorResult(exception instanceof RepositoryInspectionException inspection ? inspection.code() : "INVALID_ARGUMENTS", exception.getMessage());
+                    }
+                }).build();
+    }
+
+    private static String moduleArgument(Map<String, Object> arguments, boolean tagsAllowed) {
+        if (arguments == null || !arguments.containsKey("module") || !(arguments.get("module") instanceof String module)
+                || module.isBlank() || arguments.size() > (tagsAllowed ? 2 : 1)
+                || arguments.keySet().stream().anyMatch(key -> !key.equals("module") && (!tagsAllowed || !key.equals("tags")))) {
+            throw new RepositoryInspectionException("INVALID_ARGUMENTS", "module must be a non-blank string and arguments must be known.");
+        }
+        if (tagsAllowed && arguments.containsKey("tags") && !(arguments.get("tags") instanceof String)) {
+            throw new RepositoryInspectionException("INVALID_ARGUMENTS", "tags must be a string.");
+        }
+        return module;
+    }
+
+    private static Expression tagExpression(Map<String, Object> arguments) {
+        if (arguments == null || !arguments.containsKey("tags")) return null;
+        String tags = (String) arguments.get("tags");
+        if (tags.isBlank()) throw new RepositoryInspectionException("INVALID_TAG_EXPRESSION", "tags must not be blank.");
+        try {
+            return TagExpressionParser.parse(tags);
+        } catch (RuntimeException exception) {
+            throw new RepositoryInspectionException("INVALID_TAG_EXPRESSION", "Invalid tag expression: " + exception.getMessage());
+        }
+    }
+
+    private static Map<String, Object> featureOutput(FeatureDiscovery.DiscoveryResult discovery) {
+        List<Map<String, Object>> features = discovery.features().stream().map(feature -> Map.<String, Object>of(
+                "name", feature.name(), "language", feature.language(), "tags", feature.tags(), "path", feature.path(),
+                "line", feature.line(), "scenarioCount", feature.scenarios().size())).toList();
+        return Map.of("status", "ok", "data", Map.of("module", discovery.module(), "featureRoot", FeatureDiscovery.FEATURE_ROOT,
+                "featureRootExists", discovery.featureRootExists(), "features", features));
+    }
+
+    private static Map<String, Object> scenarioOutput(FeatureDiscovery.ExecutableScenario scenario) {
+        return Map.of("feature", scenario.feature(), "name", scenario.name(), "type", scenario.type(),
+                "tags", scenario.tags(), "path", scenario.path(), "line", scenario.line());
+    }
+
+    private static Map<String, Object> moduleInputSchema(boolean allowTags) {
+        Map<String, Object> properties = new java.util.LinkedHashMap<>();
+        properties.put("module", Map.of("type", "string"));
+        if (allowTags) properties.put("tags", Map.of("type", "string"));
+        return Map.of("type", "object", "additionalProperties", false, "required", List.of("module"), "properties", properties);
+    }
+
+    private static Map<String, Object> featureOutputSchema() {
+        Map<String, Object> feature = Map.of("type", "object", "additionalProperties", false,
+                "required", List.of("name", "language", "tags", "path", "line", "scenarioCount"), "properties", Map.of(
+                        "name", Map.of("type", "string"), "language", Map.of("type", "string"), "tags", stringArray(),
+                        "path", Map.of("type", "string"), "line", Map.of("type", "integer"), "scenarioCount", Map.of("type", "integer")));
+        return discoverySchema(Map.of("module", Map.of("type", "string"), "featureRoot", Map.of("type", "string"),
+                "featureRootExists", Map.of("type", "boolean"), "features", Map.of("type", "array", "items", feature)),
+                List.of("module", "featureRoot", "featureRootExists", "features"));
+    }
+
+    private static Map<String, Object> scenarioOutputSchema() {
+        Map<String, Object> scenario = Map.of("type", "object", "additionalProperties", false,
+                "required", List.of("feature", "name", "type", "tags", "path", "line"), "properties", Map.of(
+                        "feature", Map.of("type", "string"), "name", Map.of("type", "string"), "type", Map.of("type", "string"),
+                        "tags", stringArray(), "path", Map.of("type", "string"), "line", Map.of("type", "integer")));
+        return discoverySchema(Map.of("module", Map.of("type", "string"), "scenarios", Map.of("type", "array", "items", scenario)),
+                List.of("module", "scenarios"));
+    }
+
+    private static Map<String, Object> discoverySchema(Map<String, Object> dataProperties, List<String> requiredData) {
+        Map<String, Object> success = Map.of("type", "object", "additionalProperties", false, "required", List.of("status", "data"),
+                "properties", Map.of("status", Map.of("type", "string", "const", "ok"), "data", Map.of("type", "object",
+                        "additionalProperties", false, "required", requiredData, "properties", dataProperties)));
+        Map<String, Object> failure = Map.of("type", "object", "additionalProperties", false, "required", List.of("status", "error"),
+                "properties", Map.of("status", Map.of("type", "string", "const", "error"), "error", Map.of("type", "object",
+                        "additionalProperties", false, "required", List.of("code", "message"), "properties", Map.of(
+                                "code", Map.of("type", "string"), "message", Map.of("type", "string")))));
+        return Map.of("oneOf", List.of(success, failure));
+    }
+
+    private static Map<String, Object> stringArray() { return Map.of("type", "array", "items", Map.of("type", "string")); }
     static Map<String, Object> inputSchema() {
         return Map.of("type", "object", "additionalProperties", false);
     }

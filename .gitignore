@@ -22,5 +22,6 @@
 Thumbs.db
 Desktop.ini
 
-#MCP-Server
+# Local MCP configuration
 /.codex/config.toml
+/.ai/mcp/mcp.json

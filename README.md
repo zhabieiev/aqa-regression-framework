@@ -6,10 +6,11 @@ This repository is a Java 21 Maven reactor for regression automation across API 
 
 ```text
 regression (com.aqa:regression, packaging=pom)
-â”œâ”€â”€ regression-core
-â”œâ”€â”€ regression-petstore-api
-â”œâ”€â”€ regression-jhipster
-â””â”€â”€ regression-nextjs-commerce
+|-- regression-core
+|-- regression-petstore-api
+|-- regression-jhipster
+|-- regression-nextjs-commerce
+\-- regression-mcp-server
 ```
 
 `regression` is the parent and reactor aggregator. It manages Java 21, shared dependency versions, common compiler and Surefire configuration, the default `env=dev` setting, and OpenAPI Generator defaults.
@@ -44,21 +45,21 @@ API-oriented flows use the following separation:
 
 ```text
 Gherkin or JUnit test
-  â†’ definitions or domain steps
-    â†’ product API service
-      â†’ regression-core request model and Jersey client
-        â†’ target API
+  -> definitions or domain steps
+    -> product API service
+      -> regression-core request model and Jersey client
+        -> target API
 ```
 
 UI-oriented Cucumber flows use:
 
 ```text
 Gherkin
-  â†’ definitions
-    â†’ steps
-      â†’ pages
-        â†’ components
-          â†’ browser client
+  -> definitions
+    -> steps
+      -> pages
+        -> components
+          -> browser client
 ```
 
 Definitions bind Gherkin input and delegate. Steps orchestrate the scenario and own scenario-level assertions. Pages own route behaviour; components own reusable DOM regions. The Next.js Commerce module uses `WaitManager` and Selenium `WebDriverWait` for explicit synchronization. JHipster UI scenarios use Playwright pages, browser contexts, and hooks.

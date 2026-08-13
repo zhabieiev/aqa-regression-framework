@@ -14,6 +14,7 @@
         <module>regression-petstore-api</module>
         <module>regression-jhipster</module>
         <module>regression-nextjs-commerce</module>
+        <module>regression-mcp-server</module>
     </modules>
 
     <properties>
@@ -52,6 +53,8 @@
         <regression.core>1.0.0</regression.core>
         <regression.petstore.api>1.0.0</regression.petstore.api>
         <cucumber.java>7.18.1</cucumber.java>
+        <cucumber.gherkin>28.0.0</cucumber.gherkin>
+        <cucumber.tag.expressions>6.1.0</cucumber.tag.expressions>
         <junit.jupiter>5.10.3</junit.jupiter>
         <junit.platform.suite>1.10.3</junit.platform.suite>
 
@@ -192,6 +195,16 @@
                 <groupId>io.cucumber</groupId>
                 <artifactId>cucumber-picocontainer</artifactId>
                 <version>${cucumber.picocontainer}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.cucumber</groupId>
+                <artifactId>gherkin</artifactId>
+                <version>${cucumber.gherkin}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.cucumber</groupId>
+                <artifactId>tag-expressions</artifactId>
+                <version>${cucumber.tag.expressions}</version>
             </dependency>
             <dependency>
                 <groupId>org.junit.jupiter</groupId>

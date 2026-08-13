@@ -7,6 +7,42 @@ on:
     branches: [ "master", "actions" ]
 
 jobs:
+  regression-mcp-server-security:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Verify the local read-only MCP server
+        run: mvn -pl regression-mcp-server -am clean verify
+
+      - name: Require all MCP security tests to execute
+        run: |
+          report_directory=regression-mcp-server/target/surefire-reports
+          if [[ ! -d "$report_directory" ]]; then
+            echo "MCP Surefire report directory is missing: $report_directory"
+            exit 1
+          fi
+
+          shopt -s nullglob
+          reports=("$report_directory"/TEST-*.xml)
+          if (( ${#reports[@]} == 0 )); then
+            echo "No MCP Surefire TEST-*.xml reports were produced."
+            exit 1
+          fi
+
+          if grep -E 'skipped="[1-9][0-9]*"' "${reports[@]}"; then
+            echo "MCP security tests must not be skipped on Linux."
+            exit 1
+          fi
+
   build-and-test:
     runs-on: ubuntu-latest
 

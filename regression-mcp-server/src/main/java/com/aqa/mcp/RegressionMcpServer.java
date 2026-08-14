@@ -1,9 +1,16 @@
 package com.aqa.mcp;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 
+import com.aqa.mcp.execution.CloseAwareInputStream;
+import com.aqa.mcp.execution.ExecutionPlanningException;
+import com.aqa.mcp.execution.RunSnapshot;
+import com.aqa.mcp.execution.StartTestRunRequest;
+import com.aqa.mcp.execution.TestRunCoordinator;
 import io.cucumber.tagexpressions.Expression;
 import io.cucumber.tagexpressions.TagExpressionParser;
 
@@ -25,6 +32,9 @@ public final class RegressionMcpServer {
     static final String LIST_MODULES_TOOL_NAME = "regression_list_modules";
     static final String LIST_FEATURES_TOOL_NAME = "regression_list_features";
     static final String LIST_SCENARIOS_TOOL_NAME = "regression_list_scenarios";
+    static final String START_TEST_RUN_TOOL_NAME = "regression_start_test_run";
+    static final String GET_TEST_RUN_TOOL_NAME = "regression_get_test_run";
+    static final String CANCEL_TEST_RUN_TOOL_NAME = "regression_cancel_test_run";
     private static final String INSTRUCTIONS =
             "This is a local, read-only framework inspection server. It exposes only deterministic inspection "
                     + "tools for the repository configured by REGRESSION_ROOT.";
@@ -43,12 +53,37 @@ public final class RegressionMcpServer {
     }
 
     static void createServer(RepositoryRoot repositoryRoot) {
-        McpServer.sync(new StdioServerTransportProvider(McpJsonDefaults.getMapper()))
+        TestRunCoordinator coordinator = new TestRunCoordinator(repositoryRoot.path(), () -> ExecutionPlanningFactory.validatorFor(repositoryRoot));
+        createServer(repositoryRoot, coordinator);
+    }
+
+    /** Package-private composition seam used only by the test-classpath STDIO bootstrap. */
+    static void createServer(RepositoryRoot repositoryRoot, TestRunCoordinator coordinator) {
+        Runtime.getRuntime().addShutdownHook(new Thread(coordinator::close, "regression-mcp-shutdown"));
+        InputStream input = new CloseAwareInputStream(System.in, coordinator::close);
+        McpServer.sync(new StdioServerTransportProvider(McpJsonDefaults.getMapper(), input, System.out))
                 .serverInfo(SERVER_NAME, SERVER_VERSION)
                 .instructions(INSTRUCTIONS)
                 .capabilities(ServerCapabilities.builder().tools(false).build())
-                .tools(overviewTool(repositoryRoot), listModulesTool(repositoryRoot), featureListTool(repositoryRoot), scenarioListTool(repositoryRoot))
+                .tools(overviewTool(repositoryRoot), listModulesTool(repositoryRoot), featureListTool(repositoryRoot), scenarioListTool(repositoryRoot),
+                        startTestRunTool(coordinator), getTestRunTool(coordinator), cancelTestRunTool(coordinator))
                 .build();
+    }
+
+    static SyncToolSpecification startTestRunTool(TestRunCoordinator coordinator) {
+        return SyncToolSpecification.builder().tool(Tool.builder(START_TEST_RUN_TOOL_NAME, startInputSchema())
+                .description("Starts the single allowed Commerce test run.").annotations(executionAnnotations(false, true, false, true)).outputSchema(runOutputSchema()).build())
+                .callHandler((exchange, request) -> { try { return successResult(Map.of("status", "ok", "data", runOutput(coordinator.start(startRequest(request.arguments()), System.getenv())))); }
+                    catch (ExecutionPlanningException e) { return errorResult(e.code(), e.getMessage()); } }).build();
+    }
+
+    static SyncToolSpecification getTestRunTool(TestRunCoordinator coordinator) { return runActionTool(GET_TEST_RUN_TOOL_NAME, coordinator, true); }
+    static SyncToolSpecification cancelTestRunTool(TestRunCoordinator coordinator) { return runActionTool(CANCEL_TEST_RUN_TOOL_NAME, coordinator, false); }
+    private static SyncToolSpecification runActionTool(String name, TestRunCoordinator coordinator, boolean get) {
+        return SyncToolSpecification.builder().tool(Tool.builder(name, runIdInputSchema()).description("Returns or cancels a server-generated test run.")
+                .annotations(get ? executionAnnotations(true, false, true, false) : executionAnnotations(false, true, true, false)).outputSchema(runOutputSchema()).build()).callHandler((exchange, request) -> { try {
+                    String id = runId(request.arguments()); RunSnapshot snapshot = get ? coordinator.get(id) : coordinator.cancel(id);
+                    return successResult(Map.of("status", "ok", "data", runOutput(snapshot))); } catch (ExecutionPlanningException e) { return errorResult(e.code(), e.getMessage()); } }).build();
     }
 
     static SyncToolSpecification overviewTool(RepositoryRoot repositoryRoot) {
@@ -177,12 +212,45 @@ public final class RegressionMcpServer {
                 "tags", scenario.tags(), "path", scenario.path(), "line", scenario.line());
     }
 
+    private static StartTestRunRequest startRequest(Map<String, Object> arguments) {
+        if (arguments == null || !arguments.keySet().equals(java.util.Set.of("module", "environment", "headless", "timeoutSeconds"))
+                && !arguments.keySet().equals(java.util.Set.of("module", "environment", "headless", "timeoutSeconds", "tags"))) {
+            throw new ExecutionPlanningException("INVALID_ARGUMENTS", "Only module, tags, environment, headless, and timeoutSeconds are accepted.");
+        }
+        Object module = arguments.get("module"), environment = arguments.get("environment"), headless = arguments.get("headless"), timeout = arguments.get("timeoutSeconds"), tags = arguments.get("tags");
+        if (!(module instanceof String) || !(environment instanceof String) || !(headless instanceof Boolean) || !(timeout instanceof Integer)
+                || tags != null && !(tags instanceof String)) throw new ExecutionPlanningException("INVALID_ARGUMENTS", "Execution request fields have invalid types.");
+        return new StartTestRunRequest((String) module, (String) tags, (String) environment, (Boolean) headless, (Integer) timeout);
+    }
+
+    private static String runId(Map<String, Object> arguments) {
+        if (arguments == null || arguments.size() != 1 || !(arguments.get("runId") instanceof String id))
+            throw new ExecutionPlanningException("INVALID_ARGUMENTS", "runId must be the only argument.");
+        return id;
+    }
+
+    private static Map<String, Object> runOutput(RunSnapshot run) {
+        Map<String, Object> data = new java.util.LinkedHashMap<>();
+        data.put("runId", run.runId()); data.put("module", run.module()); data.put("environment", run.environment());
+        data.put("headless", run.headless()); data.put("tags", run.tags()); data.put("timeoutSeconds", run.timeoutSeconds());
+        data.put("state", run.state().name()); data.put("createdAt", run.createdAt().toString());
+        if (run.startedAt() != null) data.put("startedAt", run.startedAt().toString()); if (run.finishedAt() != null) data.put("finishedAt", run.finishedAt().toString());
+        if (run.exitCode() != null) data.put("exitCode", run.exitCode()); if (run.reason() != null) data.put("reason", run.reason());
+        data.put("stdoutBytes", run.stdoutBytes()); data.put("stderrBytes", run.stderrBytes()); data.put("stdoutTruncated", run.stdoutTruncated()); data.put("stderrTruncated", run.stderrTruncated());
+        return Map.copyOf(data);
+    }
+
     private static Map<String, Object> moduleInputSchema(boolean allowTags) {
         Map<String, Object> properties = new java.util.LinkedHashMap<>();
         properties.put("module", Map.of("type", "string"));
         if (allowTags) properties.put("tags", Map.of("type", "string"));
         return Map.of("type", "object", "additionalProperties", false, "required", List.of("module"), "properties", properties);
     }
+
+    private static Map<String, Object> startInputSchema() { return Map.of("type", "object", "additionalProperties", false,
+            "required", List.of("module", "environment", "headless", "timeoutSeconds"), "properties", Map.of("module", Map.of("type", "string"), "tags", Map.of("type", "string", "maxLength", 1024), "environment", Map.of("type", "string"), "headless", Map.of("type", "boolean"), "timeoutSeconds", Map.of("type", "integer"))); }
+    private static Map<String, Object> runIdInputSchema() { return Map.of("type", "object", "additionalProperties", false, "required", List.of("runId"), "properties", Map.of("runId", Map.of("type", "string"))); }
+    private static Map<String, Object> runOutputSchema() { return structuredOutputSchema(Map.ofEntries(Map.entry("runId", Map.of("type", "string")), Map.entry("module", Map.of("type", "string")), Map.entry("environment", Map.of("type", "string")), Map.entry("headless", Map.of("type", "boolean")), Map.entry("tags", Map.of("type", "string")), Map.entry("timeoutSeconds", Map.of("type", "integer")), Map.entry("state", Map.of("type", "string")), Map.entry("createdAt", Map.of("type", "string")), Map.entry("startedAt", Map.of("type", "string")), Map.entry("finishedAt", Map.of("type", "string")), Map.entry("exitCode", Map.of("type", "integer")), Map.entry("reason", Map.of("type", "string")), Map.entry("stdoutBytes", Map.of("type", "integer")), Map.entry("stderrBytes", Map.of("type", "integer")), Map.entry("stdoutTruncated", Map.of("type", "boolean")), Map.entry("stderrTruncated", Map.of("type", "boolean"))), List.of("runId", "module", "environment", "headless", "tags", "timeoutSeconds", "state", "createdAt", "stdoutBytes", "stderrBytes", "stdoutTruncated", "stderrTruncated")); }
 
     private static Map<String, Object> featureOutputSchema() {
         Map<String, Object> feature = Map.of("type", "object", "additionalProperties", false,
@@ -253,6 +321,10 @@ public final class RegressionMcpServer {
                 .idempotentHint(true)
                 .openWorldHint(false)
                 .build();
+    }
+
+    private static ToolAnnotations executionAnnotations(boolean readOnly, boolean destructive, boolean idempotent, boolean openWorld) {
+        return ToolAnnotations.builder().readOnlyHint(readOnly).destructiveHint(destructive).idempotentHint(idempotent).openWorldHint(openWorld).build();
     }
 
     private static CallToolResult successResult(Map<String, Object> output) {

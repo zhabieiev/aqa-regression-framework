@@ -25,3 +25,6 @@ Desktop.ini
 # Local MCP configuration
 /.codex/config.toml
 /.ai/mcp/mcp.json
+
+# MCP execution runtime state (server-generated only)
+/.regression-mcp/

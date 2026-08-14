@@ -8,7 +8,10 @@ on:
 
 jobs:
   regression-mcp-server-security:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
 
     steps:
       - name: Checkout code
@@ -24,6 +27,7 @@ jobs:
         run: mvn -pl regression-mcp-server -am clean verify
 
       - name: Require all MCP security tests to execute
+        if: runner.os == 'Linux'
         run: |
           report_directory=regression-mcp-server/target/surefire-reports
           if [[ ! -d "$report_directory" ]]; then

@@ -171,6 +171,76 @@ class RegressionMcpServerStdioIntegrationTest {
         }
     }
 
+    @Test
+    void servesControlledExecutionToolsOverStdioAndCleansRunOnEof() throws Exception {
+        Path root = createExecutionRoot();
+        Process process = startServer(root, ControlledMcpServerMain.class);
+        try {
+            ExecutorService readerExecutor = Executors.newSingleThreadExecutor();
+            try (BufferedReader stdout = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8));
+                    BufferedWriter stdin = new BufferedWriter(new OutputStreamWriter(process.getOutputStream(), StandardCharsets.UTF_8))) {
+                initialize(stdin, stdout, readerExecutor);
+                JsonNode tools = request(stdin, stdout, readerExecutor, 2, "tools/list", Map.of());
+                assertExecutionToolContracts(tools);
+
+                JsonNode invalid = request(stdin, stdout, readerExecutor, 3, "tools/call", Map.of("name", RegressionMcpServer.START_TEST_RUN_TOOL_NAME,
+                        "arguments", Map.of("module", "regression-nextjs-commerce", "environment", "dev", "headless", true, "timeoutSeconds", 1)));
+                assertStructuredError(invalid, "INVALID_TIMEOUT");
+                assertThat(Files.exists(root.resolve(".regression-mcp/runs"))).isFalse();
+
+                Map<String, Object> startArguments = Map.of("module", "regression-nextjs-commerce", "environment", "dev", "headless", true, "timeoutSeconds", 30);
+                JsonNode started = request(stdin, stdout, readerExecutor, 4, "tools/call", Map.of("name", RegressionMcpServer.START_TEST_RUN_TOOL_NAME, "arguments", startArguments));
+                assertThat(started.path("result").path("structuredContent").path("data").path("state").asText()).isEqualTo("QUEUED");
+                String runId = started.path("result").path("structuredContent").path("data").path("runId").asText();
+                JsonNode running = awaitState(stdin, stdout, readerExecutor, 5, runId, "RUNNING");
+                assertThat(running.path("result").path("structuredContent").path("data").path("runId").asText()).isEqualTo(runId);
+
+                JsonNode extra = request(stdin, stdout, readerExecutor, 20, "tools/call", Map.of("name", RegressionMcpServer.START_TEST_RUN_TOOL_NAME,
+                        "arguments", Map.of("module", "regression-nextjs-commerce", "environment", "dev", "headless", true, "timeoutSeconds", 30, "unexpected", "x")));
+                assertRejected(extra, "INVALID_ARGUMENTS");
+                JsonNode second = request(stdin, stdout, readerExecutor, 21, "tools/call", Map.of("name", RegressionMcpServer.START_TEST_RUN_TOOL_NAME, "arguments", startArguments));
+                assertStructuredError(second, "RUN_ALREADY_ACTIVE");
+                JsonNode unknown = request(stdin, stdout, readerExecutor, 22, "tools/call", Map.of("name", RegressionMcpServer.GET_TEST_RUN_TOOL_NAME,
+                        "arguments", Map.of("runId", "run-00000000000000000000000000000000")));
+                assertStructuredError(unknown, "RUN_NOT_FOUND");
+
+                request(stdin, stdout, readerExecutor, 23, "tools/call", Map.of("name", RegressionMcpServer.CANCEL_TEST_RUN_TOOL_NAME, "arguments", Map.of("runId", runId)));
+                JsonNode cancelled = awaitState(stdin, stdout, readerExecutor, 24, runId, "CANCELLED");
+                JsonNode repeated = request(stdin, stdout, readerExecutor, 25, "tools/call", Map.of("name", RegressionMcpServer.CANCEL_TEST_RUN_TOOL_NAME, "arguments", Map.of("runId", runId)));
+                assertThat(repeated.path("result").path("structuredContent").path("data").path("state").asText()).isEqualTo("CANCELLED");
+                JsonNode overview = request(stdin, stdout, readerExecutor, 26, "tools/call", Map.of("name", RegressionMcpServer.OVERVIEW_TOOL_NAME, "arguments", Map.of()));
+                assertThat(overview.path("result").path("isError").asBoolean()).isFalse();
+            } finally { readerExecutor.shutdownNow(); }
+            assertThat(process.waitFor(REQUEST_TIMEOUT_SECONDS, TimeUnit.SECONDS)).isTrue();
+            assertThat(process.exitValue()).isZero();
+        } finally { terminateProcess(process); }
+    }
+
+    @Test
+    void eofClosesAnActiveControlledRunAndPersistsCancellation() throws Exception {
+        Path root = createExecutionRoot();
+        Process process = startServer(root, ControlledMcpServerMain.class);
+        String runId;
+        ExecutorService readerExecutor = Executors.newSingleThreadExecutor();
+        try {
+            try (BufferedReader stdout = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8));
+                    BufferedWriter stdin = new BufferedWriter(new OutputStreamWriter(process.getOutputStream(), StandardCharsets.UTF_8))) {
+                initialize(stdin, stdout, readerExecutor);
+                JsonNode started = request(stdin, stdout, readerExecutor, 2, "tools/call", Map.of("name", RegressionMcpServer.START_TEST_RUN_TOOL_NAME,
+                        "arguments", Map.of("module", "regression-nextjs-commerce", "environment", "dev", "headless", true, "timeoutSeconds", 30)));
+                runId = started.path("result").path("structuredContent").path("data").path("runId").asText();
+                awaitState(stdin, stdout, readerExecutor, 3, runId, "RUNNING");
+            }
+            assertThat(process.waitFor(REQUEST_TIMEOUT_SECONDS, TimeUnit.SECONDS)).isTrue();
+            JsonNode status = JSON.readTree(Files.readString(root.resolve(".regression-mcp/runs").resolve(runId).resolve("status.json")));
+            assertThat(status.path("snapshot").path("state").asText()).isEqualTo("CANCELLED");
+            assertThat(status.path("ownedProcesses").size()).isGreaterThanOrEqualTo(1);
+        } finally {
+            readerExecutor.shutdownNow();
+            terminateProcess(process);
+        }
+    }
+
     private void initialize(BufferedWriter stdin, BufferedReader stdout, ExecutorService readerExecutor) throws Exception {
         JsonNode initialize = request(stdin, stdout, readerExecutor, 1, "initialize", Map.of(
                 "protocolVersion", "2025-06-18", "capabilities", Map.of(),
@@ -183,18 +253,46 @@ class RegressionMcpServerStdioIntegrationTest {
     }
 
     private void assertToolList(JsonNode toolsList) {
-        assertThat(toolsList.path("result").path("tools").size()).isEqualTo(4);
+        assertThat(toolsList.path("result").path("tools").size()).isEqualTo(7);
         for (JsonNode tool : toolsList.path("result").path("tools")) {
             assertThat(tool.path("inputSchema").path("additionalProperties").asBoolean()).isFalse();
-            assertThat(tool.path("annotations").path("readOnlyHint").asBoolean()).isTrue();
-            assertThat(tool.path("annotations").path("destructiveHint").asBoolean()).isFalse();
-            assertThat(tool.path("annotations").path("idempotentHint").asBoolean()).isTrue();
-            assertThat(tool.path("annotations").path("openWorldHint").asBoolean()).isFalse();
         }
+        assertThat(toolsList.path("result").path("tools").get(4).path("annotations").path("readOnlyHint").asBoolean()).isFalse();
+        assertThat(toolsList.path("result").path("tools").get(4).path("annotations").path("destructiveHint").asBoolean()).isTrue();
+        assertThat(toolsList.path("result").path("tools").get(5).path("annotations").path("readOnlyHint").asBoolean()).isTrue();
         assertThat(toolsList.path("result").path("tools").get(2).path("name").asText())
                 .isEqualTo(RegressionMcpServer.LIST_FEATURES_TOOL_NAME);
         assertThat(toolsList.path("result").path("tools").get(3).path("name").asText())
                 .isEqualTo(RegressionMcpServer.LIST_SCENARIOS_TOOL_NAME);
+    }
+
+    private void assertExecutionToolContracts(JsonNode tools) {
+        assertToolList(tools);
+        Map<String, JsonNode> byName = new java.util.HashMap<>();
+        for (JsonNode tool : tools.path("result").path("tools")) byName.put(tool.path("name").asText(), tool);
+        assertThat(byName.keySet()).containsExactlyInAnyOrder(RegressionMcpServer.OVERVIEW_TOOL_NAME, RegressionMcpServer.LIST_MODULES_TOOL_NAME,
+                RegressionMcpServer.LIST_FEATURES_TOOL_NAME, RegressionMcpServer.LIST_SCENARIOS_TOOL_NAME, RegressionMcpServer.START_TEST_RUN_TOOL_NAME,
+                RegressionMcpServer.GET_TEST_RUN_TOOL_NAME, RegressionMcpServer.CANCEL_TEST_RUN_TOOL_NAME);
+        assertThat(byName.get(RegressionMcpServer.START_TEST_RUN_TOOL_NAME).path("annotations").path("destructiveHint").asBoolean()).isTrue();
+        assertThat(byName.get(RegressionMcpServer.START_TEST_RUN_TOOL_NAME).path("annotations").path("idempotentHint").asBoolean()).isFalse();
+        assertThat(byName.get(RegressionMcpServer.GET_TEST_RUN_TOOL_NAME).path("annotations").path("readOnlyHint").asBoolean()).isTrue();
+        assertThat(byName.get(RegressionMcpServer.CANCEL_TEST_RUN_TOOL_NAME).path("annotations").path("idempotentHint").asBoolean()).isTrue();
+    }
+
+    private JsonNode awaitState(BufferedWriter stdin, BufferedReader stdout, ExecutorService readerExecutor, int requestId, String runId, String state) throws Exception {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        JsonNode response;
+        do {
+            response = request(stdin, stdout, readerExecutor, requestId++, "tools/call", Map.of("name", RegressionMcpServer.GET_TEST_RUN_TOOL_NAME, "arguments", Map.of("runId", runId)));
+            if (response.path("result").path("isError").asBoolean()) throw new AssertionError("Polling failed: " + response);
+            String observed = response.path("result").path("structuredContent").path("data").path("state").asText();
+            if (state.equals(observed)) return response;
+            if (List.of("PASSED", "FAILED", "CANCELLED", "TIMED_OUT", "ERROR").contains(observed)) {
+                throw new AssertionError("Run reached " + observed + " while awaiting " + state + ": " + response);
+            }
+            java.util.concurrent.locks.LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(25));
+        } while (System.nanoTime() < deadline);
+        throw new AssertionError("Run did not reach " + state);
     }
 
     private JsonNode request(BufferedWriter stdin, BufferedReader stdout, ExecutorService readerExecutor, int id,
@@ -263,11 +361,24 @@ class RegressionMcpServerStdioIntegrationTest {
     }
 
     private Process startServer(Path root) throws IOException {
+        return startServer(root, RegressionMcpServer.class);
+    }
+
+    private void assertRejected(JsonNode response, String code) {
+        if (response.path("result").path("structuredContent").path("status").asText().equals("error")) {
+            assertStructuredError(response, code);
+        } else {
+            assertThat(response.path("error").isObject() || response.path("result").path("isError").asBoolean()).isTrue();
+        }
+    }
+
+    private Process startServer(Path root, Class<?> mainClass) throws IOException {
         String testClasspath = System.getProperty("surefire.test.class.path", System.getProperty("java.class.path"));
         String executable = System.getProperty("os.name").toLowerCase(java.util.Locale.ROOT).contains("win") ? "java.exe" : "java";
         ProcessBuilder builder = new ProcessBuilder(Path.of(System.getProperty("java.home"), "bin", executable).toString(),
-                "-cp", testClasspath, RegressionMcpServer.class.getName());
+                "-cp", testClasspath, mainClass.getName());
         builder.environment().put(RepositoryRootResolver.ENVIRONMENT_VARIABLE, root.toString());
+        builder.redirectError(ProcessBuilder.Redirect.DISCARD);
         Process process = builder.start();
         startedProcesses.add(process);
         return process;
@@ -279,6 +390,13 @@ class RegressionMcpServerStdioIntegrationTest {
         Files.createDirectories(feature.getParent());
         Files.writeString(feature, "@smoke @cart\nFeature: cart\n  Scenario: add\n    Given x\n");
         return root;
+    }
+
+    private Path createExecutionRoot() throws Exception {
+        Files.writeString(temporaryDirectory.resolve("pom.xml"), "<project><modules><module>regression-nextjs-commerce</module></modules></project>");
+        Path module = temporaryDirectory.resolve("regression-nextjs-commerce"); Files.createDirectories(module);
+        Files.writeString(module.resolve("pom.xml"), "<project/>");
+        return temporaryDirectory;
     }
 
     private Path createRootWithMalformedFeature() throws Exception {

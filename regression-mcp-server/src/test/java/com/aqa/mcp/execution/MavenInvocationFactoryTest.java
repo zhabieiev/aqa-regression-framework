@@ -22,7 +22,8 @@ class MavenInvocationFactoryTest {
         Path root = repositoryRoot();
         ValidatedTestRunRequest request = request("(@cart or @catalog) and not @slow", true);
 
-        MavenInvocation invocation = MavenInvocationFactory.create(runtime, root, request);
+        RunCaptureLayout capture = capture(root);
+        MavenInvocation invocation = MavenInvocationFactory.create(runtime, root, request, capture);
 
         assertThat(invocation.javaExecutable()).isEqualTo(runtime.javaExecutable());
         assertThat(invocation.workingDirectory()).isEqualTo(root.toRealPath());
@@ -38,7 +39,9 @@ class MavenInvocationFactoryTest {
                 "test",
                 "-Denv=dev",
                 "-Dui.headless=true",
-                "-Dcucumber.filter.tags=" + request.effectiveTagExpression());
+                "-Dcucumber.filter.tags=" + request.effectiveTagExpression(),
+                "-Dmcp.surefire.reportsDirectory=" + capture.surefireStaging(),
+                "-Dmcp.allure.resultsDirectory=" + capture.allureStaging());
         assertThat(invocation.arguments().stream().filter(argument -> argument.startsWith("-Dcucumber.filter.tags=")))
                 .containsExactly("-Dcucumber.filter.tags=((@cart or @catalog) and not @slow) and not @wip");
         assertThat(invocation.arguments()).doesNotContain("mvn", "mvn.cmd", "cmd.exe", "powershell.exe", "/C");
@@ -50,8 +53,9 @@ class MavenInvocationFactoryTest {
     void requestDataCanOnlyInfluenceTheValidatedCapabilitiesAndTagValue() throws Exception {
         MavenRuntimeConfiguration runtime = runtime();
         Path root = repositoryRoot();
-        MavenInvocation cart = MavenInvocationFactory.create(runtime, root, request("@cart", false));
-        MavenInvocation catalog = MavenInvocationFactory.create(runtime, root, request("@catalog", true));
+        RunCaptureLayout capture = capture(root);
+        MavenInvocation cart = MavenInvocationFactory.create(runtime, root, request("@cart", false), capture);
+        MavenInvocation catalog = MavenInvocationFactory.create(runtime, root, request("@catalog", true), capture);
 
         assertThat(cart.javaExecutable()).isEqualTo(catalog.javaExecutable());
         assertThat(cart.workingDirectory()).isEqualTo(catalog.workingDirectory());
@@ -60,6 +64,11 @@ class MavenInvocationFactoryTest {
         assertThat(catalog.arguments()).contains("-f", "regression-nextjs-commerce/pom.xml", "test",
                 "-Denv=dev", "-Dui.headless=true", "-Dcucumber.filter.tags=(@catalog) and not @wip");
         assertThat(cart.arguments()).doesNotContain("-Dcucumber.execution.dry-run=true");
+        assertThat(cart.arguments().stream().filter(argument -> argument.startsWith("-Dmcp.")).toList())
+                .containsExactly("-Dmcp.surefire.reportsDirectory=" + capture.surefireStaging(),
+                        "-Dmcp.allure.resultsDirectory=" + capture.allureStaging());
+        assertThat(catalog.arguments().stream().filter(argument -> argument.startsWith("-Dmcp.")).toList())
+                .isEqualTo(cart.arguments().stream().filter(argument -> argument.startsWith("-Dmcp.")).toList());
     }
 
     @Test
@@ -69,10 +78,10 @@ class MavenInvocationFactoryTest {
         assertCode("MAVEN_RUNTIME_UNAVAILABLE",
                 () -> MavenRuntimeConfiguration.fromTrustedPaths(temporaryDirectory.resolve("missing-java"), temporaryDirectory));
         assertCode("MAVEN_RUNTIME_UNAVAILABLE",
-                () -> MavenInvocationFactory.create(runtime, temporaryDirectory.resolve("missing-root"), request("@cart", true)));
+                () -> MavenInvocationFactory.create(runtime, temporaryDirectory.resolve("missing-root"), request("@cart", true), capture(root)));
         assertCode("MAVEN_RUNTIME_UNAVAILABLE",
-                () -> MavenInvocationFactory.create(null, root, request("@cart", true)));
-        assertCode("INVALID_ARGUMENTS", () -> MavenInvocationFactory.create(runtime, root, null));
+                () -> MavenInvocationFactory.create(null, root, request("@cart", true), capture(root)));
+        assertCode("INVALID_ARGUMENTS", () -> MavenInvocationFactory.create(runtime, root, null, capture(root)));
         assertThatThrownBy(() -> MavenRuntimeConfiguration.fromTrustedPaths(temporaryDirectory.resolve("missing-java"), temporaryDirectory))
                 .extracting(Throwable::getMessage)
                 .asString().doesNotContain(temporaryDirectory.toString());
@@ -107,6 +116,27 @@ class MavenInvocationFactoryTest {
         Path root = Files.createDirectories(temporaryDirectory.resolve("repository"));
         Files.createFile(root.resolve("pom.xml"));
         return root;
+    }
+
+    @Test
+    void rejectsAReportDirectoryThatEscapesItsServerOwnedRunDirectory() throws Exception {
+        MavenRuntimeConfiguration runtime = runtime(); Path root = repositoryRoot(); RunCaptureLayout capture = capture(root);
+        Path outside = Files.createDirectories(temporaryDirectory.resolve("outside"));
+        RunCaptureLayout escaped = new RunCaptureLayout(capture.runDirectory(), outside, capture.allureStaging(), capture.surefireFinal(),
+                capture.allureFinal(), capture.surefireIndex(), capture.allureIndex());
+
+        assertCode("MAVEN_RUNTIME_UNAVAILABLE", () -> MavenInvocationFactory.create(runtime, root, request("@cart", true), escaped));
+    }
+
+    private static RunCaptureLayout capture(Path root) throws Exception {
+        Path run = Files.createDirectories(root.resolve(".regression-mcp/runs/run with spaces"));
+        Path staging = Files.createDirectories(run.resolve("staging"));
+        Path surefire = Files.createDirectories(staging.resolve("surefire-server-nonce"));
+        Path allure = Files.createDirectories(staging.resolve("allure-server-nonce"));
+        Path reports = Files.createDirectories(run.resolve("reports/surefire"));
+        Path artifacts = Files.createDirectories(run.resolve("artifacts/allure"));
+        return new RunCaptureLayout(run, surefire, allure, reports.resolve("data"), artifacts.resolve("data"),
+                reports.resolve("index.json"), artifacts.resolve("index.json"));
     }
 
     private static ValidatedTestRunRequest request(String effectiveTags, boolean headless) {

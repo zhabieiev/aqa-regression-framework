@@ -16,9 +16,24 @@
 
     <properties>
         <selenium.version>4.46.0</selenium.version>
+        <allure.version>2.35.3</allure.version>
         <ui.mobile.enabled>false</ui.mobile.enabled>
         <ui.mobile.device>Pixel 7</ui.mobile.device>
+        <mcp.surefire.reportsDirectory>${project.build.directory}/surefire-reports</mcp.surefire.reportsDirectory>
+        <mcp.allure.resultsDirectory>${project.build.directory}/allure-results</mcp.allure.resultsDirectory>
     </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>io.qameta.allure</groupId>
+                <artifactId>allure-bom</artifactId>
+                <version>${allure.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 
     <dependencies>
         <dependency>
@@ -53,6 +68,18 @@
         </dependency>
 
         <dependency>
+            <groupId>io.qameta.allure</groupId>
+            <artifactId>allure-cucumber7-jvm</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>io.qameta.allure</groupId>
+            <artifactId>allure-junit-platform</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
             <groupId>org.junit.platform</groupId>
             <artifactId>junit-platform-suite</artifactId>
             <scope>test</scope>
@@ -82,10 +109,13 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <configuration>
+                    <reportsDirectory>${mcp.surefire.reportsDirectory}</reportsDirectory>
                     <systemPropertyVariables>
                         <env>${env}</env>
                         <ui.mobile.enabled>${ui.mobile.enabled}</ui.mobile.enabled>
                         <ui.mobile.device>${ui.mobile.device}</ui.mobile.device>
+                        <allure.results.directory>${mcp.allure.resultsDirectory}</allure.results.directory>
+                        <fixture.expected.allure.resultsDirectory>${mcp.allure.resultsDirectory}</fixture.expected.allure.resultsDirectory>
                     </systemPropertyVariables>
                 </configuration>
             </plugin>

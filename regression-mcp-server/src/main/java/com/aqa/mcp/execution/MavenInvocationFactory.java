@@ -13,7 +13,7 @@ public final class MavenInvocationFactory {
     }
 
     public static MavenInvocation create(MavenRuntimeConfiguration runtime, Path repositoryRoot,
-            ValidatedTestRunRequest request) {
+            ValidatedTestRunRequest request, RunCaptureLayout capture) {
         if (runtime == null) {
             throw unavailable();
         }
@@ -21,6 +21,7 @@ public final class MavenInvocationFactory {
             throw new ExecutionPlanningException("INVALID_ARGUMENTS", "A validated test run request is required.");
         }
         Path root = trustedRepositoryRoot(repositoryRoot);
+        verifyCapture(root, capture);
         ExecutionProfile profile = request.profile();
         return new MavenInvocation(runtime.javaExecutable(), root, List.of(
                 "--enable-native-access=ALL-UNNAMED",
@@ -34,7 +35,19 @@ public final class MavenInvocationFactory {
                 "test",
                 "-Denv=" + request.environment(),
                 "-Dui.headless=" + request.headless(),
-                "-Dcucumber.filter.tags=" + request.effectiveTagExpression()));
+                "-Dcucumber.filter.tags=" + request.effectiveTagExpression(),
+                "-Dmcp.surefire.reportsDirectory=" + capture.surefireStaging(),
+                "-Dmcp.allure.resultsDirectory=" + capture.allureStaging()));
+    }
+
+    private static void verifyCapture(Path root, RunCaptureLayout capture) {
+        try {
+            if (capture == null || !capture.runDirectory().toRealPath().startsWith(root)
+                    || !capture.surefireStaging().toRealPath().startsWith(capture.runDirectory().toRealPath())
+                    || !capture.allureStaging().toRealPath().startsWith(capture.runDirectory().toRealPath())) {
+                throw unavailable();
+            }
+        } catch (IOException exception) { throw unavailable(); }
     }
 
     private static Path trustedRepositoryRoot(Path repositoryRoot) {

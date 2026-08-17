@@ -7,7 +7,14 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Assumptions;
@@ -74,6 +81,94 @@ class RunStoreTest {
         assertThatThrownBy(() -> store.update(queued, List.of())).extracting(error -> ((ExecutionPlanningException) error).code())
                 .isEqualTo("MAVEN_RUNTIME_UNAVAILABLE");
         assertThat(Files.readString(foreign)).isEqualTo("foreign");
+    }
+
+    @Test
+    void separateInstancesAtomicallyReplaceAndReadCompleteStatusRecordsConcurrently() throws Exception {
+        RunStore writer = new RunStore(root);
+        RunSnapshot queued = snapshot(TestRunState.QUEUED);
+        writer.create(queued);
+        RunStore reader = new RunStore(root);
+        List<Throwable> failures = Collections.synchronizedList(new ArrayList<>());
+        CountDownLatch start = new CountDownLatch(1);
+        ExecutorService workers = Executors.newFixedThreadPool(2);
+        try {
+            var write = workers.submit(() -> {
+                await(start, failures);
+                for (int iteration = 0; iteration < 1_000; iteration++) {
+                    try { writer.update(replacement(queued, iteration % 2 == 0 ? TestRunState.RUNNING : TestRunState.QUEUED), List.of()); }
+                    catch (Throwable failure) { failures.add(failure); return; }
+                }
+            });
+            var read = workers.submit(() -> {
+                await(start, failures);
+                for (int iteration = 0; iteration < 1_000; iteration++) {
+                    try {
+                        RunStore.PersistedRun persisted = reader.persisted(queued.runId());
+                        assertThat(persisted.schemaVersion()).isEqualTo(3);
+                        assertThat(persisted.snapshot().runId()).isEqualTo(queued.runId());
+                        assertThat(persisted.snapshot().state()).isIn(TestRunState.QUEUED, TestRunState.RUNNING);
+                    } catch (Throwable failure) { failures.add(failure); return; }
+                }
+            });
+            start.countDown();
+            write.get(30, TimeUnit.SECONDS);
+            read.get(30, TimeUnit.SECONDS);
+        } finally { workers.shutdownNow(); }
+
+        assertThat(failures).withFailMessage(() -> "concurrent filesystem failures: " + failures.stream()
+                .map(RunStoreTest::describe).toList()).isEmpty();
+    }
+
+    @Test
+    void transientAccessDeniedDuringAtomicReplacementIsBoundedAndThenSucceeds() {
+        RunStore initial = new RunStore(root);
+        RunSnapshot queued = snapshot(TestRunState.QUEUED);
+        initial.create(queued);
+        AtomicInteger attempts = new AtomicInteger();
+        RunStore retrying = new RunStore(root, (temporary, target) -> {
+            if (attempts.incrementAndGet() < 3) throw new java.nio.file.AccessDeniedException(temporary.toString(), target.toString(), "simulated sharing conflict");
+            Files.move(temporary, target, java.nio.file.StandardCopyOption.ATOMIC_MOVE, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        });
+
+        retrying.update(replacement(queued, TestRunState.RUNNING), List.of());
+
+        assertThat(attempts).hasValue(3);
+        assertThat(retrying.get(queued.runId()).state()).isEqualTo(TestRunState.RUNNING);
+    }
+
+    @Test
+    void permanentAccessDeniedDuringAtomicReplacementFailsClosedAfterBoundedAttempts() {
+        RunStore initial = new RunStore(root);
+        RunSnapshot queued = snapshot(TestRunState.QUEUED);
+        initial.create(queued);
+        AtomicInteger attempts = new AtomicInteger();
+        RunStore retrying = new RunStore(root, (temporary, target) -> {
+            attempts.incrementAndGet();
+            throw new java.nio.file.AccessDeniedException(temporary.toString(), target.toString(), "simulated sharing conflict");
+        });
+
+        assertThatThrownBy(() -> retrying.update(replacement(queued, TestRunState.RUNNING), List.of()))
+                .isInstanceOf(ExecutionPlanningException.class)
+                .extracting(error -> ((ExecutionPlanningException) error).code()).isEqualTo("MAVEN_RUNTIME_UNAVAILABLE");
+        assertThat(attempts).hasValue(4);
+    }
+
+    private static void await(CountDownLatch latch, List<Throwable> failures) {
+        try { latch.await(); }
+        catch (InterruptedException exception) { Thread.currentThread().interrupt(); failures.add(exception); }
+    }
+
+    private static RunSnapshot replacement(RunSnapshot source, TestRunState state) {
+        Instant now = Instant.now();
+        return new RunSnapshot(source.runId(), source.module(), source.environment(), source.headless(), source.tags(),
+                source.timeoutSeconds(), state, source.createdAt(), state == TestRunState.QUEUED ? null : now, null,
+                null, state.name(), 0, 0, false, false);
+    }
+
+    private static String describe(Throwable failure) {
+        Throwable cause = failure.getCause() == null ? failure : failure.getCause();
+        return cause.getClass().getSimpleName() + ": " + cause.getMessage();
     }
 
     private static RunSnapshot snapshot(TestRunState state) {

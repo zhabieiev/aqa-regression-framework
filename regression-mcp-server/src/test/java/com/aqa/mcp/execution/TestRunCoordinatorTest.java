@@ -11,10 +11,13 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Delayed;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
+import java.util.stream.Stream;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -94,11 +97,104 @@ class TestRunCoordinatorTest {
         TestRunCoordinator coordinator = coordinator(launcher, scheduler);
         RunSnapshot run = coordinator.start(request(), Map.of());
         awaitState(coordinator, run.runId(), TestRunState.RUNNING);
+        await(scheduler::installed, "timeout scheduler installation");
 
         scheduler.fire();
         RunSnapshot terminal = awaitTerminal(coordinator, run.runId());
 
         assertThat(terminal.state()).isEqualTo(TestRunState.TIMED_OUT);
+        assertThat(launcher.process().isAlive()).isFalse();
+    }
+
+    @Test
+    void runningIsNotObservableUntilTheOwnedTimeoutHandleIsInstalled() throws Exception {
+        ControlledProcessLauncher launcher = launcher("WAIT");
+        ManualTimeoutScheduler scheduler = ManualTimeoutScheduler.blocking();
+        TestRunCoordinator coordinator = coordinator(launcher, scheduler);
+        RunSnapshot run = coordinator.start(request(), Map.of());
+
+        assertThat(launcher.awaitLaunch(5, TimeUnit.SECONDS)).isTrue();
+        assertThat(scheduler.awaitSchedule(5, TimeUnit.SECONDS)).isTrue();
+        RunStore.PersistedRun queued = new RunStore(root).persisted(run.runId());
+        assertThat(coordinator.get(run.runId()).state()).isEqualTo(TestRunState.QUEUED);
+        assertThat(queued.snapshot().state()).isEqualTo(TestRunState.QUEUED);
+        assertThat(rootIdentity(queued).pid()).isEqualTo(launcher.process().pid());
+
+        scheduler.releaseSchedule();
+        awaitState(coordinator, run.runId(), TestRunState.RUNNING);
+        assertThat(scheduler.successfulInstallations()).isEqualTo(1);
+        assertThat(scheduler.future().isCancelled()).isFalse();
+
+        coordinator.cancel(run.runId());
+        awaitTerminal(coordinator, run.runId());
+    }
+
+    @Test
+    void timeoutSchedulingFailureNeverPublishesRunningAndCleansProcessAndLock() throws Exception {
+        ControlledProcessLauncher launcher = launcher("SPAWN_GRANDCHILD");
+        ManualTimeoutScheduler scheduler = ManualTimeoutScheduler.blockingFailure();
+        TestRunCoordinator coordinator = coordinator(launcher, scheduler);
+        RunSnapshot run = coordinator.start(request(), Map.of());
+
+        assertThat(launcher.awaitLaunch(5, TimeUnit.SECONDS)).isTrue();
+        assertThat(scheduler.awaitSchedule(5, TimeUnit.SECONDS)).isTrue();
+        assertThat(coordinator.get(run.runId()).state()).isEqualTo(TestRunState.QUEUED);
+        scheduler.releaseSchedule();
+
+        RunSnapshot terminal = awaitTerminal(coordinator, run.runId());
+        assertThat(terminal.state()).isEqualTo(TestRunState.ERROR);
+        assertThat(scheduler.successfulInstallations()).isZero();
+        assertThat(launcher.process().isAlive()).isFalse();
+        RunStore.PersistedRun persisted = new RunStore(root).persisted(run.runId());
+        assertThat(persisted.snapshot().state()).isEqualTo(TestRunState.ERROR);
+        assertThat(persisted.ownedProcesses()).hasSizeGreaterThanOrEqualTo(3);
+        TestRunCoordinator second = coordinator(launcher("PASS"), new ManualTimeoutScheduler());
+        assertThat(awaitTerminal(second, second.start(request(), Map.of()).runId()).state()).isEqualTo(TestRunState.PASSED);
+    }
+
+    @Test
+    void immediateTimeoutAtPublicationBoundaryProducesOnlyTimedOutTerminalState() {
+        ControlledProcessLauncher launcher = launcher("WAIT");
+        TestRunCoordinator coordinator = coordinator(launcher, ManualTimeoutScheduler.immediate());
+
+        RunSnapshot terminal = awaitTerminal(coordinator, coordinator.start(request(), Map.of()).runId());
+
+        assertThat(terminal.state()).isEqualTo(TestRunState.TIMED_OUT);
+        assertThat(launcher.process().isAlive()).isFalse();
+    }
+
+    @Test
+    void cancellationAtSchedulingPublicationBoundaryStaysQueuedUntilCleanup() throws Exception {
+        ControlledProcessLauncher launcher = launcher("WAIT");
+        ManualTimeoutScheduler scheduler = ManualTimeoutScheduler.blocking();
+        TestRunCoordinator coordinator = coordinator(launcher, scheduler);
+        RunSnapshot run = coordinator.start(request(), Map.of());
+
+        assertThat(scheduler.awaitSchedule(5, TimeUnit.SECONDS)).isTrue();
+        coordinator.cancel(run.runId());
+        assertThat(coordinator.get(run.runId()).state()).isEqualTo(TestRunState.QUEUED);
+        scheduler.releaseSchedule();
+
+        assertThat(awaitTerminal(coordinator, run.runId()).state()).isEqualTo(TestRunState.CANCELLED);
+        assertThat(scheduler.successfulInstallations()).isEqualTo(1);
+    }
+
+    @Test
+    void closeAtSchedulingPublicationBoundaryLeavesNoSurvivor() throws Exception {
+        ControlledProcessLauncher launcher = launcher("WAIT");
+        ManualTimeoutScheduler scheduler = ManualTimeoutScheduler.blocking();
+        TestRunCoordinator coordinator = coordinator(launcher, scheduler);
+        RunSnapshot run = coordinator.start(request(), Map.of());
+
+        assertThat(scheduler.awaitSchedule(5, TimeUnit.SECONDS)).isTrue();
+        Thread closer = new Thread(coordinator::close, "close-at-timeout-boundary");
+        closer.start();
+        await(() -> !launcher.process().isAlive(), "close termination while scheduling is blocked");
+        scheduler.releaseSchedule();
+        closer.join(TimeUnit.SECONDS.toMillis(10));
+
+        assertThat(closer.isAlive()).isFalse();
+        assertThat(awaitTerminal(coordinator, run.runId()).state()).isEqualTo(TestRunState.CANCELLED);
         assertThat(launcher.process().isAlive()).isFalse();
     }
 
@@ -156,18 +252,25 @@ class TestRunCoordinatorTest {
     }
 
     @Test
-    void realChildAndGrandchildArePersistedAndRemovedDeepestFirstOnCancellation() {
+    void realChildAndGrandchildArePersistedAndRemovedDeepestFirstOnCancellation() throws Exception {
         ControlledProcessLauncher launcher = launcher("SPAWN_GRANDCHILD");
-        TestRunCoordinator coordinator = coordinator(launcher, new ManualTimeoutScheduler());
+        ManualTimeoutScheduler scheduler = new ManualTimeoutScheduler();
+        TestRunCoordinator coordinator = coordinator(launcher, scheduler);
         RunSnapshot run = coordinator.start(request(), Map.of());
         awaitState(coordinator, run.runId(), TestRunState.RUNNING);
-        await(() -> new RunStore(root).persisted(run.runId()).ownedProcesses().size() >= 3, "root child and grandchild persistence");
+        await(() -> coordinator.ownedProcessCount(run.runId()) >= 3, "root child and grandchild ownership retention");
 
         coordinator.cancel(run.runId());
         RunSnapshot terminal = awaitTerminal(coordinator, run.runId());
 
         assertThat(terminal.state()).isEqualTo(TestRunState.CANCELLED);
         assertThat(new RunStore(root).persisted(run.runId()).ownedProcesses()).hasSizeGreaterThanOrEqualTo(3);
+        assertThat(scheduler.future().isCancelled()).isTrue();
+        assertNoSurvivor(launcher);
+        assertNoCaptureLeftovers(run.runId());
+        try (RunStore.Lock ignored = new RunStore(root).acquireActiveLock()) {
+            assertThat(ignored).isNotNull();
+        }
     }
 
     @Test
@@ -198,7 +301,43 @@ class TestRunCoordinatorTest {
         assertThat(persisted.stderrDroppedBytes()).isEqualTo(persisted.stderrObservedBytes() - BoundedLogDrainer.FILE_LIMIT);
     }
 
-    private TestRunCoordinator coordinator(ControlledProcessLauncher launcher, ManualTimeoutScheduler scheduler) {
+    @Test
+    void terminalPublicationAndLockReleaseFollowRequiredCapturePublication() throws Exception {
+        ControlledProcessLauncher launcher = launcher("PASS", true);
+        TestRunCoordinator coordinator = coordinator(launcher, new ManualTimeoutScheduler());
+        RunSnapshot run = coordinator.start(request(), Map.of());
+        assertThat(launcher.awaitLaunch(5, TimeUnit.SECONDS)).isTrue();
+        String reports = launcher.invocation().arguments().stream()
+                .filter(argument -> argument.startsWith("-Dmcp.surefire.reportsDirectory=")).findFirst().orElseThrow()
+                .substring("-Dmcp.surefire.reportsDirectory=".length());
+        Path staging = Path.of(reports);
+        Files.writeString(staging.resolve("TEST-capture.xml"), "<testsuite name='capture' tests='1' failures='0' errors='0' skipped='0' time='0.1'><testcase classname='capture' name='passes' time='0.1'/></testsuite>");
+        launcher.releaseLaunch();
+
+        RunSnapshot terminal = awaitTerminal(coordinator, run.runId());
+        RunStore.PersistedRun persisted = new RunStore(root).persisted(run.runId());
+        assertThat(terminal.terminal()).isTrue();
+        assertThat(persisted.capture().status()).isEqualTo(CaptureStatus.PARTIAL);
+        assertThat(Files.isRegularFile(root.resolve(".regression-mcp/runs").resolve(run.runId()).resolve("reports/surefire/index.json"))).isTrue();
+        TestRunCoordinator second = coordinator(launcher("PASS"), new ManualTimeoutScheduler());
+        assertThat(awaitTerminal(second, second.start(request(), Map.of()).runId()).state()).isEqualTo(TestRunState.PASSED);
+    }
+
+    @Test
+    void normalCompletionCancelsTimeoutAndLateCallbackCannotOverwriteTerminalState() {
+        ManualTimeoutScheduler scheduler = new ManualTimeoutScheduler();
+        TestRunCoordinator coordinator = coordinator(launcher("PASS"), scheduler);
+        RunSnapshot run = coordinator.start(request(), Map.of());
+
+        RunSnapshot terminal = awaitTerminal(coordinator, run.runId());
+        assertThat(terminal.state()).isEqualTo(TestRunState.PASSED);
+        assertThat(scheduler.future().isCancelled()).isTrue();
+        scheduler.fire();
+
+        assertThat(coordinator.get(run.runId()).state()).isEqualTo(TestRunState.PASSED);
+    }
+
+    private TestRunCoordinator coordinator(ControlledProcessLauncher launcher, TestRunCoordinator.TimeoutScheduler scheduler) {
         launchers.add(launcher);
         TestRunCoordinator coordinator = new TestRunCoordinator(root, this::validator, launcher, scheduler, ignored -> runtime());
         coordinators.add(coordinator);
@@ -260,6 +399,39 @@ class TestRunCoordinatorTest {
                 .map(command -> command.contains(launcher.token)).orElse(false)), "fixture survivor " + launcher.token);
     }
 
+    private void assertNoCaptureLeftovers(String runId) throws Exception {
+        Path runDirectory = root.resolve(".regression-mcp/runs").resolve(runId);
+        try (Stream<Path> staging = Files.list(runDirectory.resolve("staging"));
+                Stream<Path> files = Files.walk(runDirectory)) {
+            assertThat(staging.toList()).isEmpty();
+            assertThat(files.map(Path::getFileName).filter(java.util.Objects::nonNull).map(Path::toString)
+                    .noneMatch(name -> name.endsWith(".tmp"))).isTrue();
+        }
+    }
+
+    @Test
+    void publicStatusPollingAndPersistedOwnershipPollingRemainSafeDuringObserverUpdates() throws Exception {
+        ControlledProcessLauncher launcher = launcher("SPAWN_GRANDCHILD");
+        ManualTimeoutScheduler scheduler = new ManualTimeoutScheduler();
+        TestRunCoordinator coordinator = coordinator(launcher, scheduler);
+        RunSnapshot run = coordinator.start(request(), Map.of());
+        RunStore pollingStore = new RunStore(root);
+
+        await(() -> coordinator.get(run.runId()).state() == TestRunState.RUNNING
+                && pollingStore.persisted(run.runId()).ownedProcesses().size() >= 3,
+                "public RUNNING status and persisted root child grandchild ownership");
+        coordinator.cancel(run.runId());
+
+        RunSnapshot terminal = awaitTerminal(coordinator, run.runId());
+        assertThat(terminal.state()).isEqualTo(TestRunState.CANCELLED);
+        assertThat(scheduler.future().isCancelled()).isTrue();
+        assertNoSurvivor(launcher);
+        assertNoCaptureLeftovers(run.runId());
+        try (RunStore.Lock ignored = new RunStore(root).acquireActiveLock()) {
+            assertThat(ignored).isNotNull();
+        }
+    }
+
     private static OwnedProcessIdentity rootIdentity(RunStore.PersistedRun persisted) {
         return persisted.ownedProcesses().stream().min(java.util.Comparator.comparingInt(OwnedProcessIdentity::depth)).orElseThrow();
     }
@@ -267,7 +439,37 @@ class TestRunCoordinatorTest {
     private static final class ManualTimeoutScheduler implements TestRunCoordinator.TimeoutScheduler {
         private Runnable task;
         private final TestFuture future = new TestFuture();
-        @Override public ScheduledFuture<?> schedule(Runnable scheduledTask, int timeoutSeconds) { task = scheduledTask; return future; }
+        private final CountDownLatch scheduleEntered = new CountDownLatch(1);
+        private final CountDownLatch scheduleRelease;
+        private final boolean fail;
+        private final boolean immediate;
+        private final AtomicInteger successfulInstallations = new AtomicInteger();
+        ManualTimeoutScheduler() { this(false, false, false); }
+        private ManualTimeoutScheduler(boolean blocked, boolean fail, boolean immediate) {
+            this.scheduleRelease = blocked ? new CountDownLatch(1) : null;
+            this.fail = fail;
+            this.immediate = immediate;
+        }
+        static ManualTimeoutScheduler blocking() { return new ManualTimeoutScheduler(true, false, false); }
+        static ManualTimeoutScheduler blockingFailure() { return new ManualTimeoutScheduler(true, true, false); }
+        static ManualTimeoutScheduler immediate() { return new ManualTimeoutScheduler(false, false, true); }
+        @Override public ScheduledFuture<?> schedule(Runnable scheduledTask, int timeoutSeconds) {
+            task = scheduledTask;
+            scheduleEntered.countDown();
+            if (scheduleRelease != null) {
+                try { scheduleRelease.await(); }
+                catch (InterruptedException exception) { Thread.currentThread().interrupt(); throw new IllegalStateException(exception); }
+            }
+            if (fail) throw new IllegalStateException("fixture timeout scheduling failure");
+            if (immediate) task.run();
+            successfulInstallations.incrementAndGet();
+            return future;
+        }
+        boolean installed() { return task != null; }
+        boolean awaitSchedule(long timeout, TimeUnit unit) throws InterruptedException { return scheduleEntered.await(timeout, unit); }
+        void releaseSchedule() { if (scheduleRelease != null) scheduleRelease.countDown(); }
+        int successfulInstallations() { return successfulInstallations.get(); }
+        TestFuture future() { return future; }
         void fire() { assertThat(task).isNotNull(); task.run(); }
     }
 

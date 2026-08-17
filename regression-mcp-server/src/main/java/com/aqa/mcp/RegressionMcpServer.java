@@ -6,10 +6,13 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 
+import com.aqa.mcp.execution.ArtifactContent;
 import com.aqa.mcp.execution.CloseAwareInputStream;
 import com.aqa.mcp.execution.ExecutionPlanningException;
+import com.aqa.mcp.execution.FailureArtifact;
 import com.aqa.mcp.execution.RunSnapshot;
 import com.aqa.mcp.execution.StartTestRunRequest;
+import com.aqa.mcp.execution.SurefireSummary;
 import com.aqa.mcp.execution.TestRunCoordinator;
 import io.cucumber.tagexpressions.Expression;
 import io.cucumber.tagexpressions.TagExpressionParser;
@@ -26,6 +29,9 @@ import io.modelcontextprotocol.spec.McpSchema.ToolAnnotations;
 
 public final class RegressionMcpServer {
 
+    private static final int MAX_FAILURE_SUMMARY_RESPONSE_BYTES = 96 * 1024;
+    private static final int MAX_ARTIFACT_READ_RESPONSE_BYTES = 2 * 1024 * 1024;
+
     static final String SERVER_NAME = "regression-mcp-server";
     static final String SERVER_VERSION = "1.0.0";
     static final String OVERVIEW_TOOL_NAME = "regression_get_framework_overview";
@@ -35,6 +41,10 @@ public final class RegressionMcpServer {
     static final String START_TEST_RUN_TOOL_NAME = "regression_start_test_run";
     static final String GET_TEST_RUN_TOOL_NAME = "regression_get_test_run";
     static final String CANCEL_TEST_RUN_TOOL_NAME = "regression_cancel_test_run";
+    static final String GET_TEST_SUMMARY_TOOL_NAME = "regression_get_test_summary";
+    static final String GET_FAILURE_SUMMARY_TOOL_NAME = "regression_get_failure_summary";
+    static final String GET_FAILURE_ARTIFACTS_TOOL_NAME = "regression_get_failure_artifacts";
+    static final String READ_FAILURE_ARTIFACT_TOOL_NAME = "regression_read_failure_artifact";
     private static final String INSTRUCTIONS =
             "This is a local, read-only framework inspection server. It exposes only deterministic inspection "
                     + "tools for the repository configured by REGRESSION_ROOT.";
@@ -66,7 +76,8 @@ public final class RegressionMcpServer {
                 .instructions(INSTRUCTIONS)
                 .capabilities(ServerCapabilities.builder().tools(false).build())
                 .tools(overviewTool(repositoryRoot), listModulesTool(repositoryRoot), featureListTool(repositoryRoot), scenarioListTool(repositoryRoot),
-                        startTestRunTool(coordinator), getTestRunTool(coordinator), cancelTestRunTool(coordinator))
+                        startTestRunTool(coordinator), getTestRunTool(coordinator), cancelTestRunTool(coordinator), testSummaryTool(coordinator),
+                        failureSummaryTool(coordinator), failureArtifactsTool(coordinator), readFailureArtifactTool(coordinator))
                 .build();
     }
 
@@ -78,6 +89,41 @@ public final class RegressionMcpServer {
     }
 
     static SyncToolSpecification getTestRunTool(TestRunCoordinator coordinator) { return runActionTool(GET_TEST_RUN_TOOL_NAME, coordinator, true); }
+    static SyncToolSpecification testSummaryTool(TestRunCoordinator coordinator) {
+        return SyncToolSpecification.builder().tool(Tool.builder(GET_TEST_SUMMARY_TOOL_NAME, runIdInputSchema())
+                .description("Returns the published authoritative Surefire summary for a terminal server-generated run.")
+                .annotations(readOnlyAnnotations()).outputSchema(summaryOutputSchema()).build()).callHandler((exchange, request) -> {
+                    try { String id = runId(request.arguments()); return successResult(Map.of("status", "ok", "data", summaryOutput(id, coordinator.summary(id)))); }
+                    catch (ExecutionPlanningException exception) { return errorResult(exception.code(), exception.getMessage()); }
+                }).build();
+    }
+    static SyncToolSpecification failureSummaryTool(TestRunCoordinator coordinator) {
+        return SyncToolSpecification.builder().tool(Tool.builder(GET_FAILURE_SUMMARY_TOOL_NAME, runIdInputSchema())
+                .description("Returns bounded authoritative Surefire failures and persisted optional Allure enrichment for a terminal server-generated run.")
+                .annotations(readOnlyAnnotations()).outputSchema(failureSummaryOutputSchema()).build()).callHandler((exchange, request) -> {
+                    try { String id = runId(request.arguments()); return failureSummaryResult(failureSummaryOutput(id, coordinator.failureSummary(id))); }
+                    catch (ExecutionPlanningException exception) { return errorResult(exception.code(), exception.getMessage()); }
+                }).build();
+    }
+    static SyncToolSpecification failureArtifactsTool(TestRunCoordinator coordinator) {
+        return SyncToolSpecification.builder().tool(Tool.builder(GET_FAILURE_ARTIFACTS_TOOL_NAME, runIdInputSchema())
+                .description("Lists the server-published artifacts captured for a terminal server-generated run.")
+                .annotations(readOnlyAnnotations()).outputSchema(artifactsOutputSchema()).build()).callHandler((exchange, request) -> {
+                    try { String id = runId(request.arguments()); return successResult(artifactsOutput(id, coordinator.artifacts(id))); }
+                    catch (ExecutionPlanningException exception) { return errorResult(exception.code(), exception.getMessage()); }
+                }).build();
+    }
+    static SyncToolSpecification readFailureArtifactTool(TestRunCoordinator coordinator) {
+        return SyncToolSpecification.builder().tool(Tool.builder(READ_FAILURE_ARTIFACT_TOOL_NAME, artifactInputSchema())
+                .description("Returns bounded, MIME-allow-listed bytes for one server-generated artifactId belonging to a terminal server-generated run.")
+                .annotations(readOnlyAnnotations()).outputSchema(readArtifactOutputSchema()).build()).callHandler((exchange, request) -> {
+                    try {
+                        Map<String, String> arguments = artifactArguments(request.arguments());
+                        ArtifactContent content = coordinator.readArtifact(arguments.get("runId"), arguments.get("artifactId"));
+                        return readArtifactResult(readArtifactOutput(content));
+                    } catch (ExecutionPlanningException exception) { return errorResult(exception.code(), exception.getMessage()); }
+                }).build();
+    }
     static SyncToolSpecification cancelTestRunTool(TestRunCoordinator coordinator) { return runActionTool(CANCEL_TEST_RUN_TOOL_NAME, coordinator, false); }
     private static SyncToolSpecification runActionTool(String name, TestRunCoordinator coordinator, boolean get) {
         return SyncToolSpecification.builder().tool(Tool.builder(name, runIdInputSchema()).description("Returns or cancels a server-generated test run.")
@@ -229,6 +275,14 @@ public final class RegressionMcpServer {
         return id;
     }
 
+    private static Map<String, String> artifactArguments(Map<String, Object> arguments) {
+        if (arguments == null || !arguments.keySet().equals(java.util.Set.of("runId", "artifactId"))
+                || !(arguments.get("runId") instanceof String runId) || !(arguments.get("artifactId") instanceof String artifactId)) {
+            throw new ExecutionPlanningException("INVALID_ARGUMENTS", "runId and artifactId must be the only string arguments.");
+        }
+        return Map.of("runId", runId, "artifactId", artifactId);
+    }
+
     private static Map<String, Object> runOutput(RunSnapshot run) {
         Map<String, Object> data = new java.util.LinkedHashMap<>();
         data.put("runId", run.runId()); data.put("module", run.module()); data.put("environment", run.environment());
@@ -238,6 +292,64 @@ public final class RegressionMcpServer {
         if (run.exitCode() != null) data.put("exitCode", run.exitCode()); if (run.reason() != null) data.put("reason", run.reason());
         data.put("stdoutBytes", run.stdoutBytes()); data.put("stderrBytes", run.stderrBytes()); data.put("stdoutTruncated", run.stdoutTruncated()); data.put("stderrTruncated", run.stderrTruncated());
         return Map.copyOf(data);
+    }
+
+    private static Map<String, Object> summaryOutput(String runId, SurefireSummary summary) {
+        List<Map<String, Object>> suites = summary.suites().stream().map(suite -> Map.<String, Object>of("id", suite.id(), "tests", suite.tests(),
+                "failures", suite.failures(), "errors", suite.errors(), "skipped", suite.skipped(), "duration", suite.duration().toPlainString())).toList();
+        boolean detailsTruncated = summary.detailsTruncated() || summary.suites().stream().anyMatch(suite -> !suite.testcases().isEmpty());
+        return Map.of("runId", runId, "tests", summary.tests(), "passed", summary.passed(), "failures", summary.failures(), "errors", summary.errors(),
+                "skipped", summary.skipped(), "duration", summary.duration().toPlainString(), "suites", suites, "detailsTruncated", detailsTruncated);
+    }
+    private static Map<String, Object> failureSummaryOutput(String runId, SurefireSummary summary) {
+        List<Map<String, Object>> records = summary.failureRecords().stream().map(RegressionMcpServer::failureRecordOutput).toList();
+        return Map.of("runId", runId, "tests", summary.tests(), "failures", summary.failures(), "errors", summary.errors(),
+                "skipped", summary.skipped(), "failureRecords", records, "allureAvailability", summary.allureAvailability(),
+                "detailsTruncated", summary.detailsTruncated());
+    }
+    private static Map<String, Object> failureRecordOutput(SurefireSummary.FailureRecord record) {
+        Map<String, Object> allure = new java.util.LinkedHashMap<>();
+        allure.put("availability", record.allure().availability());
+        if (record.allure().scenario() != null) allure.put("scenario", record.allure().scenario());
+        if (record.allure().statusDetails() != null) allure.put("statusDetails", record.allure().statusDetails());
+        allure.put("steps", record.allure().steps().stream().map(RegressionMcpServer::stepOutput).toList());
+        allure.put("attachmentsPresent", record.allure().attachmentsPresent()); allure.put("truncated", record.allure().truncated());
+        return Map.of("failureId", record.failureId(), "type", record.type(), "suite", record.suite(), "testCase", record.testCase(),
+                "message", record.message(), "stackTrace", record.stackTrace(), "allure", Map.copyOf(allure), "recordTruncated", record.recordTruncated());
+    }
+    private static CallToolResult failureSummaryResult(Map<String, Object> data) {
+        Map<String, Object> output = Map.of("status", "ok", "data", data);
+        try {
+            if (serialize(output).getBytes(java.nio.charset.StandardCharsets.UTF_8).length > MAX_FAILURE_SUMMARY_RESPONSE_BYTES) {
+                return errorResult("REPORT_MALFORMED", "The published failure summary exceeds its bounded response contract.");
+            }
+            return successResult(output);
+        } catch (RuntimeException exception) { return errorResult("REPORT_MALFORMED", "The published failure summary cannot be represented safely."); }
+    }
+    private static Map<String, Object> stepOutput(SurefireSummary.Step step) {
+        return Map.of("name", step.name(), "status", step.status(), "steps", step.steps().stream().map(RegressionMcpServer::stepOutput).toList());
+    }
+
+    private static Map<String, Object> artifactOutput(FailureArtifact artifact) {
+        return Map.of("artifactId", artifact.artifactId(), "name", artifact.name(), "mimeType", artifact.mimeType(),
+                "size", artifact.size(), "relativePath", artifact.relativePath());
+    }
+    private static Map<String, Object> artifactsOutput(String runId, List<FailureArtifact> artifacts) {
+        return Map.of("status", "ok", "data", Map.of("runId", runId, "artifacts", artifacts.stream().map(RegressionMcpServer::artifactOutput).toList()));
+    }
+    private static Map<String, Object> readArtifactOutput(ArtifactContent content) {
+        Map<String, Object> artifact = new java.util.LinkedHashMap<>(artifactOutput(content.metadata()));
+        artifact.put("content", java.util.Base64.getEncoder().encodeToString(content.content()));
+        return Map.copyOf(artifact);
+    }
+    private static CallToolResult readArtifactResult(Map<String, Object> data) {
+        Map<String, Object> output = Map.of("status", "ok", "data", data);
+        try {
+            if (serialize(output).getBytes(java.nio.charset.StandardCharsets.UTF_8).length > MAX_ARTIFACT_READ_RESPONSE_BYTES) {
+                return errorResult("ARTIFACT_TOO_LARGE", "The requested artifact exceeds its bounded response contract.");
+            }
+            return successResult(output);
+        } catch (RuntimeException exception) { return errorResult("ARTIFACT_TOO_LARGE", "The requested artifact cannot be represented safely."); }
     }
 
     private static Map<String, Object> moduleInputSchema(boolean allowTags) {
@@ -251,6 +363,52 @@ public final class RegressionMcpServer {
             "required", List.of("module", "environment", "headless", "timeoutSeconds"), "properties", Map.of("module", Map.of("type", "string"), "tags", Map.of("type", "string", "maxLength", 1024), "environment", Map.of("type", "string"), "headless", Map.of("type", "boolean"), "timeoutSeconds", Map.of("type", "integer"))); }
     private static Map<String, Object> runIdInputSchema() { return Map.of("type", "object", "additionalProperties", false, "required", List.of("runId"), "properties", Map.of("runId", Map.of("type", "string"))); }
     private static Map<String, Object> runOutputSchema() { return structuredOutputSchema(Map.ofEntries(Map.entry("runId", Map.of("type", "string")), Map.entry("module", Map.of("type", "string")), Map.entry("environment", Map.of("type", "string")), Map.entry("headless", Map.of("type", "boolean")), Map.entry("tags", Map.of("type", "string")), Map.entry("timeoutSeconds", Map.of("type", "integer")), Map.entry("state", Map.of("type", "string")), Map.entry("createdAt", Map.of("type", "string")), Map.entry("startedAt", Map.of("type", "string")), Map.entry("finishedAt", Map.of("type", "string")), Map.entry("exitCode", Map.of("type", "integer")), Map.entry("reason", Map.of("type", "string")), Map.entry("stdoutBytes", Map.of("type", "integer")), Map.entry("stderrBytes", Map.of("type", "integer")), Map.entry("stdoutTruncated", Map.of("type", "boolean")), Map.entry("stderrTruncated", Map.of("type", "boolean"))), List.of("runId", "module", "environment", "headless", "tags", "timeoutSeconds", "state", "createdAt", "stdoutBytes", "stderrBytes", "stdoutTruncated", "stderrTruncated")); }
+    private static Map<String, Object> summaryOutputSchema() {
+        Map<String, Object> suite = Map.of("type", "object", "additionalProperties", false, "required", List.of("id", "tests", "failures", "errors", "skipped", "duration"),
+                "properties", Map.of("id", Map.of("type", "string"), "tests", Map.of("type", "integer"), "failures", Map.of("type", "integer"),
+                        "errors", Map.of("type", "integer"), "skipped", Map.of("type", "integer"), "duration", Map.of("type", "string")));
+        return structuredOutputSchema(Map.of("runId", Map.of("type", "string"), "tests", Map.of("type", "integer"), "passed", Map.of("type", "integer"),
+                "failures", Map.of("type", "integer"), "errors", Map.of("type", "integer"), "skipped", Map.of("type", "integer"),
+                "duration", Map.of("type", "string"), "suites", Map.of("type", "array", "items", suite), "detailsTruncated", Map.of("type", "boolean")),
+                List.of("runId", "tests", "passed", "failures", "errors", "skipped", "duration", "suites", "detailsTruncated"));
+    }
+    private static Map<String, Object> failureSummaryOutputSchema() {
+        Map<String, Object> step = Map.of("type", "object", "additionalProperties", false, "required", List.of("name", "status", "steps"),
+                "properties", Map.of("name", Map.of("type", "string"), "status", Map.of("type", "string"), "steps", Map.of("type", "array")));
+        Map<String, Object> allure = Map.of("type", "object", "additionalProperties", false, "required", List.of("availability", "steps", "attachmentsPresent", "truncated"),
+                "properties", Map.of("availability", Map.of("type", "string"), "scenario", Map.of("type", "string"), "statusDetails", Map.of("type", "string"),
+                        "steps", Map.of("type", "array", "items", step), "attachmentsPresent", Map.of("type", "boolean"), "truncated", Map.of("type", "boolean")));
+        Map<String, Object> record = Map.of("type", "object", "additionalProperties", false, "required", List.of("failureId", "type", "suite", "testCase", "message", "stackTrace", "allure", "recordTruncated"),
+                "properties", Map.of("failureId", Map.of("type", "string"), "type", Map.of("type", "string"), "suite", Map.of("type", "string"), "testCase", Map.of("type", "string"),
+                        "message", Map.of("type", "string"), "stackTrace", Map.of("type", "string"), "allure", allure, "recordTruncated", Map.of("type", "boolean")));
+        return structuredOutputSchema(Map.of("runId", Map.of("type", "string"), "tests", Map.of("type", "integer"), "failures", Map.of("type", "integer"),
+                "errors", Map.of("type", "integer"), "skipped", Map.of("type", "integer"), "failureRecords", Map.of("type", "array", "items", record),
+                "allureAvailability", Map.of("type", "string"), "detailsTruncated", Map.of("type", "boolean")),
+                List.of("runId", "tests", "failures", "errors", "skipped", "failureRecords", "allureAvailability", "detailsTruncated"));
+    }
+
+    private static Map<String, Object> artifactSchemaProperties() {
+        return Map.of("artifactId", Map.of("type", "string"), "name", Map.of("type", "string"), "mimeType", Map.of("type", "string"),
+                "size", Map.of("type", "integer"), "relativePath", Map.of("type", "string"));
+    }
+    private static Map<String, Object> artifactSchema() {
+        return Map.of("type", "object", "additionalProperties", false,
+                "required", List.of("artifactId", "name", "mimeType", "size", "relativePath"), "properties", artifactSchemaProperties());
+    }
+    private static Map<String, Object> artifactsOutputSchema() {
+        return structuredOutputSchema(Map.of("runId", Map.of("type", "string"), "artifacts", Map.of("type", "array", "items", artifactSchema())),
+                List.of("runId", "artifacts"));
+    }
+    private static Map<String, Object> readArtifactOutputSchema() {
+        Map<String, Object> properties = new java.util.LinkedHashMap<>(artifactSchemaProperties());
+        properties.put("content", Map.of("type", "string"));
+        return structuredOutputSchema(Map.copyOf(properties),
+                List.of("artifactId", "name", "mimeType", "size", "relativePath", "content"));
+    }
+    private static Map<String, Object> artifactInputSchema() {
+        return Map.of("type", "object", "additionalProperties", false, "required", List.of("runId", "artifactId"),
+                "properties", Map.of("runId", Map.of("type", "string"), "artifactId", Map.of("type", "string")));
+    }
 
     private static Map<String, Object> featureOutputSchema() {
         Map<String, Object> feature = Map.of("type", "object", "additionalProperties", false,

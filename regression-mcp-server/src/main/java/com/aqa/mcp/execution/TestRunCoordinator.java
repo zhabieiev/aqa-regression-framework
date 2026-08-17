@@ -3,7 +3,9 @@ package com.aqa.mcp.execution;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.Comparator;
+import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -88,6 +90,16 @@ public final class TestRunCoordinator implements AutoCloseable {
         return current != null && current.snapshot.runId().equals(id) ? current.snapshot : store.get(id);
     }
 
+    /** Package-private deterministic ownership-observation seam for lifecycle tests. */
+    int ownedProcessCount(String id) {
+        Active current = active.get();
+        if (current != null && current.snapshot.runId().equals(id)) {
+            ProcessOwnershipTracker tracker = current.tracker;
+            return tracker == null ? 0 : tracker.identities().size();
+        }
+        return store.persisted(id).ownedProcesses().size();
+    }
+
     public RunSnapshot cancel(String id) {
         Active current = active.get();
         if (current == null || !current.snapshot.runId().equals(id)) return get(id);
@@ -103,10 +115,11 @@ public final class TestRunCoordinator implements AutoCloseable {
         BoundedLogDrainer stderr = null;
         try {
             if (run.cause.get() != null) {
+                capture(run);
                 persistTerminal(run, run.cause.get(), null, null, null);
                 return;
             }
-            MavenInvocation invocation = MavenInvocationFactory.create(run.runtime, root, run.request);
+            MavenInvocation invocation = MavenInvocationFactory.create(run.runtime, root, run.request, store.captureLayout(run.snapshot.runId()));
             process = launcher.launch(invocation);
             run.process = process;
             long pid = process.pid();
@@ -114,34 +127,47 @@ public final class TestRunCoordinator implements AutoCloseable {
                     "PROCESS_IDENTITY_UNAVAILABLE", "The started process did not expose a usable identity."));
             ProcessOwnershipTracker tracker = new ProcessOwnershipTracker(processView, rootIdentity);
             run.tracker = tracker;
-            RunSnapshot running = replace(run.snapshot, TestRunState.RUNNING, Instant.now(), null, null, 0, 0, false, false);
-            store.update(running, tracker.identities());
-            run.snapshot = running;
-            run.observation = ownershipObserver.scheduleAtFixedRate(() -> observe(run), 100, 100, TimeUnit.MILLISECONDS);
+            // Persist the launched root identity while this run is still QUEUED.  A scheduler failure must
+            // therefore have enough durable ownership evidence to clean up without ever publishing RUNNING.
+            store.update(run.snapshot, tracker.identities());
 
-            stdout = new BoundedLogDrainer(process.getInputStream(), store.log(running.runId(), false));
-            stderr = new BoundedLogDrainer(process.getErrorStream(), store.log(running.runId(), true));
+            stdout = new BoundedLogDrainer(process.getInputStream(), store.log(run.snapshot.runId(), false));
+            stderr = new BoundedLogDrainer(process.getErrorStream(), store.log(run.snapshot.runId(), true));
             worker.submit(stdout);
             worker.submit(stderr);
             Process launched = process;
-            run.timeout = timeouts.schedule(() -> {
+            ScheduledFuture<?> timeout = Objects.requireNonNull(timeouts.schedule(() -> {
                 if (run.cause.compareAndSet(null, TestRunState.TIMED_OUT)) terminate(launched);
-            }, run.request.timeoutSeconds());
+            }, run.request.timeoutSeconds()), "Timeout scheduler returned no handle.");
+            if (timeout.isCancelled()) throw new ExecutionPlanningException("TIMEOUT_SCHEDULING_FAILED", "The timeout task was cancelled during installation.");
+            run.timeout = timeout;
+            // Do not make RUNNING externally observable until the timeout responsibility is both
+            // successfully installed and retained by the active run.  If cancellation or an immediate
+            // timeout won the race, stay in the deterministic cleanup path instead.
+            if (run.cause.get() == null) {
+                RunSnapshot running = replace(run.snapshot, TestRunState.RUNNING, Instant.now(), null, null, 0, 0, false, false);
+                store.update(running, tracker.identities());
+                run.snapshot = running;
+                run.observation = ownershipObserver.scheduleAtFixedRate(() -> observe(run), 100, 100, TimeUnit.MILLISECONDS);
+            }
             if (run.cause.get() != null) terminate(process);
             process.waitFor();
             cleanup(run, process);
             awaitDrainers(stdout, stderr);
             TestRunState terminal = run.cause.get();
             if (terminal == null) terminal = process.exitValue() == 0 ? TestRunState.PASSED : TestRunState.FAILED;
+            capture(run);
             persistTerminal(run, terminal, process, stdout, stderr);
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             if (process != null) cleanup(run, process);
             awaitDrainers(stdout, stderr);
+            capture(run);
             persistTerminal(run, firstCause(run, TestRunState.CANCELLED), process, stdout, stderr);
         } catch (RuntimeException exception) {
             if (process != null) cleanup(run, process);
             awaitDrainers(stdout, stderr);
+            capture(run);
             persistTerminal(run, firstCause(run, TestRunState.ERROR), process, stdout, stderr);
         } finally {
             if (run.timeout != null) run.timeout.cancel(false);
@@ -149,6 +175,52 @@ public final class TestRunCoordinator implements AutoCloseable {
             active.compareAndSet(run, null);
             run.lock.close();
         }
+    }
+
+    public SurefireSummary summary(String id) {
+        if (!RunId.valid(id)) throw new ExecutionPlanningException("INVALID_ARGUMENTS", "runId has an invalid format.");
+        Active current = active.get();
+        if (current != null && current.snapshot.runId().equals(id) && !current.snapshot.terminal()) {
+            throw new ExecutionPlanningException("RUN_NOT_TERMINAL", "The requested run is not terminal.");
+        }
+        return store.summary(id);
+    }
+
+    public SurefireSummary failureSummary(String id) {
+        if (!RunId.valid(id)) throw new ExecutionPlanningException("INVALID_ARGUMENTS", "runId has an invalid format.");
+        Active current = active.get();
+        if (current != null && current.snapshot.runId().equals(id) && !current.snapshot.terminal()) {
+            throw new ExecutionPlanningException("RUN_NOT_TERMINAL", "The requested run is not terminal.");
+        }
+        return store.failureSummary(id);
+    }
+
+    /** Deliberately gated the same way as {@link #summary}/{@link #failureSummary}: a still-RUNNING active run must
+     * never expose its capture set, even if a stale on-disk record has not yet observed the in-memory terminal state. */
+    public List<FailureArtifact> artifacts(String id) {
+        if (!RunId.valid(id)) throw new ExecutionPlanningException("INVALID_ARGUMENTS", "runId has an invalid format.");
+        Active current = active.get();
+        if (current != null && current.snapshot.runId().equals(id) && !current.snapshot.terminal()) {
+            throw new ExecutionPlanningException("RUN_NOT_TERMINAL", "The requested run is not terminal.");
+        }
+        return store.artifacts(id);
+    }
+
+    public ArtifactContent readArtifact(String id, String artifactId) {
+        if (!RunId.valid(id)) throw new ExecutionPlanningException("INVALID_ARGUMENTS", "runId has an invalid format.");
+        Active current = active.get();
+        if (current != null && current.snapshot.runId().equals(id) && !current.snapshot.terminal()) {
+            throw new ExecutionPlanningException("RUN_NOT_TERMINAL", "The requested run is not terminal.");
+        }
+        return store.readArtifact(id, artifactId);
+    }
+
+    private void capture(Active run) { synchronized (run) { capture(run.snapshot.runId()); } }
+
+    private void capture(String runId) {
+        RunStore.PersistedRun persisted = store.persisted(runId);
+        if (persisted.capture() == null || persisted.capture().status() != CaptureStatus.PENDING) return;
+        store.updateCapture(runId, new ReportCapture().capture(store.captureLayout(runId), persisted.capture()));
     }
 
     private void persistTerminal(Active run, TestRunState state, Process process,
@@ -190,6 +262,7 @@ public final class TestRunCoordinator implements AutoCloseable {
                     recoveryBlocked.set(true);
                     continue;
                 }
+                capture(snapshot.runId());
                 store.update(replaceWithReason(snapshot, TestRunState.ERROR, "SERVER_RESTART_RECOVERY", snapshot.startedAt(), Instant.now(),
                         snapshot.exitCode(), snapshot.stdoutBytes(), snapshot.stderrBytes(), snapshot.stdoutTruncated(), snapshot.stderrTruncated()),
                         stale.ownedProcesses());

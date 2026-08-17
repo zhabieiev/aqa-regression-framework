@@ -32,6 +32,26 @@ class StaleRunRecoveryTest {
     }
 
     @Test
+    void restartPublishesValidatedStagedCaptureBeforeItsTerminalRecoveryState() throws Exception {
+        Files.writeString(root.resolve("pom.xml"), "<project/>");
+        RunStore store = new RunStore(root); RunSnapshot queued = snapshot(TestRunState.QUEUED); store.create(queued);
+        RunCaptureLayout layout = store.captureLayout(queued.runId());
+        Files.writeString(layout.surefireStaging().resolve("TEST-restart.xml"), "<testsuite name='restart' tests='1' failures='0' errors='0' skipped='0' time='0.1'><testcase classname='restart' name='passes' time='0.1'/></testsuite>");
+
+        TestRunCoordinator coordinator = coordinator(new FakeView());
+        try {
+            RunStore.PersistedRun recovered = store.persisted(queued.runId());
+            assertThat(recovered.snapshot().state()).isEqualTo(TestRunState.ERROR);
+            assertThat(recovered.capture().status()).isEqualTo(CaptureStatus.PARTIAL);
+            assertThat(layout.surefireIndex()).isRegularFile();
+            // The tools themselves, not just the persisted capture record, must see this recovery-published data
+            // as immediately consistent and complete -- never partially published.
+            assertThat(store.summary(queued.runId()).passed()).isEqualTo(1);
+            assertThat(store.artifacts(queued.runId())).isEmpty();
+        } finally { coordinator.close(); }
+    }
+
+    @Test
     void matchingLiveIdentityIsCleanedDuringRecoveryBeforeTerminalPublication() throws Exception {
         Files.writeString(root.resolve("pom.xml"), "<project/>");
         RunStore store = new RunStore(root); RunSnapshot queued = snapshot(TestRunState.QUEUED); store.create(queued);

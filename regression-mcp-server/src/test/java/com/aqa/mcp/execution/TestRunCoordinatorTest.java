@@ -139,6 +139,9 @@ class TestRunCoordinatorTest {
         assertThat(launcher.awaitLaunch(5, TimeUnit.SECONDS)).isTrue();
         assertThat(scheduler.awaitSchedule(5, TimeUnit.SECONDS)).isTrue();
         assertThat(coordinator.get(run.runId()).state()).isEqualTo(TestRunState.QUEUED);
+        long rootPid = launcher.process().pid();
+        await(() -> ProcessHandle.of(rootPid).map(handle -> handle.descendants().count()).orElse(0L) >= 2,
+                "child and grandchild fixture processes visible as OS-level descendants of the root process");
         scheduler.releaseSchedule();
 
         RunSnapshot terminal = awaitTerminal(coordinator, run.runId());

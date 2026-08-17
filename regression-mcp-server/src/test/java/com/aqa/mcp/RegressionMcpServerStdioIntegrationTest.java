@@ -194,6 +194,12 @@ class RegressionMcpServerStdioIntegrationTest {
                 String runId = started.path("result").path("structuredContent").path("data").path("runId").asText();
                 JsonNode running = awaitState(stdin, stdout, readerExecutor, 5, runId, "RUNNING");
                 assertThat(running.path("result").path("structuredContent").path("data").path("runId").asText()).isEqualTo(runId);
+                JsonNode activeSummary = request(stdin, stdout, readerExecutor, 6, "tools/call", Map.of("name", RegressionMcpServer.GET_TEST_SUMMARY_TOOL_NAME,
+                        "arguments", Map.of("runId", runId)));
+                assertStructuredError(activeSummary, "RUN_NOT_TERMINAL");
+                JsonNode rejectedSummary = request(stdin, stdout, readerExecutor, 7, "tools/call", Map.of("name", RegressionMcpServer.GET_TEST_SUMMARY_TOOL_NAME,
+                        "arguments", Map.of("runId", runId, "unexpected", true)));
+                assertRejected(rejectedSummary, "INVALID_ARGUMENTS");
 
                 JsonNode extra = request(stdin, stdout, readerExecutor, 20, "tools/call", Map.of("name", RegressionMcpServer.START_TEST_RUN_TOOL_NAME,
                         "arguments", Map.of("module", "regression-nextjs-commerce", "environment", "dev", "headless", true, "timeoutSeconds", 30, "unexpected", "x")));
@@ -208,6 +214,9 @@ class RegressionMcpServerStdioIntegrationTest {
                 JsonNode cancelled = awaitState(stdin, stdout, readerExecutor, 24, runId, "CANCELLED");
                 JsonNode repeated = request(stdin, stdout, readerExecutor, 25, "tools/call", Map.of("name", RegressionMcpServer.CANCEL_TEST_RUN_TOOL_NAME, "arguments", Map.of("runId", runId)));
                 assertThat(repeated.path("result").path("structuredContent").path("data").path("state").asText()).isEqualTo("CANCELLED");
+                JsonNode unavailable = request(stdin, stdout, readerExecutor, 251, "tools/call", Map.of("name", RegressionMcpServer.GET_TEST_SUMMARY_TOOL_NAME,
+                        "arguments", Map.of("runId", runId)));
+                assertStructuredError(unavailable, "NOT_FOUND");
                 JsonNode overview = request(stdin, stdout, readerExecutor, 26, "tools/call", Map.of("name", RegressionMcpServer.OVERVIEW_TOOL_NAME, "arguments", Map.of()));
                 assertThat(overview.path("result").path("isError").asBoolean()).isFalse();
             } finally { readerExecutor.shutdownNow(); }
@@ -241,6 +250,57 @@ class RegressionMcpServerStdioIntegrationTest {
         }
     }
 
+    /** Gate 14.4 completion criterion, exercised end to end over real STDIO: for a genuine failing run, get its
+     * summary, see the failure cause, list its artifacts, read a permitted one by artifactId, and confirm a
+     * foreign artifactId and a foreign runId are both rejected as structured NOT_FOUND, never an exception. */
+    @Test
+    void servesFailureArtifactToolsForARealFailingRunAndRejectsForeignRequests() throws Exception {
+        Path root = createExecutionRoot();
+        Process process = startServer(root, FailingWithArtifactsMcpServerMain.class);
+        try {
+            ExecutorService readerExecutor = Executors.newSingleThreadExecutor();
+            try (BufferedReader stdout = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8));
+                    BufferedWriter stdin = new BufferedWriter(new OutputStreamWriter(process.getOutputStream(), StandardCharsets.UTF_8))) {
+                initialize(stdin, stdout, readerExecutor);
+                Map<String, Object> startArguments = Map.of("module", "regression-nextjs-commerce", "environment", "dev", "headless", true, "timeoutSeconds", 30);
+                JsonNode started = request(stdin, stdout, readerExecutor, 2, "tools/call", Map.of("name", RegressionMcpServer.START_TEST_RUN_TOOL_NAME, "arguments", startArguments));
+                String runId = started.path("result").path("structuredContent").path("data").path("runId").asText();
+                JsonNode failed = awaitState(stdin, stdout, readerExecutor, 3, runId, "FAILED");
+                assertThat(failed.path("result").path("structuredContent").path("data").path("state").asText()).isEqualTo("FAILED");
+
+                JsonNode summary = request(stdin, stdout, readerExecutor, 20, "tools/call", Map.of("name", RegressionMcpServer.GET_TEST_SUMMARY_TOOL_NAME, "arguments", Map.of("runId", runId)));
+                assertThat(summary.path("result").path("structuredContent").path("data").path("failures").asInt()).isEqualTo(1);
+
+                JsonNode failureSummary = request(stdin, stdout, readerExecutor, 21, "tools/call", Map.of("name", RegressionMcpServer.GET_FAILURE_SUMMARY_TOOL_NAME, "arguments", Map.of("runId", runId)));
+                assertThat(failureSummary.path("result").path("structuredContent").path("data").path("failureRecords")).hasSize(1);
+
+                JsonNode artifacts = request(stdin, stdout, readerExecutor, 22, "tools/call", Map.of("name", RegressionMcpServer.GET_FAILURE_ARTIFACTS_TOOL_NAME, "arguments", Map.of("runId", runId)));
+                JsonNode artifactList = artifacts.path("result").path("structuredContent").path("data").path("artifacts");
+                assertThat(artifactList).hasSize(3);
+                String screenshotArtifactId = null;
+                for (JsonNode artifact : artifactList) {
+                    assertThat(artifact.path("relativePath").asText()).doesNotContain(root.toString());
+                    assertThat(artifact.path("name").asText()).doesNotContain(root.toString());
+                    if ("image/png".equals(artifact.path("mimeType").asText())) screenshotArtifactId = artifact.path("artifactId").asText();
+                }
+                assertThat(screenshotArtifactId).isNotNull();
+
+                JsonNode read = request(stdin, stdout, readerExecutor, 23, "tools/call", Map.of("name", RegressionMcpServer.READ_FAILURE_ARTIFACT_TOOL_NAME,
+                        "arguments", Map.of("runId", runId, "artifactId", screenshotArtifactId)));
+                assertThat(read.path("result").path("structuredContent").path("data").path("mimeType").asText()).isEqualTo("image/png");
+                assertThat(read.path("result").path("structuredContent").path("data").path("content").asText()).isNotBlank();
+
+                JsonNode foreignArtifact = request(stdin, stdout, readerExecutor, 24, "tools/call", Map.of("name", RegressionMcpServer.READ_FAILURE_ARTIFACT_TOOL_NAME,
+                        "arguments", Map.of("runId", runId, "artifactId", "0".repeat(32))));
+                assertStructuredError(foreignArtifact, "NOT_FOUND");
+
+                JsonNode staleRun = request(stdin, stdout, readerExecutor, 25, "tools/call", Map.of("name", RegressionMcpServer.GET_FAILURE_ARTIFACTS_TOOL_NAME,
+                        "arguments", Map.of("runId", "run-00000000000000000000000000000000")));
+                assertStructuredError(staleRun, "RUN_NOT_FOUND");
+            } finally { readerExecutor.shutdownNow(); }
+        } finally { terminateProcess(process); }
+    }
+
     private void initialize(BufferedWriter stdin, BufferedReader stdout, ExecutorService readerExecutor) throws Exception {
         JsonNode initialize = request(stdin, stdout, readerExecutor, 1, "initialize", Map.of(
                 "protocolVersion", "2025-06-18", "capabilities", Map.of(),
@@ -253,7 +313,7 @@ class RegressionMcpServerStdioIntegrationTest {
     }
 
     private void assertToolList(JsonNode toolsList) {
-        assertThat(toolsList.path("result").path("tools").size()).isEqualTo(7);
+        assertThat(toolsList.path("result").path("tools").size()).isEqualTo(11);
         for (JsonNode tool : toolsList.path("result").path("tools")) {
             assertThat(tool.path("inputSchema").path("additionalProperties").asBoolean()).isFalse();
         }
@@ -272,11 +332,27 @@ class RegressionMcpServerStdioIntegrationTest {
         for (JsonNode tool : tools.path("result").path("tools")) byName.put(tool.path("name").asText(), tool);
         assertThat(byName.keySet()).containsExactlyInAnyOrder(RegressionMcpServer.OVERVIEW_TOOL_NAME, RegressionMcpServer.LIST_MODULES_TOOL_NAME,
                 RegressionMcpServer.LIST_FEATURES_TOOL_NAME, RegressionMcpServer.LIST_SCENARIOS_TOOL_NAME, RegressionMcpServer.START_TEST_RUN_TOOL_NAME,
-                RegressionMcpServer.GET_TEST_RUN_TOOL_NAME, RegressionMcpServer.CANCEL_TEST_RUN_TOOL_NAME);
+                RegressionMcpServer.GET_TEST_RUN_TOOL_NAME, RegressionMcpServer.CANCEL_TEST_RUN_TOOL_NAME, RegressionMcpServer.GET_TEST_SUMMARY_TOOL_NAME,
+                RegressionMcpServer.GET_FAILURE_SUMMARY_TOOL_NAME, RegressionMcpServer.GET_FAILURE_ARTIFACTS_TOOL_NAME,
+                RegressionMcpServer.READ_FAILURE_ARTIFACT_TOOL_NAME);
+        assertThat(byName.get(RegressionMcpServer.START_TEST_RUN_TOOL_NAME).path("annotations").path("readOnlyHint").asBoolean()).isFalse();
         assertThat(byName.get(RegressionMcpServer.START_TEST_RUN_TOOL_NAME).path("annotations").path("destructiveHint").asBoolean()).isTrue();
         assertThat(byName.get(RegressionMcpServer.START_TEST_RUN_TOOL_NAME).path("annotations").path("idempotentHint").asBoolean()).isFalse();
+        assertThat(byName.get(RegressionMcpServer.START_TEST_RUN_TOOL_NAME).path("annotations").path("openWorldHint").asBoolean()).isTrue();
         assertThat(byName.get(RegressionMcpServer.GET_TEST_RUN_TOOL_NAME).path("annotations").path("readOnlyHint").asBoolean()).isTrue();
+        assertThat(byName.get(RegressionMcpServer.GET_TEST_RUN_TOOL_NAME).path("annotations").path("destructiveHint").asBoolean()).isFalse();
+        assertThat(byName.get(RegressionMcpServer.GET_TEST_RUN_TOOL_NAME).path("annotations").path("idempotentHint").asBoolean()).isTrue();
+        assertThat(byName.get(RegressionMcpServer.GET_TEST_RUN_TOOL_NAME).path("annotations").path("openWorldHint").asBoolean()).isFalse();
+        assertThat(byName.get(RegressionMcpServer.CANCEL_TEST_RUN_TOOL_NAME).path("annotations").path("readOnlyHint").asBoolean()).isFalse();
+        assertThat(byName.get(RegressionMcpServer.CANCEL_TEST_RUN_TOOL_NAME).path("annotations").path("destructiveHint").asBoolean()).isTrue();
         assertThat(byName.get(RegressionMcpServer.CANCEL_TEST_RUN_TOOL_NAME).path("annotations").path("idempotentHint").asBoolean()).isTrue();
+        assertThat(byName.get(RegressionMcpServer.CANCEL_TEST_RUN_TOOL_NAME).path("annotations").path("openWorldHint").asBoolean()).isFalse();
+        JsonNode summary = byName.get(RegressionMcpServer.GET_TEST_SUMMARY_TOOL_NAME);
+        assertThat(summary.path("annotations").path("readOnlyHint").asBoolean()).isTrue();
+        assertThat(summary.path("annotations").path("destructiveHint").asBoolean()).isFalse();
+        assertThat(summary.path("annotations").path("idempotentHint").asBoolean()).isTrue();
+        assertThat(summary.path("annotations").path("openWorldHint").asBoolean()).isFalse();
+        assertThat(summary.path("inputSchema").path("additionalProperties").asBoolean()).isFalse();
     }
 
     private JsonNode awaitState(BufferedWriter stdin, BufferedReader stdout, ExecutorService readerExecutor, int requestId, String runId, String state) throws Exception {

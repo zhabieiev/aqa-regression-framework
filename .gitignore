@@ -28,3 +28,6 @@ Desktop.ini
 
 # MCP execution runtime state (server-generated only)
 /.regression-mcp/
+
+# Local review-session working log (not a deliverable)
+/output.log

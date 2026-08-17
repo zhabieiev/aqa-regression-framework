@@ -118,7 +118,9 @@ class FailureArtifactStoreTest {
         Path allureRoot = layout.allureFinal();
         int depthBelowRoot = allureRoot.getNameCount() - root.getNameCount();
         String maliciousRelativePath = "../".repeat(depthBelowRoot) + "outside-secret.txt";
-        assertThat(allureRoot.resolve(maliciousRelativePath).normalize()).as("fixture must actually escape allureRoot").isEqualTo(outside);
+        Path outsideReal = outside.toRealPath();
+        Path resolvedReal = allureRoot.resolve(maliciousRelativePath).normalize().toRealPath();
+        assertThat(resolvedReal).as("fixture must actually escape allureRoot").isEqualTo(outsideReal);
 
         CaptureMetadata.IndexedFile maliciousEntry = new CaptureMetadata.IndexedFile(maliciousRelativePath, Files.size(outside), sha256Hex(outside));
         CaptureMetadata capture = fixture.store.persisted(fixture.snapshot.runId()).capture();

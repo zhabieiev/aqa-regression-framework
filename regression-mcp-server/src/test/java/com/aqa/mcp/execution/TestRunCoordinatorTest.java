@@ -267,9 +267,10 @@ class TestRunCoordinatorTest {
         RunSnapshot terminal = awaitTerminal(coordinator, run.runId());
 
         assertThat(terminal.state()).isEqualTo(TestRunState.CANCELLED);
-        assertThat(new RunStore(root).persisted(run.runId()).ownedProcesses()).hasSizeGreaterThanOrEqualTo(3);
+        List<OwnedProcessIdentity> ownedProcesses = new RunStore(root).persisted(run.runId()).ownedProcesses();
+        assertThat(ownedProcesses).hasSizeGreaterThanOrEqualTo(3);
         assertThat(scheduler.future().isCancelled()).isTrue();
-        assertNoSurvivor(launcher);
+        assertNoSurvivor(launcher, ownedProcesses);
         assertNoCaptureLeftovers(run.runId());
         try (RunStore.Lock ignored = new RunStore(root).acquireActiveLock()) {
             assertThat(ignored).isNotNull();
@@ -398,8 +399,25 @@ class TestRunCoordinatorTest {
     }
 
     private void assertNoSurvivor(ControlledProcessLauncher launcher) {
-        await(() -> ProcessHandle.allProcesses().noneMatch(process -> process.info().commandLine()
-                .map(command -> command.contains(launcher.token)).orElse(false)), "fixture survivor " + launcher.token);
+        assertNoSurvivor(launcher, List.of());
+    }
+
+    private void assertNoSurvivor(ControlledProcessLauncher launcher, List<OwnedProcessIdentity> identities) {
+        if (identities.isEmpty()) {
+            long rootPid = launcher.process().pid();
+            await(() -> ProcessHandle.of(rootPid).filter(ProcessHandle::isAlive).isEmpty(), "fixture survivor " + launcher.token);
+            return;
+        }
+        await(() -> identities.stream().noneMatch(TestRunCoordinatorTest::identityStillAlive), "fixture survivor " + launcher.token);
+    }
+
+    private static boolean identityStillAlive(OwnedProcessIdentity identity) {
+        java.util.Optional<ProcessHandle> current = ProcessHandle.of(identity.pid());
+        if (current.isEmpty()) return false;
+        ProcessHandle handle = current.get();
+        java.util.Optional<ObservedProcess> observed = handle.info().startInstant()
+                .map(start -> new ObservedProcess(handle.pid(), start, handle.parent().map(ProcessHandle::pid).orElse(null), identity.depth()));
+        return observed.isPresent() && identity.sameProcess(observed.get()) && handle.isAlive();
     }
 
     private void assertNoCaptureLeftovers(String runId) throws Exception {
@@ -428,7 +446,7 @@ class TestRunCoordinatorTest {
         RunSnapshot terminal = awaitTerminal(coordinator, run.runId());
         assertThat(terminal.state()).isEqualTo(TestRunState.CANCELLED);
         assertThat(scheduler.future().isCancelled()).isTrue();
-        assertNoSurvivor(launcher);
+        assertNoSurvivor(launcher, pollingStore.persisted(run.runId()).ownedProcesses());
         assertNoCaptureLeftovers(run.runId());
         try (RunStore.Lock ignored = new RunStore(root).acquireActiveLock()) {
             assertThat(ignored).isNotNull();

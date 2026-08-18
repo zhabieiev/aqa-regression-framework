@@ -129,8 +129,10 @@ Each product module has its own documentation with its product-specific configur
 
 ## MCP inspection server
 
-`regression-mcp-server` is an isolated Java 21 MCP Java SDK 2.0.0 STDIO server that exposes 14 deterministic, closed-schema tools for inspecting and (in a narrowly scoped way) executing this reactor's tests: 4 discovery tools, 3 Stage 13 execution tools, 4 Stage 14 report/artifact tools, and 3 Stage 15 architecture-validator tools. Its only configurable boundary is `REGRESSION_ROOT`, and standard output is reserved exclusively for MCP JSON-RPC.
+`regression-mcp-server` gives an AI coding agent (Codex, Claude, etc.) a safe, structured way to work with this reactor's tests without shell access or direct file reads: discover modules/features/scenarios, run the one supported test suite and wait for a result, get a precise diagnosis when something fails (Surefire/Allure detail, not raw logs), and check the test framework's own architectural health. It is an isolated Java 21 MCP Java SDK 2.0.0 STDIO server exposing 14 deterministic, closed-schema tools: 4 discovery tools, 3 execution tools, 4 report/artifact tools, and 3 architecture-validator tools. Its only configurable boundary is `REGRESSION_ROOT`, and standard output is reserved exclusively for MCP JSON-RPC.
+
+Test **execution** (start/get/cancel) is intentionally narrow in v1.0: only `regression-nextjs-commerce`, only the `dev` environment. Discovery and the architecture validators work across all 5 reactor modules; only running a test and diagnosing its failure is limited to nextjs-commerce today.
 
 See [`regression-mcp-server/README.md`](regression-mcp-server/README.md) for installation, IDEA/Codex client configuration, the security model, the execution lifecycle, the run store, artifact limits, JAR-lock troubleshooting, and known v1.0 limitations, and [`regression-mcp-server/docs/TOOLS.md`](regression-mcp-server/docs/TOOLS.md) for every tool's full input/output schema.
 
-Stages 14 and 15 are complete; Stage 16 (final v1.0 acceptance) is in progress. See `docs/dev-history/STAGE_15_16_KICKOFF.md` for its original scope and `docs/dev-history/STAGE_15_PROGRESS.md` for Stage 15's final, as-built record.
+Stages 14, 15, and 16 are complete — `regression-mcp-server` shipped as v1.0.0 (tag `regression-mcp-server-v1.0.0`). See [`docs/dev-history/STAGE_15_16_KICKOFF.md`](docs/dev-history/STAGE_15_16_KICKOFF.md) for the original Stage 15/16 scope and [`docs/dev-history/STAGE_15_PROGRESS.md`](docs/dev-history/STAGE_15_PROGRESS.md) for the as-built development record.

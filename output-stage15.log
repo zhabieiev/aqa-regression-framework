@@ -1,0 +1,3067 @@
+================================================================================
+Gate 15.1 — Stage 15 (Architecture Validator) Design Proposal
+Phase A — design document only. No production code, test code, or POM
+changes were made while producing this proposal.
+================================================================================
+
+GROUNDING NOTES (facts checked in the current tree before proposing anything)
+
+- Root pom.xml aggregates 5 modules: regression-core, regression-petstore-api,
+  regression-jhipster, regression-nextjs-commerce, regression-mcp-server.
+  Single-artifact library versions (junit-jupiter, assertj-core, gherkin,
+  tag-expressions, commons-text, jna, etc.) are centrally version-managed in
+  the root pom's <dependencyManagement>, even where only one module consumes
+  them today (gherkin/tag-expressions are currently used only by
+  regression-mcp-server). Module poms then declare the dependency unversioned.
+  This is the precedent I am matching for JavaParser.
+- `ModuleType` and `ModuleTypeClassifier` (package com.aqa.mcp) are
+  package-private (no `public` modifier). So is `ModuleList`/`ModuleDescriptor`
+  and `RepositoryRoot`. None of these types can be referenced from a new
+  `com.aqa.mcp.validation` package — Java package-private access does not
+  cross packages — and CLAUDE.md/this task forbid widening their visibility.
+  This directly shapes the answer to item 2 below.
+- `regression-mcp-server`'s current (pre-JavaParser) dependency tree, offline,
+  for reference/comparison:
+    com.aqa:regression-mcp-server:jar:1.0.0
+    +- io.modelcontextprotocol.sdk:mcp-core:2.0.0
+    |  +- jackson-annotations:2.21
+    |  \- reactor-core:3.7.0 -> reactive-streams:1.0.4
+    +- io.modelcontextprotocol.sdk:mcp-json-jackson2:2.0.0
+    |  +- jackson-databind:2.21.2
+    |  \- json-schema-validator:2.0.0 -> itu:1.14.0, jackson-dataformat-yaml:2.21.2 -> snakeyaml:2.5
+    +- jackson-datatype-jsr310:2.21.2 -> jackson-core:2.21.2
+    +- slf4j-api:2.0.9
+    +- gherkin:28.0.0 -> messages:24.1.0
+    +- tag-expressions:6.1.0
+    +- slf4j-simple:2.0.9 (runtime)
+    +- junit-jupiter:5.10.3 (test), assertj-core:3.27.7 (test)
+  No XML/text/AST parsing library is present today besides Cucumber's Gherkin
+  parser (irrelevant to Java source parsing).
+- Real, currently-existing asymmetries that change how the framework_conventions
+  rules must be scoped (found while reading actual module sources, not assumed):
+    * regression-jhipster's UI layer (com.aqa.jhipster.ui, API_UI profile) is
+      built on **Playwright** (`com.microsoft.playwright.Page`), not Selenium.
+    * regression-nextjs-commerce (UI profile) is built on **Selenium**
+      (`org.openqa.selenium.WebDriver`/`By`) plus its own `WaitManager`
+      (com.aqa.nextjscommerce.waits.WaitManager) and `DriverSession`
+      (com.aqa.nextjscommerce.driver.DriverSession) — the classes CLAUDE.md's
+      "Selenium and UI safety" section describes live only in this module.
+    * regression-core has `com.aqa.core.utils.WaitUtils`, not a class named
+      `WaitManager`; `WaitUtils.waitFor(...)` itself legitimately calls
+      `Thread.sleep(waitInterval)` inside its own polling loop.
+    * regression-jhipster's `com.aqa.jhipster.ui.pages.BasePage` already
+      contains an assertion (`PlaywrightAssertions.assertThat(page).hasURL(...)`
+      at BasePage.java:46) inside a page object — a live, real example of
+      exactly the violation validate_architecture rule (3) is meant to catch.
+    * regression-nextjs-commerce has no `src/main/java` at all; all of its
+      production framework code (pages, components, steps, definitions,
+      driver, waits) lives under `src/test/java`. So the AST source scanner
+      must walk both `src/main/java` and `src/test/java` per module — it
+      cannot assume production code is always under `src/main/java`.
+  These are called out explicitly below rather than papered over, because a
+  profile-only rule scope (UI vs API_UI) is not precise enough for the
+  Selenium-specific conventions in CLAUDE.md's "Selenium and UI safety"
+  section — see item 4.
+
+================================================================================
+1. JAVAPARSER DEPENDENCY
+================================================================================
+
+Proposal: manage the version in the ROOT pom's <dependencyManagement>, and
+declare the unversioned dependency directly in regression-mcp-server/pom.xml.
+
+  Root pom.xml, new property + dependencyManagement entry (alongside the
+  existing plain, non-BOM entries like commons-text/jna/assertj-core):
+
+    <javaparser.version>3.26.4</javaparser.version>
+    ...
+    <dependency>
+        <groupId>com.github.javaparser</groupId>
+        <artifactId>javaparser-core</artifactId>
+        <version>${javaparser.version}</version>
+    </dependency>
+
+  regression-mcp-server/pom.xml, new unversioned <dependency>:
+
+    <dependency>
+        <groupId>com.github.javaparser</groupId>
+        <artifactId>javaparser-core</artifactId>
+    </dependency>
+
+Why root, not module-local: CLAUDE.md says "use dependency and plugin
+versions managed by the root pom.xml; do not introduce unmanaged versions
+when a managed dependency exists." The existing precedent in this exact repo
+already centrally manages libraries that (today) only regression-mcp-server
+consumes — gherkin, tag-expressions, jna are all in root dependencyManagement
+despite single-module usage. Declaring JavaParser's version locally in
+regression-mcp-server/pom.xml instead of root would break that established
+pattern for no benefit, since nothing about JavaParser is
+regression-mcp-server-specific in a way that would justify a module-scoped
+override (contrast with the OpenAPI Generator override case CLAUDE.md
+explicitly carves out, which exists because different modules generate from
+different specs — not applicable here).
+
+Artifact choice: `javaparser-core` only (the plain AST parser/printer), not
+`javaparser-symbol-solver-core`. This matches the "Context already decided"
+constraint directly.
+
+Version: I'm proposing 3.26.4 as the target but flagging it explicitly —
+I do not have live Maven Central access in this session and must not guess.
+The only JavaParser artifact currently cached in this machine's local
+~/.m2 repository is `javaparser-core:3.15.11` (sources+jar), but its
+`_remote.repositories` metadata shows it was resolved for some other,
+unrelated project on this machine (May 2026, unrelated group), not this
+reactor — it is a five-plus-year-old release and should not be reused just
+because it happens to be present locally. Gate 15.2 (the first
+implementation gate) must confirm the current latest 3.26.x/3.27.x patch
+against Maven Central before adding the dependency, as its own first
+verification step, rather than this design document asserting a number it
+cannot verify offline.
+
+Transitive-conflict check: javaparser-core is a self-contained, dependency-
+free artifact (no runtime transitive dependencies) — it does not pull in
+Guava, ASM, or anything else that could collide with the tree captured
+above (Jackson 2.21.x, Netty, Reactor, SLF4J, Cucumber, JUnit, AssertJ).
+This is a well-known property of the artifact, not something I can prove
+from an offline tree that doesn't contain it yet; Gate 15.2 must run
+`mvn -pl regression-mcp-server -am dependency:tree` again immediately after
+adding the dependency and diff it against the baseline captured above as
+its concrete verification step.
+
+================================================================================
+2. MODULE -> PROFILE RESOLUTION
+================================================================================
+
+The existing classification machinery (`ModuleTypeClassifier.classify`,
+`ModuleType`) is reused AS-IS, unmodified, for its classification logic —
+but it cannot be reused as a shared *type* across the package boundary,
+because `ModuleType`/`ModuleTypeClassifier`/`ModuleList`/`ModuleDescriptor`/
+`RepositoryRoot` are all package-private in `com.aqa.mcp`, and this task
+(and CLAUDE.md) forbid changing their visibility.
+
+Resolution: the validation package defines its own new, public 6-value
+enum and receives the *classification outcome* as plain data (a String)
+computed by the untouched existing machinery, rather than receiving the
+existing type itself.
+
+  package com.aqa.mcp.validation;
+
+  public enum RuleProfile {
+      CORE, API, UI, API_UI, MCP, TEST_ONLY;
+
+      static List<String> schemaValues() {
+          return Arrays.stream(values()).map(Enum::name).toList();
+      }
+  }
+
+  public final class RuleProfileResolver {
+      private RuleProfileResolver() {}
+
+      // moduleTypeName is ModuleType.name() as computed by the existing,
+      // untouched ModuleTypeClassifier — passed in as a String so this
+      // package never references the package-private ModuleType type.
+      public static RuleProfile resolve(String moduleTypeName) {
+          return switch (moduleTypeName) {
+              case "CORE" -> RuleProfile.CORE;
+              case "API" -> RuleProfile.API;
+              case "UI" -> RuleProfile.UI;
+              case "API_UI" -> RuleProfile.API_UI;
+              case "MCP" -> RuleProfile.MCP;
+              case "UNKNOWN" -> RuleProfile.TEST_ONLY;
+              default -> throw new ValidationException("UNKNOWN_MODULE_TYPE",
+                      "Unrecognized module classification: " + moduleTypeName);
+          };
+      }
+  }
+
+The UNKNOWN -> TEST_ONLY mismatch, resolved explicitly (not silently):
+`ModuleType.UNKNOWN` means "the classifier's fixed module-name switch didn't
+recognize this module name" — it is a classification failure mode. The
+"test-only" rule profile in this task's Context section means "a future
+module with no production role, reserved but unused today" — a deliberate,
+intentional category, not a failure mode. These are not the same concept,
+but they resolve to the same practical outcome for validation purposes: in
+both cases the module has no CLAUDE.md-defined production/API/UI role, so
+neither the API/UI/API_UI/MCP-specific rules nor the CORE-specific rules
+should fire for it, and only the module-boundary and profile-agnostic
+architecture rules (layering/cycles/assertion-placement/BasePage-discipline)
+apply. Mapping UNKNOWN -> TEST_ONLY therefore gives the *conservative*,
+minimum-rule-set outcome in both cases, which is the safe default for an
+unrecognized or intentionally-empty module. This mapping is a one-line,
+reviewable, closed `switch` — not a silent assumption — and should be
+called out again explicitly at Gate 15.2 review time since it's a design
+judgment call, not a fact derivable from the code.
+
+How the String actually gets produced without duplicating POM-parsing
+logic: `ModuleList.forRoot(repositoryRoot)` (existing, untouched, already
+reads the root pom.xml's declared `<modules>` and classifies each one via
+`ModuleTypeClassifier`) already computes exactly this. The wiring classes in
+`com.aqa.mcp.validation` cannot call it directly (package-private, different
+package). Instead, `RegressionMcpServer.java` — which already sits in
+`com.aqa.mcp` and already calls `ModuleList.forRoot(...)` for the existing
+`regression_list_modules` tool — computes a `Map<String, String>` of
+`moduleName -> ModuleType.name()` once and passes that plain `Map<String,
+String>` (a JDK type, safe to cross the package boundary) into each of the
+three new tool-wiring factory methods, alongside the `Path` of the
+repository root and the `List<String>` of declared module names (exactly
+the same shape `TestRunRequestValidator`'s constructor already takes today).
+This means:
+  - `ModuleTypeClassifier`'s classification logic is reused 100%, unmodified.
+  - No visibility on any existing class changes.
+  - "Derived, not hardcoded": the profile ultimately traces back to the root
+    pom.xml's declared `<modules>` list read at request time, not to a
+    hardcoded 5-module assumption baked into the validation package. If a
+    6th module is added to the root pom tomorrow, `ModuleList`/
+    `ModuleTypeClassifier` will classify it (as a known type, or UNKNOWN),
+    and `RuleProfileResolver` will resolve whatever comes out — nothing in
+    `com.aqa.mcp.validation` needs to change.
+
+Open point requiring explicit sign-off before Gate 15.2/15.5 (see also the
+staged plan): this task states "every existing class in com.aqa.mcp ...
+stays exactly as-is, untouched." Registering the three new tools into
+`McpServer.sync(...).tools(...)` and computing the `moduleName -> typeName`
+map necessarily requires a small, additive edit to `RegressionMcpServer.java`
+(three new constants, three new entries in the `.tools(...)` call, one small
+private helper method). No existing method signature, field, or class
+changes shape — this is purely additive, the same kind of change that grew
+that file from its original tool set to today's 11 tools. I'm flagging this
+explicitly rather than assuming it's covered by "additive is fine," because
+the instruction as literally written says "untouched," and I'd rather this
+be a deliberate decision than a silent interpretation.
+
+================================================================================
+3. PACKAGE STRUCTURE under com.aqa.mcp.validation
+================================================================================
+
+Mirrors the separation style already used in com.aqa.mcp.execution: a
+profile/registry layer (ExecutionProfile/ExecutionProfileRegistry), a
+request-validation layer (StartTestRunRequest/TestRunRequestValidator/
+ValidatedTestRunRequest), a coordinator/orchestration layer
+(TestRunCoordinator), immutable structured result records (RunSnapshot/
+SurefireSummary/FailureArtifact), and a single typed exception
+(ExecutionPlanningException). Proposed classes:
+
+  Profile / scope resolution
+  ---------------------------
+  RuleProfile                  enum — the 6 rule profiles (item 2).
+  ModuleProfile                record(module, profile, basePackage) — a
+                                resolved module's profile tag plus its
+                                derived base Java package (see item 4's
+                                module-boundary rules for why basePackage
+                                is derived from source, not guessed from the
+                                module name).
+  RuleProfileResolver           static — moduleTypeName -> RuleProfile
+                                (item 2).
+  ValidationException            final class extends IllegalArgumentException,
+                                code() — mirrors ExecutionPlanningException/
+                                RepositoryInspectionException exactly.
+
+  Request validation (mirrors StartTestRunRequest/TestRunRequestValidator)
+  --------------------------------------------------------------------------
+  ValidationScopeRequest       record(String module, String profile) — raw
+                                MCP tool arguments, both nullable.
+  ValidatedValidationScope     record(List<String> modules) — the resolved
+                                set of module names in scope after applying
+                                the module/profile filters against the
+                                declared-modules list.
+  ValidationScopeValidator     final class — validate(ValidationScopeRequest,
+                                List<String> declaredModules) ->
+                                ValidatedValidationScope; mirrors
+                                TestRunRequestValidator's shape and
+                                constructor-injected declaredModules list.
+
+  AST parsing entry point (mirrors FeatureDiscovery's file-walk + parse)
+  --------------------------------------------------------------------------
+  SourceUnit                    record(String module, String relativePath,
+                                CompilationUnit unit) — one parsed .java
+                                file; relativePath is reactor-root-relative
+                                (e.g. "regression-jhipster/src/main/java/
+                                com/aqa/jhipster/ui/pages/BasePage.java"),
+                                mirroring how FeatureDiscovery.ParsedFeature
+                                carries a module-root-relative path.
+  JavaSourceScanner              final class — scan(Path repositoryRoot,
+                                String module) -> List<SourceUnit>; walks
+                                both src/main/java and src/test/java under
+                                the module (bounded file count/size,
+                                symlink-containment-checked, deterministic
+                                sort — the same shape as
+                                FeatureDiscovery.files()/validate()), parses
+                                each file with JavaParser's StaticJavaParser.
+                                A file that fails to parse produces a
+                                ValidationException("SOURCE_PARSE_ERROR", ...)
+                                rather than being silently skipped, mirroring
+                                FeatureDiscovery's GHERKIN_PARSE_ERROR
+                                handling.
+  BasePackages                  final class — static derive(List<SourceUnit>)
+                                -> String; computes a module's base Java
+                                package as the longest common package prefix
+                                across that module's own parsed
+                                PackageDeclaration nodes. Used to populate
+                                ModuleProfile.basePackage without hardcoding
+                                a naming convention.
+
+  Rule model (item 4)
+  ---------------------------
+  ValidationRule                interface — id(), Set<RuleProfile>
+                                profiles(), List<Violation>
+                                evaluate(EvaluationContext).
+  EvaluationContext              record(String module, RuleProfile profile,
+                                List<SourceUnit> moduleSources,
+                                List<ModuleProfile> reactorModules) — a
+                                module's own parsed sources plus read-only
+                                metadata (name/profile/basePackage only, no
+                                parsed AST) for every other declared module,
+                                which is what module-boundary rules need to
+                                check cross-module imports without paying
+                                to parse the whole reactor for every rule.
+  Violation                     record(String ruleId, String module,
+                                String file, int line, String message) —
+                                bounded/structured, mirrors
+                                SurefireSummary.FailureRecord's shape rather
+                                than a free-text string.
+
+  Rule-set implementations (one per tool, mirrors execution's per-concern
+  classes rather than one god class)
+  --------------------------------------------------------------------------
+  ModuleBoundaryRules            final class — static List<ValidationRule>
+                                all(); the fixed rule list backing
+                                regression_validate_module_boundaries.
+  FrameworkConventionRules        final class — same shape, backing
+                                regression_validate_framework_conventions.
+  ArchitectureRules               final class — same shape, backing
+                                regression_validate_architecture.
+
+  Result model (mirrors RunSnapshot/SurefireSummary's aggregate shape)
+  --------------------------------------------------------------------------
+  ModuleValidationResult         record(String module, RuleProfile profile,
+                                List<String> rulesApplied,
+                                List<Violation> violations, boolean
+                                truncated).
+  ValidationReport               record(List<ModuleValidationResult>
+                                modules) — top-level per-tool result,
+                                mirrors moduleListOutputSchema's "modules"
+                                wrapping shape already used by
+                                regression_list_modules.
+
+  MCP tool wiring (one class per tool; mirrors RegressionMcpServer's
+  per-tool static factory methods, just extracted since these three live in
+  the new package)
+  --------------------------------------------------------------------------
+  ModuleBoundariesTool            final class — static SyncToolSpecification
+                                tool(Path repositoryRoot, List<String>
+                                declaredModules, Map<String,String>
+                                moduleTypeByName).
+  FrameworkConventionsTool         same shape.
+  ArchitectureTool                 same shape.
+
+  Each takes only JDK types (Path, List<String>, Map<String,String>) —
+  never the package-private com.aqa.mcp types — so RegressionMcpServer.java
+  can call e.g. `ModuleBoundariesTool.tool(repositoryRoot.path(),
+  declaredModuleNames, moduleTypeByName)` as a same-shape sibling call next
+  to its existing `listModulesTool(repositoryRoot)` line.
+
+================================================================================
+4. RULE MODEL
+================================================================================
+
+Interface:
+
+  public interface ValidationRule {
+      String id();
+      Set<RuleProfile> profiles();
+      List<Violation> evaluate(EvaluationContext context);
+  }
+
+A rule declares which profiles it applies to; the tool-wiring class (not the
+rule) is responsible for only invoking a rule when
+`!Collections.disjoint(rule.profiles(), Set.of(context.profile()))`. Module-
+boundary rules declare `EnumSet.allOf(RuleProfile.class)` since dependency-
+direction rules are not profile-specific.
+
+If a module later carries multiple profile tags: `EvaluationContext.profile()`
+(singular) would become `Set<RuleProfile> profiles()` (plural), and the
+membership test in the tool-wiring class would change from `profiles().
+contains(context.profile())` to `!Collections.disjoint(rule.profiles(),
+context.profiles())`. The `ValidationRule` interface itself would not need to
+change at all — it already expresses its applicability as a Set, and rules
+never read `context.profile()` directly inside `evaluate()` (they receive
+already-scoped sources and only use profile for the tool-wiring dispatch
+decision), so this is a contained, one-record change plus one call-site
+change in each of the three tool-wiring classes, not a rule-by-rule rewrite.
+
+--------------------------------------------------------------------------
+validate_module_boundaries — concrete rules (direct from CLAUDE.md text)
+--------------------------------------------------------------------------
+
+  MOD-001  Sibling product modules must not depend on one another.
+           regression-petstore-api, regression-jhipster and
+           regression-nextjs-commerce must remain independent of one
+           another ("Do not create dependencies between sibling product
+           modules"). Detection: for each of these three modules' own
+           SourceUnits, inspect every ImportDeclaration's qualified name;
+           flag any import whose prefix matches another sibling module's
+           derived basePackage (from EvaluationContext.reactorModules()).
+
+  MOD-002  regression-nextjs-commerce must not gain API clients, API
+           services, or API scenario code ("Do not add API clients, API
+           services, or API scenarios to regression-nextjs-commerce").
+           Detection: for regression-nextjs-commerce's SourceUnits only,
+           flag any ImportDeclaration referencing a known REST/HTTP client
+           library already used elsewhere in the reactor for API testing
+           (e.g. jakarta.ws.rs.*, org.glassfish.jersey.*) — these types
+           appearing at all inside this module's own compilation units is
+           itself the signal, independent of which package declares them.
+
+  MOD-003  regression-mcp-server must not depend on regression-core or any
+           product module. Detection: for regression-mcp-server's own
+           SourceUnits (i.e. this rule fires when context.module() equals
+           "regression-mcp-server"), flag any ImportDeclaration whose
+           prefix matches any other reactor module's derived basePackage.
+
+  MOD-004  regression-core must not depend on any product module or on
+           regression-mcp-server (the inverse-direction companion to
+           MOD-003, implied by "Product modules inherit from it" / core is
+           the shared base — a dependency from core outward to a consumer
+           would itself be a layering inversion). Detection: symmetric to
+           MOD-003, scoped to context.module().equals("regression-core").
+
+  Note: "module boundaries" are fundamentally a dependency-declaration
+  concept (pom.xml <dependency> elements), and JavaParser cannot read a
+  pom.xml. The rules above are deliberately framed as *source-level* import
+  checks rather than pom-level dependency-graph checks, because (a) an
+  illegal compile-time dependency can't produce a matching import in the
+  first place without the pom already declaring it — so a pom-level check
+  would only ever tell you "yes/no," not where — and (b) the import-level
+  check gives an actionable file/line Violation, consistent with this
+  tool's structured-record contract. Whether a complementary, coarser
+  pom-level "does module X declare module Y as a Maven dependency" check
+  should also be added (catching the case where a dependency is declared
+  but never yet imported) is an open question for Gate 15.3, not decided
+  here — it would need its own small secure-XML reader in the validation
+  package (the existing one in ModuleList is package-private and
+  unreachable, same constraint as item 2).
+
+--------------------------------------------------------------------------
+validate_framework_conventions — concrete rules (direct from CLAUDE.md text)
+--------------------------------------------------------------------------
+
+  IMPORTANT SCOPING CAVEAT found while grounding this proposal: CLAUDE.md's
+  "Selenium and UI safety" section describes conventions (By-locator fields,
+  WaitManager, DriverSession, no static mutable WebDriver) that, in the
+  actual current codebase, are true of regression-nextjs-commerce (UI
+  profile, genuinely Selenium-based) but NOT of regression-jhipster's UI
+  layer (API_UI profile, genuinely Playwright-based — it uses
+  com.microsoft.playwright.Page/Locator, not org.openqa.selenium.WebDriver/
+  By). A rule scoped only by RuleProfile ∈ {UI, API_UI} would misfire on
+  regression-jhipster for the Selenium-specific rules below. Each
+  Selenium-specific rule is therefore additionally gated on "this
+  compilation unit imports org.openqa.selenium.*" as a precondition, not on
+  profile alone. Whether regression-jhipster's Playwright-based UI code
+  should get its own parallel set of technology-appropriate conventions
+  rules is an open question for Gate 15.4 — flagging it, not deciding it.
+
+  FC-001  Selenium locators declared as `private static final By` fields
+           at the top of the class (not inline in methods, not non-static,
+           not non-final). Scope: UI/API_UI-profile compilation units that
+           import org.openqa.selenium.By. Detection: for each ClassOrInter-
+           faceDeclaration, find FieldDeclaration nodes whose element type
+           is `By`; flag any that is missing `static` or `final` or is not
+           `private`. A companion check flags `By.<factoryMethod>(...)`
+           MethodCallExpr occurring outside of a field initializer (i.e.
+           inline in a method body) as an inline-locator violation.
+
+  FC-002  No `Thread.sleep`; use the module's wait abstraction instead.
+           Detection: any MethodCallExpr named "sleep" whose scope is a
+           NameExpr "Thread", anywhere in a UI/API_UI-profile module's
+           sources — EXCEPT inside a fixed, explicit allow-list of the
+           wait-abstraction's own implementation files (e.g.
+           com/aqa/core/utils/WaitUtils.java,
+           com/aqa/nextjscommerce/waits/WaitManager.java). This allow-list
+           is a small, reviewable, explicit exception list, not a general
+           suppression mechanism — WaitUtils.java itself legitimately calls
+           Thread.sleep inside its own polling loop today, so a rule
+           without this exemption would immediately false-positive on
+           existing, correct code.
+
+  FC-003  Constructor injection for collaborators; avoid service locators /
+           hidden mutable dependencies. Detection: for classes in
+           definitions/steps/pages/services/components/clients packages,
+           flag any non-final, non-constructor-assigned field whose type is
+           itself one of this reactor's own collaborator types (heuristic:
+           declared type's package starts with a reactor basePackage) —
+           i.e. a mutable field of a collaborator type is a candidate
+           violation; a `static` field of such a type is always a
+           violation regardless of finality (overlaps with the "no static
+           mutable" rules below).
+
+  FC-004  Records for small immutable value objects / scenario input /
+           snapshots / expected state; mutable Beans only when framework
+           binding, mapping, staged construction, or nested mutable data
+           requires them. Detection: this one is inherently heuristic and
+           lower-precision than the others — flag a ClassOrInterfaceDeclara-
+           tion (not already a `record`) whose every field is `private
+           final`, whose only methods are a single all-args constructor and
+           plain getters (no other business logic), as a "candidate value
+           object not declared as a record" finding. Given the heuristic
+           nature, this rule should ship as advisory-only in its first cut
+           (Gate 15.4 decision, flagged here rather than assumed) rather
+           than being held to the same precision bar as the structural
+           rules above.
+
+  FC-005  DriverSession / page objects must remain scenario-local — no
+           static mutable WebDriver, browser, page-object, or scenario-
+           state instances. Detection: any FieldDeclaration with modifier
+           `static` (and not `final` + an immutable/constant initializer)
+           whose type is `WebDriver` (or a subtype import from
+           org.openqa.selenium), or whose type's simple name ends in
+           "Page"/"Component" (page-object heuristic), or whose type is the
+           module's own scenario-context type (e.g.
+           CommerceScenarioContext) — scoped to UI/API_UI profiles, with
+           the same Selenium-import precondition as FC-001/FC-002 for the
+           WebDriver-specific half of this rule.
+
+--------------------------------------------------------------------------
+validate_architecture — the 4 agreed rules, with concrete AST detection
+--------------------------------------------------------------------------
+
+  ARCH-001  Layering: Gherkin -> definitions -> steps -> pages/services ->
+            components/clients. Detection: derive each class's "layer" from
+            its package's last non-numeric segment (definitions/steps/
+            pages/services/components/clients — a closed, known vocabulary,
+            not free-form), then for every MethodCallExpr and every field/
+            parameter type reference inside a class, resolve the referenced
+            class's own layer the same way (via ImportDeclaration, since no
+            symbol solver is in scope yet) and flag any reference where the
+            calling layer is *later* in the fixed order than the referenced
+            layer's declared position would allow going *backward* (e.g. a
+            class under .../pages/... importing something under
+            .../steps/...). Concretely this only needs a fixed total order
+            over the 5 layer names and a same-module import-prefix check —
+            no cross-file resolution beyond import statements.
+
+  ARCH-002  No dependency cycles between packages within a module.
+            Detection: build a directed graph per module where each node is
+            a package (derived from each SourceUnit's PackageDeclaration)
+            and each edge A->B is added whenever any class in package A has
+            an ImportDeclaration into package B; run a standard cycle
+            detection (DFS with a recursion stack) over that graph; report
+            one Violation per package participating in a detected cycle,
+            with `message` listing the cycle's package sequence.
+
+  ARCH-003  Assertions only in steps/test-layer, never in page objects.
+            Detection: for every class under a `.../pages/...` package,
+            scan for MethodCallExpr nodes whose resolved-by-import scope is
+            a known assertion entry point — `org.assertj.core.api.
+            Assertions.assertThat`, `com.microsoft.playwright.assertions.
+            PlaywrightAssertions.assertThat`, `org.junit.jupiter.api.
+            Assertions.assert*` — via a static-import or qualified-name
+            match against the file's ImportDeclarations (no symbol solver
+            needed since these are well-known, closed entry points, not
+            arbitrary user code). This rule already has a real,
+            pre-existing positive match in the current tree —
+            regression-jhipster's ui/pages/BasePage.java:46 calls
+            `PlaywrightAssertions.assertThat(page).hasURL(...)` inside
+            `assertUrlContains`, a page-object method — which is useful as
+            a concrete worked example for this rule's fixture design (see
+            item 6) but is NOT being changed in this Phase-A proposal.
+
+  ARCH-004  BasePage must not become a general utility class. Detection:
+            for each class named exactly `BasePage` (per-module — the
+            codebase currently has two independent BasePage classes, one
+            per UI-capable module, not one shared canonical class, so this
+            rule must not assume a single FQCN), flag it if its public/
+            protected method count exceeds a fixed threshold, or if it
+            declares a method whose name/behavior isn't obviously page-
+            navigation/lifecycle related (heuristic: methods not named/
+            prefixed with a closed vocabulary like navigateTo/waitUntil*/
+            byDataCy/assert* would need a second look) — this is the
+            softest of the four rules and, like FC-004, should ship
+            advisory-only in its first cut; a hard structural rule here
+            risks false positives on legitimate small helper methods, and
+            getting the threshold right needs real-repo calibration during
+            Gate 15.5, not a number picked in this design document.
+
+================================================================================
+5. MCP TOOL SCHEMAS
+================================================================================
+
+All three tools follow the existing closed-schema, oneOf{success,failure}
+structured envelope already used by every tool in RegressionMcpServer.java
+(the `structuredOutputSchema`/`moduleErrorResult` pattern), with
+`additionalProperties: false` throughout and read-only ToolAnnotations
+(readOnlyHint=true, destructiveHint=false, idempotentHint=true,
+openWorldHint=false — these are pure inspection tools, same annotation
+shape as regression_list_modules/regression_get_framework_overview).
+
+Input schema (identical shape for all three tools):
+
+  {
+    "type": "object", "additionalProperties": false,
+    "properties": {
+      "module": {"type": "string"},
+      "profile": {"type": "string", "enum": [
+          "CORE", "API", "UI", "API_UI", "MCP", "TEST_ONLY"]}
+    }
+  }
+
+  Both fields optional. Neither given -> validate every declared module.
+  Only "module" given -> validate that one module (INVALID_ARGUMENTS if not
+  a declared module, mirroring UNKNOWN_MODULE handling already used by
+  FeatureDiscovery). Only "profile" given -> validate every declared module
+  whose resolved RuleProfile matches. Both given -> both must agree
+  (INVALID_ARGUMENTS if the named module's resolved profile isn't the
+  given profile) — this mirrors moduleArgument()'s existing "arguments must
+  be known/consistent" validation style in RegressionMcpServer.java.
+
+Violation record schema (shared by all three tools' output):
+
+  {
+    "type": "object", "additionalProperties": false,
+    "required": ["ruleId", "module", "file", "line", "message"],
+    "properties": {
+      "ruleId": {"type": "string"},
+      "module": {"type": "string"},
+      "file": {"type": "string"},
+      "line": {"type": "integer"},
+      "message": {"type": "string"}
+    }
+  }
+
+Per-module result schema (shared):
+
+  {
+    "type": "object", "additionalProperties": false,
+    "required": ["module", "profile", "rulesApplied", "violations", "truncated"],
+    "properties": {
+      "module": {"type": "string"},
+      "profile": {"type": "string", "enum": [...RuleProfile values...]},
+      "rulesApplied": {"type": "array", "items": {"type": "string"}},
+      "violations": {"type": "array", "items": <violation schema above>},
+      "truncated": {"type": "boolean"}
+    }
+  }
+
+Output schema (structuredOutputSchema-wrapped, same for all three tools):
+
+  data: { "modules": {"type": "array", "items": <per-module result schema>} }
+
+Error envelope: identical to every existing tool — {"status":"error",
+"error":{"code":..., "message":...}} — with codes drawn from a small closed
+set: INVALID_ARGUMENTS, UNKNOWN_MODULE, SOURCE_PARSE_ERROR,
+UNKNOWN_MODULE_TYPE (item 2), mirroring RepositoryInspectionException's
+existing code vocabulary (POM_ERROR, FEATURE_PATH_VIOLATION, UNKNOWN_MODULE,
+GHERKIN_PARSE_ERROR, ...).
+
+Tool names/descriptions (matching the existing SCREAMING_SNAKE constant +
+one-sentence description convention in RegressionMcpServer.java):
+
+  VALIDATE_MODULE_BOUNDARIES_TOOL_NAME = "regression_validate_module_boundaries"
+    "Checks declared reactor module source against the fixed sibling-module
+     and layering-boundary rules in the repository's module-boundary policy."
+  VALIDATE_FRAMEWORK_CONVENTIONS_TOOL_NAME = "regression_validate_framework_conventions"
+    "Checks a module's source against its resolved rule profile's framework
+     coding-convention rules (locators, waits, injection, value objects,
+     scenario-local state)."
+  VALIDATE_ARCHITECTURE_TOOL_NAME = "regression_validate_architecture"
+    "Checks a module's source against the fixed layering, dependency-cycle,
+     assertion-placement, and BasePage-discipline architecture rules."
+
+================================================================================
+6. TEST STRATEGY
+================================================================================
+
+Two tiers, matching what already exists in this test tree rather than
+inventing a new convention:
+
+  Tier 1 — pure rule-logic unit tests (no filesystem at all). Every
+  ValidationRule gets exactly one positive (violating) and one negative
+  (compliant) JUnit test, each parsing an inline Java 21 text-block source
+  snippet directly via JavaParser's StaticJavaParser.parse(String), wrapping
+  the resulting CompilationUnit in a single SourceUnit, building a minimal
+  EvaluationContext (module name + profile + that one SourceUnit + an empty
+  or single-entry reactorModules list, whichever the rule needs), and
+  calling rule.evaluate(context) directly — asserting either exactly the
+  expected Violation (ruleId + line) or an empty list. This mirrors
+  TestRunRequestValidatorTest's pattern of exercising the validator directly
+  with in-memory inputs, and FeatureDiscoveryTest's use of inline text
+  blocks for fixture content — just without needing @TempDir, since a
+  single parsed compilation unit doesn't need a real directory tree.
+  Concretely, ARCH-003's negative/positive pair can be lifted almost
+  verbatim from the real BasePage.java found during grounding (item 4) —
+  a positive fixture snippet that keeps the offending
+  `PlaywrightAssertions.assertThat(...)` call inside a `pages` package
+  class, and a negative fixture that moves the same assertion into a
+  `steps`-package class instead.
+
+  Tier 2 — scanner and tool-wiring integration tests (need a real directory
+  tree). JavaSourceScannerTest and each of the three *ToolTest classes use
+  @TempDir exactly like FeatureDiscoveryTest/ModuleListTest already do:
+  build a synthetic fake reactor root at test time (a root pom.xml
+  declaring 2-3 fake <module> entries, each with its own tiny pom.xml and a
+  handful of .java files written as text blocks under src/main/java and/or
+  src/test/java), then exercise JavaSourceScanner.scan(...) or the tool's
+  SyncToolSpecification callHandler against that synthetic root. This is
+  the existing project convention for exactly this kind of test (no
+  modification of real regression-core/regression-petstore-api/
+  regression-jhipster/regression-nextjs-commerce source is ever needed, and
+  no new static fixture resource files are introduced — everything is
+  synthesized at test time, consistent with how FeatureDiscoveryTest and
+  ModuleListTest already work).
+
+  Additional dedicated unit tests mirroring existing sibling tests:
+    RuleProfileResolverTest        mirrors ModuleTypeClassifier's implicit
+                                  coverage in ModuleListTest — one test per
+                                  ModuleType-name -> RuleProfile mapping,
+                                  including the UNKNOWN -> TEST_ONLY case.
+    ValidationScopeValidatorTest    mirrors TestRunRequestValidatorTest's
+                                  shape (valid module, invalid module,
+                                  profile/module mismatch, no filters).
+    BasePackagesTest                unit tests for the common-prefix
+                                  derivation, including a single-file module
+                                  and a multi-package module.
+
+  MCP-level tests: each *Tool class gets a schema/contract-level test in the
+  style of RegressionMcpServerContractTest (input/output schema shape
+  assertions, INVALID_ARGUMENTS on unknown module) rather than a full STDIO
+  process-lifecycle test like RegressionMcpServerStdioIntegrationTest — these
+  three tools are synchronous, read-only, closed-world inspection tools like
+  the four existing overview/listModules/features/scenarios tools, not like
+  the execution tools that need process/lifecycle coverage.
+
+================================================================================
+7. STAGED IMPLEMENTATION PLAN
+================================================================================
+
+Four follow-up gates, each independently verifiable, each shipping a
+narrower slice than "all three tools at once":
+
+  Gate 15.2 — Chassis only, no rules, no MCP wiring yet.
+    Scope: confirm the exact current JavaParser release against Maven
+    Central; add the dependency (root dependencyManagement + module
+    pom, per item 1); scaffold com.aqa.mcp.validation with RuleProfile,
+    ModuleProfile, RuleProfileResolver, ValidationException, SourceUnit,
+    JavaSourceScanner, BasePackages, ValidationRule, EvaluationContext,
+    Violation, ModuleValidationResult, ValidationReport, and Tier-1/Tier-2
+    tests for everything except the rule-set classes themselves (which
+    don't exist yet). No RegressionMcpServer.java edit in this gate.
+    Verify: `mvn -pl regression-mcp-server -am test`, plus a fresh
+    `dependency:tree` diffed against the baseline captured in item 1.
+
+  Gate 15.3 — regression_validate_module_boundaries end-to-end.
+    Scope: MOD-001..MOD-004 in ModuleBoundaryRules, ModuleBoundariesTool,
+    the one sanctioned additive RegressionMcpServer.java registration edit
+    (flagged in item 2 — confirm with the user before starting this gate,
+    since it touches an existing file), and its Tier-1/Tier-2/contract
+    tests. Chosen first because it's the smallest rule set and proves the
+    whole chassis (scanner, EvaluationContext, tool wiring, schema) against
+    one real MCP tool before the other two are built on top of it.
+    Verify: `mvn -pl regression-mcp-server -am test`.
+
+  Gate 15.4 — regression_validate_framework_conventions end-to-end.
+    Scope: resolve the Selenium-vs-Playwright per-module scoping question
+    flagged in item 4 first (does regression-jhipster's Playwright-based UI
+    layer get its own parallel rule set, or do FC-001/002/005 simply not
+    fire there for now); then FC-001..FC-005 in FrameworkConventionRules,
+    FrameworkConventionsTool, RegressionMcpServer.java registration, tests.
+    Decide FC-004's advisory-vs-hard status explicitly in this gate rather
+    than carrying the item-4 placeholder forward silently.
+    Verify: `mvn -pl regression-mcp-server -am test`.
+
+  Gate 15.5 — regression_validate_architecture end-to-end.
+    Scope: ARCH-001..ARCH-004 in ArchitectureRules, ArchitectureTool,
+    RegressionMcpServer.java registration, tests. Calibrate ARCH-004's
+    method-count/vocabulary threshold against the two real BasePage classes
+    found during grounding (jhipster's and nextjs-commerce's) rather than
+    picking an arbitrary number. Revisit whether a Symbol Solver is
+    genuinely needed for any of the four rules only if Tier-1 testing in
+    this gate surfaces a specific, real false-positive/negative that the
+    import-based heuristics in item 4 can't resolve — do not add it
+    preemptively.
+    Verify: `mvn -pl regression-mcp-server -am test`, plus a full reactor
+    `mvn -pl regression-mcp-server -am verify` as the final gate in this
+    stage.
+
+================================================================================
+OPEN QUESTIONS REQUIRING EXPLICIT SIGN-OFF (summarized)
+================================================================================
+
+  1. Exact JavaParser patch version — must be confirmed against Maven
+     Central at Gate 15.2 start; 3.26.4 above is a proposal, not a
+     verified fact (item 1).
+  2. The UNKNOWN -> TEST_ONLY profile mapping is a judgment call, not a
+     derivable fact — confirm the rationale in item 2 is acceptable.
+  3. Registering the three new tools requires a small additive edit to
+     RegressionMcpServer.java, which the task described as staying
+     "exactly as-is, untouched" — confirm this additive-only edit is
+     in scope before Gate 15.3 begins.
+  4. Whether a pom.xml-level dependency-declaration check should
+     complement the import-level MOD-001..MOD-004 rules (item 4) —
+     deferred to Gate 15.3, not decided here.
+  5. Whether regression-jhipster's Playwright-based UI layer needs its own
+     parallel framework-convention rule set alongside the Selenium-specific
+     FC-001/002/005 rules, or is simply out of scope for those three rules
+     for now (item 4) — deferred to Gate 15.4, not decided here.
+  6. FC-004 (records-for-value-objects) and ARCH-004 (BasePage discipline)
+     are proposed as advisory/soft rules in their first cut rather than
+     hard violations, given their heuristic nature — confirm that's
+     acceptable or should be reconsidered before Gates 15.4/15.5.
+
+No files were created, no POM was edited, and no com.aqa.mcp.validation
+package was created while producing this proposal — all reading above was
+done against the current, unmodified tree.
+================================================================================
+
+================================================================================
+Gate 15.2 — Stage 15 Chassis Implementation Report
+Scope: JavaParser dependency + com.aqa.mcp.validation scaffolding only.
+No rule implementations, no MCP tool wiring, no edit to
+RegressionMcpServer.java in this gate.
+================================================================================
+
+--------------------------------------------------------------------------
+PHASE A — verification before writing code
+--------------------------------------------------------------------------
+
+1. JavaParser current release, confirmed against Maven Central's
+   authoritative search API (search.maven.org/solrsearch, core=gav),
+   queried twice independently with consistent results (numFound=198
+   historical versions):
+
+     com.github.javaparser:javaparser-core:3.27.0
+     release timestamp 1749895939701 ms, which places the release at
+     2025-06-14 (UTC) by direct epoch arithmetic.
+
+   Two other sources (a Sonatype Central HTML page fetch, a GitHub
+   releases HTML page fetch) claimed a 3.28.x existed; both came back
+   through free-text HTML summarization and the GitHub one produced
+   internally inconsistent, non-monotonic release dates (3.26.4 dated
+   after 3.27.1, which is impossible). I did not trust either and used
+   the raw JSON search API instead, which is authoritative and
+   internally consistent (3.26.1 -> 3.26.2 -> 3.26.3 -> 3.26.4 -> 3.27.0,
+   strictly increasing timestamps). Used 3.27.0 — NOT the unverified
+   3.26.4 the Gate 15.1 proposal had flagged, and NOT the unverified
+   3.28.x from the unreliable sources.
+
+2. Baseline dependency tree (regression-mcp-server, before adding
+   JavaParser), re-confirmed identical to the Gate 15.1 snapshot:
+
+     com.aqa:regression-mcp-server:jar:1.0.0
+     +- io.modelcontextprotocol.sdk:mcp-core:2.0.0 -> jackson-annotations:2.21, reactor-core:3.7.0 -> reactive-streams:1.0.4
+     +- io.modelcontextprotocol.sdk:mcp-json-jackson2:2.0.0 -> jackson-databind:2.21.2, json-schema-validator:2.0.0 -> itu:1.14.0, jackson-dataformat-yaml:2.21.2 -> snakeyaml:2.5
+     +- jackson-datatype-jsr310:2.21.2 -> jackson-core:2.21.2
+     +- slf4j-api:2.0.9
+     +- gherkin:28.0.0 -> messages:24.1.0
+     +- tag-expressions:6.1.0
+     +- slf4j-simple:2.0.9 (runtime)
+     +- junit-jupiter:5.10.3 (test), assertj-core:3.27.7 (test)
+
+--------------------------------------------------------------------------
+PHASE B — implementation
+--------------------------------------------------------------------------
+
+1. DEPENDENCY
+
+   - Root pom.xml: added <javaparser.version>3.27.0</javaparser.version>
+     property and a plain (non-BOM) <dependency> entry for
+     com.github.javaparser:javaparser-core in <dependencyManagement>,
+     placed alongside the existing jna/commons-text-style single-artifact
+     entries, matching the pattern already used for gherkin/tag-expressions.
+   - regression-mcp-server/pom.xml: added the unversioned
+     com.github.javaparser:javaparser-core <dependency>, placed next to
+     the existing gherkin/tag-expressions entries.
+   - Re-ran `mvn -pl regression-mcp-server -am dependency:tree` after the
+     change. Diff against the Phase A baseline is exactly one new line:
+
+       +- com.github.javaparser:javaparser-core:jar:3.27.0:compile
+
+     No transitive additions, no version conflicts, no changes to any
+     other resolved version in the tree. This confirms the Gate 15.1
+     proposal's "self-contained, dependency-free artifact" claim
+     empirically rather than by assertion.
+
+2. PACKAGE com.aqa.mcp.validation — all 15 classes created exactly as
+   specified, no additions and no omissions:
+
+   src/main/java/com/aqa/mcp/validation/
+     RuleProfile.java               enum CORE/API/UI/API_UI/MCP/TEST_ONLY,
+                                     package-private schemaValues()
+                                     mirroring ModuleType.schemaValues().
+     ModuleProfile.java              record(module, profile, basePackage).
+     RuleProfileResolver.java        static resolve(String moduleTypeName)
+                                     -> RuleProfile; UNKNOWN -> TEST_ONLY;
+                                     null or unrecognized input throws
+                                     ValidationException("UNKNOWN_MODULE_TYPE").
+     ValidationException.java        extends IllegalArgumentException,
+                                     code() accessor — same shape as
+                                     ExecutionPlanningException /
+                                     RepositoryInspectionException (public
+                                     2-arg constructor, package-private
+                                     3-arg constructor with cause).
+     ValidationScopeRequest.java     record(module, profile), both nullable.
+     ValidatedValidationScope.java   record(List<String> modules),
+                                     defensively copied.
+     ValidationScopeValidator.java   static validate(ValidationScopeRequest,
+                                     List<String> declaredModules,
+                                     Map<String,String> moduleTypeByName) ->
+                                     ValidatedValidationScope. Fixed order:
+                                     null request, then profile-string
+                                     format, then module blank/undeclared,
+                                     then module/profile agreement. Error
+                                     codes: INVALID_ARGUMENTS, UNKNOWN_MODULE.
+     SourceUnit.java                 record(module, relativePath,
+                                     CompilationUnit unit).
+     JavaSourceScanner.java          static scan(Path repositoryRoot,
+                                     String module) -> List<SourceUnit>.
+                                     Walks src/main/java AND src/test/java
+                                     independently, either may be absent;
+                                     bounded (MAX_JAVA_FILES=10000,
+                                     MAX_JAVA_FILE_BYTES=1048576, same
+                                     numbers FeatureDiscovery already
+                                     uses); symlink-containment-checked and
+                                     deterministically sorted, mirroring
+                                     FeatureDiscovery.files()/validate()
+                                     exactly; parse failures throw
+                                     ValidationException("SOURCE_PARSE_ERROR"),
+                                     never silently skipped; parser
+                                     LanguageLevel pinned to JAVA_21.
+     BasePackages.java               static derive(List<SourceUnit>) ->
+                                     String; longest common
+                                     PackageDeclaration prefix; returns ""
+                                     for empty input or no common prefix.
+     Violation.java                  record(ruleId, module, file, line,
+                                     message), invariant-checked.
+     EvaluationContext.java          record(module, profile, moduleSources,
+                                     reactorModules), defensively copied.
+     ValidationRule.java             interface: id(), profiles(),
+                                     evaluate(EvaluationContext).
+     ModuleValidationResult.java     record(module, profile, rulesApplied,
+                                     violations, truncated).
+     ValidationReport.java           record(List<ModuleValidationResult>
+                                     modules).
+
+   ModuleBoundaryRules / FrameworkConventionRules / ArchitectureRules /
+   the three *Tool wiring classes were NOT created, per this gate's scope.
+
+3. TESTS — 4 classes, mirroring FeatureDiscoveryTest / ModuleListTest /
+   TestRunRequestValidatorTest's existing conventions exactly (@TempDir
+   synthetic trees for filesystem-touching cases, inline text blocks and
+   StaticJavaParser.parse(String) for pure-logic cases, an assertCode(...)
+   helper mirroring TestRunRequestValidatorTest's pattern):
+
+     RuleProfileResolverTest.java      3 tests: every ModuleType-name ->
+                                        RuleProfile mapping including
+                                        UNKNOWN -> TEST_ONLY (data-driven
+                                        over all 6), unrecognized-input
+                                        exception, null-input exception.
+     ValidationScopeValidatorTest.java 9 tests: null request, valid single
+                                        module, undeclared module, blank
+                                        module, unrecognized profile
+                                        string, module/profile mismatch,
+                                        matching module/profile,
+                                        profile-only filter over all
+                                        declared modules, no-filter (all
+                                        declared modules returned).
+     JavaSourceScannerTest.java        8 tests: scans both src/main/java
+                                        and src/test/java together, a
+                                        module with only src/test/java
+                                        (mirrors regression-nextjs-commerce's
+                                        real layout), deterministic
+                                        ordering, unparsable source ->
+                                        SOURCE_PARSE_ERROR (not skipped),
+                                        oversized file -> SOURCE_FILE_TOO_LARGE,
+                                        file-count limit exceeded ->
+                                        SOURCE_FILE_LIMIT_EXCEEDED (10,001
+                                        files, mirrors FeatureDiscoveryTest's
+                                        identical-shape limit test),
+                                        symlink escaping the source root ->
+                                        SOURCE_PATH_VIOLATION (self-skips
+                                        via Assumptions.abort on this
+                                        Windows account exactly like the 4
+                                        pre-existing symlink tests already
+                                        do), unknown module directory ->
+                                        SOURCE_PATH_VIOLATION.
+     BasePackagesTest.java             4 tests: empty input returns an
+                                        empty string, a single file's
+                                        package, longest-common-prefix
+                                        across two packages, a file with
+                                        no package declaration collapsing
+                                        the common prefix to an empty
+                                        string.
+
+   Not added in this gate, flagging rather than silently skipping:
+   dedicated invariant tests for the plain value-object records that have
+   compact-constructor validation (Violation, EvaluationContext,
+   ModuleValidationResult, ModuleProfile). The Gate 15.2 instructions'
+   Tier 1/Tier 2 test list named exactly RuleProfileResolverTest,
+   ValidationScopeValidatorTest, JavaSourceScannerTest, and
+   BasePackagesTest, so new test classes were limited to those four
+   rather than expanding scope; those records' invariants will be
+   exercised naturally once Gate 15.3's concrete rules and fixtures
+   construct them.
+
+4. SCOPE DISCIPLINE — confirmed, not just asserted:
+   - `git status --porcelain` shows exactly: pom.xml modified,
+     regression-mcp-server/pom.xml modified, and the two new
+     com.aqa.mcp.validation directories (untracked). Nothing else.
+   - RegressionMcpServer.java: not in the diff, not touched.
+   - No existing class under com.aqa.mcp or com.aqa.mcp.execution appears
+     in the diff; none had its visibility or content changed.
+   - Compiler file counts corroborate this independently: main sources
+     went from 45 (pre-existing) to 60 (45 plus the 15 new validation
+     classes); test sources went from 28 (pre-existing) to 32 (28 plus
+     the 4 new validation test classes). Both deltas match exactly.
+
+--------------------------------------------------------------------------
+VERIFICATION
+--------------------------------------------------------------------------
+
+`mvn -pl regression-mcp-server -am clean verify`: BUILD SUCCESS.
+
+  Tests run: 162, Failures: 0, Errors: 0, Skipped: 5.
+
+  The 5 skips are all Assumptions.abort("Symbolic-link creation is not
+  permitted by this Windows account.") — 4 pre-existing (ReportCaptureTest
+  x1, RunStoreTest x1, FeatureDiscoveryTest x1, ModuleListTest x1) plus 1
+  new (JavaSourceScannerTest's symlink-escape test), all the same
+  environment-driven skip pattern already present in this suite before
+  this gate, not a new failure mode.
+
+`git diff --check`: exit 0, no whitespace errors.
+
+`git diff --stat`:
+  pom.xml                       | 7 +++++++
+  regression-mcp-server/pom.xml | 4 ++++
+  2 files changed, 11 insertions(+)
+
+`git status --porcelain` (full file list, including untracked):
+  M pom.xml
+  M regression-mcp-server/pom.xml
+  ?? regression-mcp-server/src/main/java/com/aqa/mcp/validation/
+  ?? regression-mcp-server/src/test/java/com/aqa/mcp/validation/
+
+  New files under those two directories (15 main + 4 test, matching the
+  class list above exactly):
+    main: BasePackages.java, EvaluationContext.java, JavaSourceScanner.java,
+    ModuleProfile.java, ModuleValidationResult.java, RuleProfile.java,
+    RuleProfileResolver.java, SourceUnit.java, ValidatedValidationScope.java,
+    ValidationException.java, ValidationReport.java, ValidationRule.java,
+    ValidationScopeRequest.java, ValidationScopeValidator.java,
+    Violation.java
+    test: BasePackagesTest.java, JavaSourceScannerTest.java,
+    RuleProfileResolverTest.java, ValidationScopeValidatorTest.java
+
+No commit, branch, or push was made. Stopping here for review, per
+instructions.
+================================================================================
+
+================================================================================
+Gate 15.2 Follow-up — Access Modifier Audit (read-only, no code changed)
+================================================================================
+
+Method: read the 15 files directly from disk (not from memory) and report
+the literal declaration lines and every member's actual modifier.
+
+--------------------------------------------------------------------------
+1. RuleProfile.java
+--------------------------------------------------------------------------
+  Declaration (line 6): `public enum RuleProfile {`                -> PUBLIC
+  Members:
+    CORE, API, UI, API_UI, MCP, TEST_ONLY   implicit public static final -> PUBLIC
+    values()/valueOf(String)                implicit enum members       -> PUBLIC
+    schemaValues() (line 9)  `static List<String> schemaValues() {`     -> PACKAGE-PRIVATE
+
+--------------------------------------------------------------------------
+2. ModuleProfile.java
+--------------------------------------------------------------------------
+  Declaration (line 5): `public record ModuleProfile(String module, RuleProfile profile, String basePackage) {`  -> PUBLIC
+  Members:
+    Canonical/compact constructor (line 7) `public ModuleProfile {`      -> PUBLIC
+    module(), profile(), basePackage()   implicit record accessors      -> PUBLIC (public record -> public accessors)
+
+--------------------------------------------------------------------------
+3. RuleProfileResolver.java
+--------------------------------------------------------------------------
+  Declaration (line 3): `public final class RuleProfileResolver {`      -> PUBLIC
+  Members:
+    private RuleProfileResolver()          (line 5)                    -> PRIVATE (utility ctor, intentional)
+    resolve(String) (line 14) `public static RuleProfile resolve(...)` -> PUBLIC
+    unknownModuleType(String) (line 29) `private static ...`           -> PRIVATE (internal only)
+
+--------------------------------------------------------------------------
+4. ValidationException.java
+--------------------------------------------------------------------------
+  Declaration (line 3): `public final class ValidationException extends IllegalArgumentException {` -> PUBLIC
+  Members:
+    ValidationException(String, String) (line 7) `public ...`         -> PUBLIC
+    ValidationException(String, String, Throwable) (line 12), no modifier -> PACKAGE-PRIVATE
+    code() (line 17) `public String code() {`                          -> PUBLIC
+    getMessage() -> inherited from Throwable, always public            -> PUBLIC
+
+--------------------------------------------------------------------------
+5. ValidationScopeRequest.java
+--------------------------------------------------------------------------
+  Declaration (line 3): `public record ValidationScopeRequest(String module, String profile) {` -> PUBLIC
+  Members:
+    Canonical constructor: not explicitly declared, so it is implicitly
+    generated with the same access modifier as the record itself         -> PUBLIC
+    module(), profile()    implicit record accessors                    -> PUBLIC
+
+--------------------------------------------------------------------------
+6. ValidatedValidationScope.java
+--------------------------------------------------------------------------
+  Declaration (line 5): `public record ValidatedValidationScope(List<String> modules) {` -> PUBLIC
+  Members:
+    Compact constructor (line 7) `public ValidatedValidationScope {`    -> PUBLIC
+    modules()   implicit record accessor                                -> PUBLIC
+
+--------------------------------------------------------------------------
+7. ValidationScopeValidator.java
+--------------------------------------------------------------------------
+  Declaration (line 6): `public final class ValidationScopeValidator {` -> PUBLIC
+  Members:
+    private ValidationScopeValidator() (line 8)                        -> PRIVATE (utility ctor, intentional)
+    validate(ValidationScopeRequest, List<String>, Map<String,String>)
+      (line 15) `public static ValidatedValidationScope validate(...)` -> PUBLIC
+    validateSingleModule(...) (line 35) `private static ...`           -> PRIVATE (internal only)
+    parseProfile(String) (line 47) `private static ...`                -> PRIVATE (internal only)
+    invalidArguments(String) (line 59) `private static ...`            -> PRIVATE (internal only)
+
+--------------------------------------------------------------------------
+8. SourceUnit.java
+--------------------------------------------------------------------------
+  Declaration (line 7): `public record SourceUnit(String module, String relativePath, CompilationUnit unit) {` -> PUBLIC
+  Members:
+    Compact constructor (line 9) `public SourceUnit {`                 -> PUBLIC
+    module(), relativePath(), unit()   implicit record accessors       -> PUBLIC
+
+--------------------------------------------------------------------------
+9. JavaSourceScanner.java
+--------------------------------------------------------------------------
+  Declaration (line 21): `public final class JavaSourceScanner {`      -> PUBLIC
+  Members:
+    MAX_JAVA_FILE_BYTES (line 23) `static final long MAX_JAVA_FILE_BYTES` -> PACKAGE-PRIVATE
+    MAX_JAVA_FILES (line 24) `static final int MAX_JAVA_FILES`            -> PACKAGE-PRIVATE
+    SOURCE_ROOTS (line 25) `private static final List<String>`            -> PRIVATE (internal only)
+    static initializer (line 27)                                          -> n/a (class-init only)
+    private JavaSourceScanner() (line 31)                                 -> PRIVATE (utility ctor, intentional)
+    scan(Path, String) (line 34) `public static List<SourceUnit> scan(...)` -> PUBLIC
+    scanSourceRoot(...) (line 49) `private static ...`                   -> PRIVATE (internal only)
+    files(Path, Path) (line 73) `private static ...`                     -> PRIVATE (internal only)
+    validate(Path, Path, Path) (line 96) `private static ...`            -> PRIVATE (internal only)
+    parse(Path, Path, String) (line 109) `private static ...`            -> PRIVATE (internal only)
+    display(Path) (line 126) `private static ...`                        -> PRIVATE (internal only)
+    error(String, String) (line 130) `private static ...`                -> PRIVATE (internal only)
+
+--------------------------------------------------------------------------
+10. BasePackages.java
+--------------------------------------------------------------------------
+  Declaration (line 9): `public final class BasePackages {`              -> PUBLIC
+  Members:
+    private BasePackages() (line 11)                                     -> PRIVATE (utility ctor, intentional)
+    derive(List<SourceUnit>) (line 14) `public static String derive(...)` -> PUBLIC
+    segments(SourceUnit) (line 29) `private static ...`                  -> PRIVATE (internal only)
+    commonPrefix(List<String>, List<String>) (line 36) `private static ...` -> PRIVATE (internal only)
+
+--------------------------------------------------------------------------
+11. Violation.java
+--------------------------------------------------------------------------
+  Declaration (line 5): `public record Violation(String ruleId, String module, String file, int line, String message) {` -> PUBLIC
+  Members:
+    Compact constructor (line 7) `public Violation {`                   -> PUBLIC
+    ruleId(), module(), file(), line(), message()  implicit accessors   -> PUBLIC
+
+--------------------------------------------------------------------------
+12. EvaluationContext.java
+--------------------------------------------------------------------------
+  Declaration (line 6): `public record EvaluationContext(String module, RuleProfile profile, List<SourceUnit> moduleSources, List<ModuleProfile> reactorModules) {` -> PUBLIC
+  Members:
+    Compact constructor (line 9) `public EvaluationContext {`           -> PUBLIC
+    module(), profile(), moduleSources(), reactorModules()  implicit accessors -> PUBLIC
+
+--------------------------------------------------------------------------
+13. ValidationRule.java
+--------------------------------------------------------------------------
+  Declaration (line 6): `public interface ValidationRule {`             -> PUBLIC
+  Members:
+    id() (line 8), profiles() (line 10), evaluate(EvaluationContext) (line 12)
+      -- no explicit modifier written, but JLS mandates every interface
+      member without an access modifier is implicitly `public abstract` -> PUBLIC (all three)
+
+--------------------------------------------------------------------------
+14. ModuleValidationResult.java
+--------------------------------------------------------------------------
+  Declaration (line 6): `public record ModuleValidationResult(String module, RuleProfile profile, List<String> rulesApplied, List<Violation> violations, boolean truncated) {` -> PUBLIC
+  Members:
+    Compact constructor (line 9) `public ModuleValidationResult {`       -> PUBLIC
+    module(), profile(), rulesApplied(), violations(), truncated()  implicit accessors -> PUBLIC
+
+--------------------------------------------------------------------------
+15. ValidationReport.java
+--------------------------------------------------------------------------
+  Declaration (line 5): `public record ValidationReport(List<ModuleValidationResult> modules) {` -> PUBLIC
+  Members:
+    Compact constructor (line 7) `public ValidationReport {`            -> PUBLIC
+    modules()  implicit record accessor                                 -> PUBLIC
+
+--------------------------------------------------------------------------
+SUMMARY TABLE
+--------------------------------------------------------------------------
+  Class                       Type visibility   Package-private members found
+  RuleProfile                 public            schemaValues()
+  ModuleProfile                public            (none)
+  RuleProfileResolver          public            (none public-facing; only the
+                                                  intentionally-private ctor and
+                                                  a private helper)
+  ValidationException           public            3-arg (code,message,cause) ctor
+  ValidationScopeRequest         public            (none)
+  ValidatedValidationScope       public            (none)
+  ValidationScopeValidator        public            (none public-facing)
+  SourceUnit                     public            (none)
+  JavaSourceScanner               public            MAX_JAVA_FILE_BYTES, MAX_JAVA_FILES
+  BasePackages                     public            (none public-facing)
+  Violation                        public            (none)
+  EvaluationContext                 public            (none)
+  ValidationRule                     public            (none — interface members are
+                                                        always implicitly public)
+  ModuleValidationResult              public            (none)
+  ValidationReport                     public            (none)
+
+  Every one of the 15 top-level types is `public`. Zero are package-private.
+  Exactly 4 individual members across the whole package are package-private:
+    RuleProfile.schemaValues()
+    ValidationException(String, String, Throwable)
+    JavaSourceScanner.MAX_JAVA_FILE_BYTES
+    JavaSourceScanner.MAX_JAVA_FILES
+
+--------------------------------------------------------------------------
+WOULD ANY OF THESE FAIL TO COMPILE FROM com.aqa.mcp IN GATES 15.3-15.5?
+--------------------------------------------------------------------------
+
+Answer, under the Gate 15.1 design as accepted: NO — none of the 15
+classes are called directly from com.aqa.mcp at all, so nothing here is a
+blocker today, and none of the 4 package-private members need to change.
+
+Why: the accepted Gate 15.1 design places the three *Tool wiring classes
+(ModuleBoundariesTool, FrameworkConventionsTool, ArchitectureTool) INSIDE
+com.aqa.mcp.validation, not inside com.aqa.mcp. RegressionMcpServer.java's
+only planned cross-package calls (Gate 15.3-15.5, not yet made) are to
+those three classes' static factory methods:
+
+  XxxTool.tool(Path repositoryRoot, List<String> declaredModules,
+      Map<String,String> moduleTypeByName) -> SyncToolSpecification
+
+which take only JDK types (Path, List<String>, Map<String,String>) that
+RegressionMcpServer.java already builds itself from its own existing,
+untouched, package-private ModuleList/ModuleTypeClassifier machinery, and
+return only the MCP SDK's SyncToolSpecification. RegressionMcpServer.java
+never references RuleProfile, ModuleProfile, RuleProfileResolver,
+ValidationException, ValidationScopeRequest, ValidatedValidationScope,
+ValidationScopeValidator, SourceUnit, JavaSourceScanner, BasePackages,
+Violation, EvaluationContext, ValidationRule, ModuleValidationResult, or
+ValidationReport by name anywhere in the plan — all of that traffic stays
+inside com.aqa.mcp.validation, between the rule-set classes and the *Tool
+classes that will be added in Gates 15.3-15.5, which are in the same
+package as the 15 chassis classes audited here.
+
+Given that, the 4 package-private members found are each only ever called
+from within com.aqa.mcp.validation, under both the current code and the
+planned Gate 15.3-15.5 additions:
+  - RuleProfile.schemaValues() would be called by a *Tool class (same
+    package) to build a tool's JSON input schema's profile enum list.
+  - ValidationException's 3-arg constructor is only ever called by
+    JavaSourceScanner (same package) to wrap an IOException as a cause;
+    no caller outside the package constructs a ValidationException — an
+    outside caller (if one ever needed to exist) would only ever catch
+    one and read `code()`/`getMessage()`, both of which are already public.
+  - JavaSourceScanner.MAX_JAVA_FILE_BYTES/MAX_JAVA_FILES are bound
+    constants referenced only by JavaSourceScanner itself and by
+    JavaSourceScannerTest (same package, exactly mirroring how
+    FeatureDiscovery.MAX_FEATURE_FILE_BYTES/MAX_FEATURE_FILES are already
+    package-private and referenced the same way from FeatureDiscoveryTest
+    today).
+
+Caveat, stated explicitly rather than assumed silently: this "no blocker"
+conclusion is conditional on Gate 15.3 actually placing the *Tool wiring
+classes inside com.aqa.mcp.validation, per the accepted design. If that
+placement changes in Gate 15.3 (for example, if RegressionMcpServer.java
+were instead made to construct an EvaluationContext or call
+BasePackages.derive(...) itself, or to build a tool's JSON schema itself
+using RuleProfile.schemaValues()), the visibility picture above would need
+to be re-checked at that time — but as of right now, with zero *Tool
+classes yet created, nothing in the 15 audited classes blocks Gate 15.3.
+
+No code was changed to produce this report.
+================================================================================
+
+
+================================================================================
+Gate 15.3 — regression_validate_module_boundaries End-to-End Implementation
+First gate touching RegressionMcpServer.java (plus one additional,
+user-approved touch to RegressionMcpServerStdioIntegrationTest.java —
+see Phase A finding 4 below).
+================================================================================
+
+--------------------------------------------------------------------------
+PHASE A — verification before writing code
+--------------------------------------------------------------------------
+
+1. RegressionMcpServer.java's exact tool-registration shape, read fresh:
+
+   Every tool is a `static SyncToolSpecification xTool(...)` method that
+   builds `Tool.builder(NAME, inputSchema()).description(...)
+   .annotations(...).outputSchema(...).build()` wrapped in
+   `SyncToolSpecification.builder().tool(...).callHandler((exchange,
+   request) -> { try { ... successResult(...) } catch (X exception) {
+   return errorResult(exception.code(), exception.getMessage()); } })
+   .build()`. All 11 are registered in exactly one place:
+
+     static void createServer(RepositoryRoot repositoryRoot, TestRunCoordinator coordinator) {
+         Runtime.getRuntime().addShutdownHook(new Thread(coordinator::close, "regression-mcp-shutdown"));
+         InputStream input = new CloseAwareInputStream(System.in, coordinator::close);
+         McpServer.sync(new StdioServerTransportProvider(McpJsonDefaults.getMapper(), input, System.out))
+                 .serverInfo(SERVER_NAME, SERVER_VERSION)
+                 .instructions(INSTRUCTIONS)
+                 .capabilities(ServerCapabilities.builder().tools(false).build())
+                 .tools(overviewTool(repositoryRoot), listModulesTool(repositoryRoot), featureListTool(repositoryRoot),
+                         scenarioListTool(repositoryRoot), startTestRunTool(coordinator), getTestRunTool(coordinator),
+                         cancelTestRunTool(coordinator), testSummaryTool(coordinator), failureSummaryTool(coordinator),
+                         failureArtifactsTool(coordinator), readFailureArtifactTool(coordinator))
+                 .build();
+     }
+
+   `regression_list_modules` calls `ModuleList.forRoot(RepositoryRootResolver
+   .resolve(repositoryRoot.path()))` FRESH, inside its own callHandler, on
+   every single request — not once at startup. Every other read-only tool
+   (overview, features, scenarios) does the identical fresh-per-request
+   resolve. This turned out to be load-bearing (see finding 2).
+
+2. How the Map<String,String> gets built without touching ModuleList/
+   ModuleType/ModuleTypeClassifier's visibility — REVISED from the
+   Gate 15.1/15.2 plan after a concrete test-driven discovery:
+
+   The original plan (compute the map ONCE inside createServer and pass it
+   as a fixed Map<String,String> parameter into
+   ModuleBoundariesTool.tool(...), per the literal signature given) is
+   UNSAFE. RegressionMcpServerStdioIntegrationTest's existing test
+   `returnsStructuredPomErrorsWithoutExposingFixturePathsAndRemainsUsable`
+   starts a real server subprocess against a deliberately malformed root
+   pom.xml (`"<project><modules>"`, unclosed) via `createServer(...)`, and
+   asserts the server still completes MCP `initialize`, that
+   `regression_list_modules` fails per-call with a structured `POM_ERROR`,
+   and that `regression_get_framework_overview` still succeeds afterward —
+   i.e. the server must keep starting and stay usable even when the pom is
+   malformed. If `ModuleList.forRoot(...)` were called eagerly inside
+   `createServer`, that exact malformed-pom fixture would throw during
+   server startup (caught by `main()`'s existing `catch
+   (IllegalArgumentException) { System.exit(2); }`), and this existing
+   test would fail because the process would never reach a servable state.
+
+   Fix: `ModuleBoundariesTool.tool(Path repositoryRoot, Supplier<Map<String,
+   String>> moduleTypeByNameSupplier)` — the supplier is invoked once PER
+   REQUEST, inside the tool's own callHandler, not at registration time.
+   RegressionMcpServer.java's `createServer` now adds exactly this:
+
+     .tools(..., ModuleBoundariesTool.tool(repositoryRoot.path(), () -> moduleTypeByName(repositoryRoot)))
+             .build();
+     }
+
+     private static Map<String, String> moduleTypeByName(RepositoryRoot repositoryRoot) {
+         Map<String, String> types = new java.util.LinkedHashMap<>();
+         for (ModuleDescriptor module : ModuleList.forRoot(RepositoryRootResolver.resolve(repositoryRoot.path())).modules()) {
+             types.put(module.name(), module.type().name());
+         }
+         return java.util.Collections.unmodifiableMap(types);
+     }
+
+   This reuses ModuleList/ModuleType/ModuleTypeClassifier exactly as-is
+   (zero visibility change), matches every other tool's per-request
+   freshness behavior exactly, and defers all pom-parsing risk to request
+   time — a malformed pom.xml now fails only the tools that need module
+   data (regression_list_modules, regression_list_features,
+   regression_list_scenarios, and now regression_validate_module_boundaries),
+   never server startup. Returning `Collections.unmodifiableMap(...)` over
+   the LinkedHashMap (not `Map.copyOf(...)`) was deliberate: `Map.copyOf`
+   does not guarantee iteration-order preservation, and declaration order
+   needs to survive into `ValidatedValidationScope.modules()` for
+   deterministic, order-preserving output.
+
+3. Base package prefixes, re-verified fresh against the current tree
+   (unchanged since Gate 15.1's grounding): regression-core -> com.aqa.core,
+   regression-petstore-api -> com.aqa.petstore, regression-jhipster ->
+   com.aqa.jhipster, regression-nextjs-commerce -> com.aqa.nextjscommerce,
+   regression-mcp-server -> com.aqa.mcp. Also checked real cross-module
+   imports today: zero sibling-to-sibling product-module imports exist
+   (no MOD-001 violations today), regression-nextjs-commerce imports zero
+   jakarta.ws.rs/org.glassfish.jersey (no MOD-002 violations today),
+   regression-core and regression-mcp-server import zero other-module
+   packages (no MOD-003/MOD-004 violations today). The real reactor is
+   clean; all fixtures used for testing are synthetic, per the accepted
+   design.
+
+4. BLOCKING FINDING, resolved with the user before Phase B: adding a 12th
+   tool to the shared `.tools(...)` call breaks two existing,
+   supposedly-untouchable tests in RegressionMcpServerStdioIntegrationTest.java:
+   `assertToolList` hardcodes `tools.size() == 11`, and
+   `assertExecutionToolContracts` hardcodes an exact
+   `containsExactlyInAnyOrder(...)` of the 11 current tool-name constants —
+   both called from 2 existing tests
+   (servesDiscoveryToolsOverStdioAndTerminatesWhenTheClientDisconnects,
+   servesControlledExecutionToolsOverStdioAndCleansRunOnEof). There is no
+   way to register a 12th real tool without this count drifting. I raised
+   this to the user rather than deciding unilaterally; the user chose to
+   authorize updating those two hardcoded assertions (11->12, plus adding
+   RegressionMcpServer.VALIDATE_MODULE_BOUNDARIES_TOOL_NAME to the expected
+   name set) as the minimal, correct fix, rather than skipping real
+   registration or shipping a known-red suite. This is therefore a second,
+   explicitly user-approved touch to an existing file, beyond the single
+   file the task text had pre-authorized.
+
+--------------------------------------------------------------------------
+PHASE B — implementation
+--------------------------------------------------------------------------
+
+1. RULES — com/aqa/mcp/validation/ModuleBoundaryRules.java (package-private
+   final class; its only consumer, ModuleBoundariesTool, is in the same
+   package, so no public surface is needed). `static List<ValidationRule>
+   all()` returns 4 private static nested ValidationRule implementations,
+   each `profiles() = EnumSet.allOf(RuleProfile.class)`:
+
+     MOD-001 SiblingModuleIndependence — fires only when context.module()
+       is one of the 3 sibling product modules; flags any ImportDeclaration
+       whose name matches another SIBLING's derived basePackage (importing
+       regression-core is explicitly allowed — core is not a sibling).
+     MOD-002 CommerceHasNoApiClients — fires only for
+       regression-nextjs-commerce; flags any import starting with
+       "jakarta.ws.rs." or "org.glassfish.jersey.".
+     MOD-003 McpServerIndependence — fires only for regression-mcp-server;
+       flags any import matching ANY other declared module's basePackage
+       (self-imports of com.aqa.mcp.* are allowed).
+     MOD-004 CoreIndependence — fires only for regression-core; flags any
+       import matching any OTHER declared module's basePackage.
+
+   Shared helper `forbiddenModuleImports(context, forbiddenModules, ruleId,
+   messagePrefix)` walks every SourceUnit's `CompilationUnit.getImports()`,
+   and for each ImportDeclaration checks `matchesBasePackage(importName,
+   candidate.basePackage())` — a package-segment-aware prefix match
+   (`importName.equals(basePackage) || importName.startsWith(basePackage +
+   ".")`, explicitly guarding against a blank/undetermined basePackage
+   matching everything). Violation line numbers come from
+   `importDeclaration.getBegin().map(position -> position.line).orElse(1)`.
+
+   Known, deliberate characteristic: `rulesApplied` in a module's result
+   always lists all 4 rule ids whenever that module's profile is in scope
+   (since `profiles()` is EnumSet.allOf for every rule) — MOD-002/003/004's
+   own additional module-name gate is internal to each rule's `evaluate()`,
+   not exposed as a separate "not applicable" state. A module outside a
+   given rule's module-name scope shows that rule as "applied" with zero
+   violations contributed, not omitted from rulesApplied. Documented here
+   as intended, not a defect.
+
+2. TOOL WIRING — com/aqa/mcp/validation/ModuleBoundariesTool.java (public
+   final class, since RegressionMcpServer.java must call it cross-package):
+
+     public static final String TOOL_NAME = "regression_validate_module_boundaries";
+     public static SyncToolSpecification tool(Path repositoryRoot, Supplier<Map<String, String>> moduleTypeByNameSupplier)
+
+   callHandler flow: parse raw MCP arguments into ValidationScopeRequest ->
+   invoke the supplier (fresh per request, see finding 2) ->
+   ValidationScopeValidator.validate(request, declaredModules,
+   moduleTypeByName) -> scan EVERY declared module's sources via
+   JavaSourceScanner.scan(...) (not just in-scope modules — cross-module
+   boundary checks need every module's basePackage regardless of the
+   requested scope, so this tool always reads the whole reactor's Java
+   source; a parse failure in an out-of-scope module therefore still fails
+   the request with SOURCE_PARSE_ERROR — a deliberate fail-closed choice
+   for a tool whose entire purpose is cross-module correctness) -> derive
+   each module's basePackage via BasePackages.derive(...) -> build one
+   ModuleProfile per declared module (reactorModules) -> for each in-scope
+   module, build an EvaluationContext, run every ModuleBoundaryRules rule
+   whose profiles() contains that module's resolved RuleProfile, collect
+   Violations -> assemble ModuleValidationResult (truncated always false —
+   no truncation logic needed at this rule count) -> ValidationReport.
+
+   Self-contained schema/serialization helpers (successResult, errorResult,
+   serialize, structured schema builders) are local to this class — they
+   cannot reuse RegressionMcpServer's private helpers (different class,
+   private is class-scoped, not package-scoped), so this is necessary,
+   expected duplication of the same shape shown in the Gate 15.1 proposal.
+
+   Input schema: {module?: string, profile?: string enum of the 6
+   RuleProfile names}, additionalProperties: false, neither required.
+   Output: the same closed oneOf{success,failure} envelope shape as every
+   existing tool; data.modules[] each {module, profile, rulesApplied[],
+   violations[], truncated}; each violation {ruleId, module, file, line,
+   message}. Error codes surfaced: INVALID_ARGUMENTS, UNKNOWN_MODULE,
+   SOURCE_PARSE_ERROR, UNKNOWN_MODULE_TYPE (all pre-existing
+   ValidationException codes from Gate 15.2's chassis, none new).
+
+3. REGISTRATION — the diff to RegressionMcpServer.java:
+   - New import: `import com.aqa.mcp.validation.ModuleBoundariesTool;`
+   - New constant, placed after READ_FAILURE_ARTIFACT_TOOL_NAME:
+     `static final String VALIDATE_MODULE_BOUNDARIES_TOOL_NAME = ModuleBoundariesTool.TOOL_NAME;`
+     (sourced from ModuleBoundariesTool.TOOL_NAME rather than a second
+     hardcoded literal, so the tool's name has one owner and cannot drift
+     between the two files — RegressionMcpServer.java still gets its own
+     named constant, matching every other tool's convention, it just isn't
+     a second copy of the literal string.)
+   - `.tools(...)` gained one more argument:
+     `ModuleBoundariesTool.tool(repositoryRoot.path(), () -> moduleTypeByName(repositoryRoot))`
+   - New private helper `moduleTypeByName(RepositoryRoot)` (shown in
+     finding 2), placed directly after the modified `createServer` method.
+   No existing tool's method body, order, or behavior was touched — the
+   11 existing `.tools(...)` arguments are untouched and appear in their
+   original order, with the new one appended last.
+
+   Second, user-approved diff to RegressionMcpServerStdioIntegrationTest.java
+   (finding 4): `assertToolList`'s `isEqualTo(11)` -> `isEqualTo(12)`;
+   `assertExecutionToolContracts`'s `containsExactlyInAnyOrder(...)` gained
+   a trailing `RegressionMcpServer.VALIDATE_MODULE_BOUNDARIES_TOOL_NAME`.
+   Nothing else in that file changed.
+
+4. TESTS — 7 new classes, 36 new test methods total:
+
+   a) Deferred Gate 15.2 invariant tests (compact-constructor valid/null/
+      blank coverage, mirroring SurefireSummary-style record invariant
+      testing already implicit elsewhere in this codebase):
+        ViolationTest (4), ModuleProfileTest (4), EvaluationContextTest (5,
+        including defensive-copy-of-mutable-input and null-list-defaulting),
+        ModuleValidationResultTest (5, same shape).
+
+   b) ModuleBoundaryRulesTest (Tier 1, 10 tests) — one positive + one
+      negative inline text-block fixture per rule (MOD-001..004, 8 tests),
+      plus `everyRuleAppliesToEveryProfile` and
+      `exposesExactlyTheFourExpectedRuleIds`. Each fixture is parsed
+      directly via StaticJavaParser.parse(String) into a single SourceUnit,
+      wrapped in a hand-built EvaluationContext against a 5-entry
+      REACTOR_MODULES list carrying the real base packages, and evaluated
+      against the specific rule looked up by id() from
+      ModuleBoundaryRules.all() (not by nested-class name — those are
+      private, appropriately, since only ModuleBoundariesTool needs them).
+
+   c) ModuleBoundariesToolTest (Tier 2, 5 tests) — a real synthetic
+      3-module @TempDir reactor (regression-core, regression-petstore-api,
+      regression-jhipster, mirroring FeatureDiscoveryTest/ModuleListTest's
+      existing pattern) where regression-jhipster's source genuinely
+      imports regression-petstore-api's package, exercising
+      ModuleBoundariesTool.tool(...)'s callHandler directly (no MCP
+      transport, matching RegressionMcpServerContractTest's
+      `tool.callHandler().apply(null, new CallToolRequest(...))` pattern):
+      a real MOD-001 violation surfaces with no filter, a filtered
+      no-violations module, combined module+profile filtering, profile-only
+      filtering across all declared modules, and UNKNOWN_MODULE on a bad
+      module argument.
+
+   d) ModuleBoundariesToolContractTest (schema/contract-level, 3 tests) —
+      exercises the returned SyncToolSpecification's Tool metadata directly
+      (name, exact input schema, output schema's oneOf shape, read-only
+      annotations), in the style of RegressionMcpServerContractTest.
+      Deliberately does NOT go through RegressionMcpServer.createServer(...)
+      or add anything to RegressionMcpServerContractTest.java itself (an
+      existing file this gate is not authorized to touch beyond the one
+      user-approved count fix) — "tool present in the server's tool list"
+      is instead covered by the real registration diff plus
+      RegressionMcpServerStdioIntegrationTest's now-updated
+      assertExecutionToolContracts, which does exercise the actual live
+      server's tool list end-to-end over STDIO.
+
+--------------------------------------------------------------------------
+VERIFICATION
+--------------------------------------------------------------------------
+
+`mvn -pl regression-mcp-server -am clean verify`: BUILD SUCCESS.
+
+  Tests run: 198, Failures: 0, Errors: 0, Skipped: 5.
+  (162 from Gate 15.2 + 36 new = 198. The 5 skips are the same
+  Assumptions.abort("Symbolic-link creation is not permitted by this
+  Windows account.") pattern already present before this gate — no new
+  skips, no new failures.)
+  RegressionMcpServerContractTest: 9/9 (untouched, unaffected — it never
+  calls createServer). RegressionMcpServerStdioIntegrationTest: 7/7,
+  including the two updated-assertion tests, confirming the live server
+  now genuinely serves 12 tools including regression_validate_module_boundaries
+  over real STDIO transport.
+
+`git diff --check`: exit 0, no whitespace errors.
+
+`git diff --stat`:
+  pom.xml                                                              | 7 +++++++
+  regression-mcp-server/pom.xml                                        | 4 ++++
+  regression-mcp-server/.../com/aqa/mcp/RegressionMcpServer.java       | 16 +++++++++++++++-
+  regression-mcp-server/.../com/aqa/mcp/RegressionMcpServerStdioIntegrationTest.java | 4 ++--
+  4 files changed, 28 insertions(+), 3 deletions(-)
+
+`git status --porcelain`:
+  M pom.xml
+  M regression-mcp-server/pom.xml
+  M regression-mcp-server/src/main/java/com/aqa/mcp/RegressionMcpServer.java
+  M regression-mcp-server/src/test/java/com/aqa/mcp/RegressionMcpServerStdioIntegrationTest.java
+  ?? regression-mcp-server/src/main/java/com/aqa/mcp/validation/
+  ?? regression-mcp-server/src/test/java/com/aqa/mcp/validation/
+
+  New files under com.aqa.mcp.validation this gate (main, 2 new — the
+  other 15 are Gate 15.2's, unchanged):
+    ModuleBoundariesTool.java, ModuleBoundaryRules.java
+  New files under com.aqa.mcp.validation this gate (test, 7 new — the
+  other 4 are Gate 15.2's, unchanged):
+    ViolationTest.java, ModuleProfileTest.java, EvaluationContextTest.java,
+    ModuleValidationResultTest.java, ModuleBoundaryRulesTest.java,
+    ModuleBoundariesToolTest.java, ModuleBoundariesToolContractTest.java
+
+  No other existing file changed. The two modified existing files
+  (RegressionMcpServer.java, RegressionMcpServerStdioIntegrationTest.java)
+  are exactly the one originally authorized edit plus the one additional
+  edit the user explicitly approved in Phase A finding 4.
+
+No commit, branch, or push was made. Stopping here for review, per
+instructions.
+================================================================================
+GATE 15.4 -- Phase A (read-only inspect/propose): regression_validate_framework_conventions
+================================================================================
+
+TASK
+--------------------------------------------------------------------------
+Phase A only (no implementation). Resolve the jhipster/Playwright open
+question from STAGE_15_PROGRESS.md's "Open items carried into Gate 15.4",
+then propose FC-001..005 rule design and confirm the per-request Supplier
+wiring shape for the new tool. No production code touched.
+
+--------------------------------------------------------------------------
+1. PLAYWRIGHT / SELENIUM EXCLUSIVITY -- CONFIRMED BY DIRECT SOURCE INSPECTION
+--------------------------------------------------------------------------
+
+Grepped every import line under each UI tree:
+
+  regression-jhipster/src/main/java/com/aqa/jhipster/ui/**  (12 files with
+  UI-framework imports: UiHooks, BankAccountFormPage, BaseComponent,
+  NavigationBar, UiScenarioContext, HomePage, LoginPage, PlaywrightManager,
+  BasePage, BankAccountPage, DataTableComponent)
+    -> 100% com.microsoft.playwright.* (Page, Locator, Browser,
+       BrowserContext, BrowserType, Playwright, Tracing, options.*).
+    -> Zero org.openqa.selenium.* imports anywhere in this tree.
+
+  regression-nextjs-commerce/src/test/java/com/aqa/nextjscommerce/**
+  (18 files with UI-framework imports)
+    -> 100% org.openqa.selenium.* (By, WebDriver, WebElement, SearchContext,
+       Keys, OutputType, TakesScreenshot, chrome.ChromeDriver,
+       chrome.ChromeOptions, support.ui.WebDriverWait/ExpectedConditions).
+    -> Zero com.microsoft.playwright.* imports anywhere in this tree.
+
+CONFIRMED: the two UI stacks are fully exclusive of one another, both
+directions. This re-confirms the standing principle already recorded in
+STAGE_15_PROGRESS.md and grounds it in fresh evidence for this gate.
+
+--------------------------------------------------------------------------
+2. PROPOSAL: SHIP THE PLAYWRIGHT PARALLEL RULE SET IN THIS SAME GATE
+--------------------------------------------------------------------------
+
+Recommend: ship now as a first-class parallel rule set, not deferred.
+Rationale: STAGE_15_PROGRESS.md's open items section already leans this
+way ("likely deserves its own parallel rule set ... as a first-class
+case, not a deferred edge case"); regression-jhipster's UI layer is real
+production framework code with the same convention-risk surface as
+regression-nextjs-commerce; deferring would leave one of the two UI
+stacks with zero framework-convention coverage in v1.0, which reads
+against Stage 16's Definition of Done ("validate architecture rules").
+Every proposed rule below is technology-gated on actual imports found
+per file/class, never assumed from RuleProfile -- consistent with the
+standing principle.
+
+--------------------------------------------------------------------------
+3. FC-001..005 PROPOSED RULE SET
+--------------------------------------------------------------------------
+
+FC-001 (Selenium locators): precondition = class imports org.openqa.selenium.By.
+Violation = a By-typed field declared anywhere in the class that is not
+private static final. Accepted exception (not a violation): a private
+static method returning By for a dynamic/parameterized locator template
+(real example: ProductPage.optionButton(String,String) at
+regression-nextjs-commerce/.../pages/ProductPage.java:52). Verified this
+exact convention already holds cleanly across ProductPage, StorefrontPage,
+SearchResultsPage, HeaderComponent, CartDrawerComponent, ProductGridComponent,
+BaseComponent, ComponentRoot -- real reactor is clean of FC-001 violations
+today (same "clean baseline, synthetic-fixture-only" pattern as MOD-001..004).
+
+FC-001-PW (Playwright locator fields) -- DESIGN FINDING, not a literal
+mirror of FC-001: inspected LoginPage, BankAccountPage, NavigationBar,
+DataTableComponent directly. Playwright Locator fields are structurally
+different from Selenium By fields: a Locator is bound to a Page/Locator
+instance at creation time (page.getByTestId(...), root.getByTestId(...)),
+so it can never legitimately be static -- mirroring FC-001's "private
+static final" literally onto Playwright would flag every correct existing
+Locator field in the codebase as a false positive. The actual convention
+already followed consistently by every real file inspected is: private
+final Locator INSTANCE field, assigned exactly once in the constructor
+(never reassigned later), with dynamic/parameterized lookups expressed as
+private instance methods returning Locator (real examples:
+DataTableComponent.rowByExactCellText, BankAccountPage.uniqueRowByName/
+rowByName). Proposed FC-001-PW violation: a Locator-typed field that is
+(a) not final, or (b) assigned outside the constructor. This needs
+explicit confirmation since it's a real adaptation of the CLAUDE.md text,
+not a direct translation.
+
+FC-002 (no Thread.sleep): technology-agnostic, applies across all
+profiles verbatim (Thread.sleep is a JDK call, not framework-specific).
+Grepped the entire reactor for Thread.sleep -- exactly 2 occurrences,
+both in the same file: regression-core/src/main/java/com/aqa/core/utils/
+WaitUtils.java:19 and :41, inside WaitUtils's own bounded polling loops
+(legitimate wait-abstraction implementation, not test/product code calling
+Thread.sleep directly). No occurrences anywhere else in the reactor.
+CORRECTION to the open item's assumption: STAGE_15_PROGRESS.md's open
+items listed both WaitManager (nextjs-commerce) and WaitUtils (core) as
+needing allow-listing; direct inspection shows WaitManager.java (the
+Selenium WebDriverWait-based abstraction) contains zero Thread.sleep calls
+itself -- it only delegates to Selenium's own WebDriverWait polling. The
+real allow-list therefore needs exactly one entry:
+regression-core/src/main/java/com/aqa/core/utils/WaitUtils.java. Proposed
+allow-list mechanism: an explicit, reviewable Set<String> of relative file
+paths in the rule class itself (same shape as ModuleBoundaryRules's
+constant sets), not a runtime flag or annotation.
+
+FC-002-PW (Playwright equivalent, forward-looking): precondition = class
+imports com.microsoft.playwright.*. Violation = any call to
+Page.waitForTimeout(...) or a Locator/Frame waitForTimeout overload --
+Playwright's own hardcoded-wait anti-pattern, analogous in spirit to
+Thread.sleep, since Playwright's actionability auto-waiting (used
+throughout via assertThat(...)/click()/fill()) is meant to replace it.
+Grepped for waitForTimeout -- zero occurrences anywhere in the reactor
+today, so this rule has a clean baseline and needs no allow-list.
+
+FC-003 (constructor injection, profile-agnostic): inspected LoginSteps,
+UiHooks, PlaywrightManager, DriverSession as representative samples.
+Every real collaborator field in the codebase is private final, assigned
+exactly once in the constructor; the only non-final mutable fields found
+are legitimate scenario-local state (LoginSteps.loginPage/homePage,
+UiHooks.tracingStarted), not collaborators -- a naive "non-final instance
+field = violation" rule would false-positive heavily on this correct,
+common pattern. Proposed narrower, low-false-positive signal instead:
+flag (a) any field annotated with a field-injection annotation
+(@Autowired, @Inject, @jakarta.annotation.Resource /
+@javax.annotation.Resource), since this codebase uses no DI framework
+anywhere, or (b) any field assigned by a public/package setter method
+outside the constructor. Grepped the whole reactor for @Autowired/@Inject/
+@Resource: one incidental regex hit in
+regression-petstore-api/.../StoreOrderTest.java, confirmed by direct read
+to be JUnit's unrelated @ResourceLock, not @Resource -- so the real
+baseline is genuinely zero matches. FC-003 therefore ships with a clean
+baseline under this narrower signal.
+
+FC-004 (records for value objects, advisory-only): no new inspection
+needed beyond what Gate 15.1 already decided -- reconfirming here only
+that it ships as advisory (non-blocking severity), per the existing
+Gate 15.1 acceptance, not re-litigated.
+
+FC-005 (no static mutable WebDriver/browser/page-object/scenario-state):
+re-ran the static-field search precisely (prior broad regex needed a
+look-around ripgrep doesn't support; re-ran without it). Only match
+across the whole reactor: ComponentRoot.java:14 "static ComponentRoot
+document(final WebDriver driver)" -- a static factory method PARAMETER,
+not a mutable static field; not a violation. DriverSession
+(nextjs-commerce, Selenium) and PlaywrightManager/UiScenarioContext
+(jhipster, Playwright) both confirmed to hold their WebDriver/Playwright/
+Browser/Page state as private instance fields, mutated only within their
+own scenario-scoped lifecycle methods -- real reactor is clean of FC-005
+violations today, one rule covering both technologies (the violation
+shape -- a static non-final field typed WebDriver, Browser,
+BrowserContext, Page, or a page-object type -- is technology-agnostic by
+construction, so no separate FC-005-PW variant is needed).
+
+Known pre-existing fixture for future ARCH-003 (Gate 15.5, not this
+gate): regression-jhipster/.../ui/pages/BasePage.java:46
+(assertThat(page).hasURL(expectedUrl)), and additionally now also
+observed in BaseComponent.java:20 (assertThat(root).isVisible()) and
+LoginPage/BankAccountPage/NavigationBar/DataTableComponent (assertions
+throughout page/component classes). This is out of scope for FC-001..005
+and for this gate; noted only so Gate 15.5 has a fuller fixture picture
+than the single reference already on file.
+
+--------------------------------------------------------------------------
+4. PER-REQUEST SUPPLIER WIRING -- CONFIRMED, NO DEVIATION PROPOSED
+--------------------------------------------------------------------------
+
+Read ModuleBoundariesTool.java and its RegressionMcpServer.java
+registration in full. Confirmed shape to replicate exactly for the new
+tool:
+  - public static SyncToolSpecification tool(Path repositoryRoot,
+    Supplier<Map<String,String>> moduleTypeByNameSupplier) factory method
+    on a new public FrameworkConventionsTool class in
+    com.aqa.mcp.validation.
+  - Registration: FrameworkConventionsTool.tool(repositoryRoot.path(),
+    () -> moduleTypeByName(repositoryRoot)) added to the .tools(...) call
+    in RegressionMcpServer.java, reusing the same private
+    moduleTypeByName(RepositoryRoot) helper already defined there (no new
+    helper needed).
+  - moduleTypeByNameSupplier.get() invoked once inside the tool's
+    callHandler, never at server-registration time -- identical to
+    ModuleBoundariesTool. This satisfies the per-request-vs-eager
+    principle with no new design needed.
+
+--------------------------------------------------------------------------
+5. AMBIGUITY / DECISIONS NEEDING CONFIRMATION BEFORE PHASE B
+--------------------------------------------------------------------------
+
+None rise to "stop, do not proceed" architectural ambiguity -- the one
+genuine design adaptation (FC-001-PW using instance+final instead of
+static+final, per finding #3 above) is presented as a proposal for
+explicit confirmation, not a silent resolution, per process discipline.
+Everything else in this report is either a direct, unambiguous source
+finding or a straightforward reuse of an already-accepted pattern
+(15.3's chassis, Supplier wiring, allow-list-as-constant-set shape).
+
+No production or test code was touched. No commit, branch, or push was
+made.
+================================================================================
+GATE 15.4 -- Phase B (implement): regression_validate_framework_conventions
+================================================================================
+
+TASK
+--------------------------------------------------------------------------
+Implement FrameworkConventionRules (FC-001, FC-001-PW, FC-002, FC-002-PW,
+FC-003, FC-004, FC-005) and FrameworkConventionsTool per the Phase A
+proposal accepted in full, register the new tool in RegressionMcpServer.java
+(the only planned edit to that file), add the deferred compact-constructor
+invariant tests, verify, and report exact numbers. No commit/branch/push.
+
+--------------------------------------------------------------------------
+0. PRE-IMPLEMENTATION CLARIFICATION (stopped and asked, per instructions)
+--------------------------------------------------------------------------
+
+Before writing any code, checked whether a "Tier-1/Tier-2 test tier split"
+(named in the Phase B task text) exists anywhere in the repo. Grepped for
+Tier1/Tier2/@Tag( across regression-mcp-server and the whole repo -- zero
+matches anywhere. This was not resolved by the accepted Phase A proposal
+(Phase A never proposed a tier mechanism), so per process discipline this
+was surfaced to the user rather than guessed. User chose: informal
+grouping only -- no new JUnit @Tag or Surefire config; the existing
+natural split (pure rule-level unit tests vs TempDir-based tool/contract
+tests) is documented in each test class's own Javadoc as "Tier 1" /
+"Tier 2", nothing more.
+
+--------------------------------------------------------------------------
+1. NEW FILES CREATED
+--------------------------------------------------------------------------
+
+Main (2 new, in com.aqa.mcp.validation):
+  FrameworkConventionRules.java -- package-private, mirrors
+    ModuleBoundaryRules's shape from Gate 15.3. Seven ValidationRule
+    implementations, each EnumSet.allOf(RuleProfile.class), each gated
+    internally on the actual imports/types found in source (never on
+    RuleProfile alone), per the standing principle.
+  FrameworkConventionsTool.java -- public, mirrors ModuleBoundariesTool's
+    shape exactly: public static SyncToolSpecification tool(Path
+    repositoryRoot, Supplier<Map<String,String>> moduleTypeByNameSupplier),
+    moduleTypeByNameSupplier.get() invoked once inside callHandler, never
+    at registration time.
+
+Test (6 new, in com.aqa.mcp.validation):
+  FrameworkConventionRulesTest.java (Tier 1, 24 tests) -- pure rule-level
+    unit tests, no I/O, mirrors ModuleBoundaryRulesTest's shape.
+  FrameworkConventionsToolTest.java (Tier 2, 4 tests) -- @TempDir-based
+    end-to-end tool tests, mirrors ModuleBoundariesToolTest's shape.
+  FrameworkConventionsToolContractTest.java (Tier 2, 3 tests) -- schema/
+    contract test, mirrors ModuleBoundariesToolContractTest's shape.
+  SourceUnitTest.java (4 tests), ValidatedValidationScopeTest.java
+    (3 tests), ValidationReportTest.java (3 tests) -- the compact-
+    constructor invariant tests deferred from Gate 15.2 to Gate 15.3.
+    Confirmed by inspection that Gate 15.3 did NOT add them (no such
+    files existed as of Gate 15.3's inventory in STAGE_15_PROGRESS.md, and
+    a fresh directory listing before this gate confirmed their continued
+    absence) -- added now per the task's explicit instruction not to defer
+    again.
+
+--------------------------------------------------------------------------
+2. RULE IMPLEMENTATION NOTES (design decisions made while implementing)
+--------------------------------------------------------------------------
+
+FC-001 / FC-001-PW / FC-002 / FC-002-PW / FC-003 / FC-005 implemented
+exactly as specified in the Phase B task text; no deviations.
+
+FC-004 (advisory-only) required one design decision the Phase B task text
+did not actually specify a mechanism for -- it says "advisory/non-blocking
+severity, as already accepted in Gate 15.1," but Gate 15.1's own record
+(output.log lines ~505-508 and ~764-767) shows the *policy* was accepted
+then while the *representation* was explicitly deferred to this gate
+("Decide FC-004's advisory-vs-hard status explicitly in this gate rather
+than carrying the item-4 placeholder forward silently"). Two options
+existed: (a) add a severity field to the shared Violation record (would
+ripple into ModuleBoundaryRules/ModuleBoundariesTool's existing, already-
+accepted output schema -- out of this gate's authorized scope, which
+named RegressionMcpServer.java as the only pre-existing file to touch),
+or (b) keep Violation unchanged and partition purely at
+FrameworkConventionsTool's own output-building step. Chose (b): Violation,
+ModuleValidationResult, and ValidationReport are reused completely
+unmodified (per the "reuse regression-core/chassis mechanisms" style
+already established); FrameworkConventionsTool.moduleResultOutput
+buckets any violation whose ruleId is FC-004 into a separate
+"advisoryViolations" JSON array instead of the blocking "violations"
+array. This is confined entirely to new code (FrameworkConventionsTool
+plus its own output schema) and touches nothing from Gate 15.2/15.3,
+so it was implemented directly rather than escalated -- documented
+prominently here, and in the class's own Javadoc, for your review.
+
+FC-004's "plain getter" detection needed one fix during verification (see
+section 4): a method that computes and returns a derived value (e.g.
+distanceFromOrigin() calling Math.sqrt(...) over two fields) was initially
+being misclassified as a "plain getter" by a too-loose
+"single-return-statement" heuristic. Tightened to require the return
+expression be a bare field reference (a declared field's name, or
+this.field) with no computation -- matches the "no other business logic"
+condition from the original Gate 15.1 rule text.
+
+--------------------------------------------------------------------------
+3. RegressionMcpServer.java -- the one planned edit
+--------------------------------------------------------------------------
+
+Confirmed no other changes were needed to this file before making the
+edit. Three additive changes, following the exact pattern used for
+regression_validate_module_boundaries in Gate 15.3:
+  - import com.aqa.mcp.validation.FrameworkConventionsTool;
+  - static final String VALIDATE_FRAMEWORK_CONVENTIONS_TOOL_NAME =
+    FrameworkConventionsTool.TOOL_NAME;
+  - FrameworkConventionsTool.tool(repositoryRoot.path(), () ->
+    moduleTypeByName(repositoryRoot)) appended to the .tools(...) call,
+    reusing the existing private moduleTypeByName(RepositoryRoot) helper
+    (no new helper needed, as anticipated in Phase A).
+
+--------------------------------------------------------------------------
+4. VERIFICATION -- FULL RUN, FAILURES FOUND AND FIXED
+--------------------------------------------------------------------------
+
+First `mvn -pl regression-mcp-server -am clean verify` run: BUILD FAILURE,
+4 test failures/errors:
+
+  1-2. RegressionMcpServerStdioIntegrationTest -- assertToolList expected
+       12 tools, server now genuinely serves 13 over real STDIO. Same
+       exact situation Gate 15.3 hit and fixed in this same file (per its
+       own Decisions Log entry: "the two modified existing files
+       (RegressionMcpServer.java, RegressionMcpServerStdioIntegrationTest
+       .java) are exactly the one originally authorized edit plus the one
+       additional edit the user explicitly approved"). Treated as the
+       "minor hardcoded-count fix" category the kickoff message explicitly
+       named as directly resolvable in-session (not escalated): bumped
+       the expected count 12->13 and added
+       RegressionMcpServer.VALIDATE_FRAMEWORK_CONVENTIONS_TOOL_NAME to the
+       containsExactlyInAnyOrder tool-name list in
+       assertExecutionToolContracts.
+
+  3. fc004AllowsAnAlreadyDeclaredRecord -- StaticJavaParser's default
+     language level does not support `record` syntax (needs JAVA_14+).
+     JavaSourceScanner.java sets this globally via its own static
+     initializer, but that only runs once JavaSourceScanner is classloaded
+     -- my test parses directly via StaticJavaParser without ever touching
+     that class. Fixed self-contained, exactly mirroring
+     JavaSourceScanner's own approach: added the same
+     `StaticJavaParser.getParserConfiguration()
+     .setLanguageLevel(JAVA_21)` call in FrameworkConventionRulesTest's
+     own static initializer, rather than relying on cross-test-class
+     classloading side effects.
+
+  4. fc004AllowsAClassWithBusinessLogicMethods -- the "plain getter" bug
+     described in section 2; fixed by tightening isPlainGetter to require
+     a bare field-reference return.
+
+Second run: BUILD SUCCESS.
+
+--------------------------------------------------------------------------
+5. EXACT VERIFICATION NUMBERS
+--------------------------------------------------------------------------
+
+`mvn -pl regression-mcp-server -am clean verify`: BUILD SUCCESS.
+
+  Tests run: 239, Failures: 0, Errors: 0, Skipped: 5.
+  (198 from Gate 15.3 + 41 new = 239. New test breakdown: 24
+  FrameworkConventionRulesTest + 4 FrameworkConventionsToolTest + 3
+  FrameworkConventionsToolContractTest + 4 SourceUnitTest + 3
+  ValidatedValidationScopeTest + 3 ValidationReportTest = 41.)
+  The 5 skips are the same pre-existing
+  Assumptions.abort("Symbolic-link creation is not permitted by this
+  Windows account.") pattern already present before this gate -- no new
+  skips, no new failures.
+  RegressionMcpServerContractTest: 9/9 (untouched, unaffected -- it never
+  calls createServer). RegressionMcpServerStdioIntegrationTest: 7/7,
+  including the two updated-assertion tests, confirming the live server
+  now genuinely serves 13 tools including
+  regression_validate_framework_conventions over real STDIO transport.
+  shade:3.6.1:shade succeeded; the regression-mcp-server-1.0.0.jar was
+  rebuilt (pre-existing overlapping-resource warnings from third-party
+  jars, unrelated to this gate, unchanged from prior gates).
+
+`git diff --check`: exit 0, no whitespace errors.
+
+`git diff --stat` (pre-existing, already-modified-before-this-session
+files only -- unrelated to this gate's own edits, listed for completeness
+since they show in the same working tree):
+  STAGE_15_PROGRESS.md                                                | 180 +++++++++++++++++++++
+  pom.xml                                                             | 7 +++++++
+  regression-mcp-server/pom.xml                                       | 4 ++++
+  regression-mcp-server/.../com/aqa/mcp/RegressionMcpServer.java      | 19 ++++++++++++++-----
+  regression-mcp-server/.../RegressionMcpServerStdioIntegrationTest.java | 5 +++--
+  5 files changed, 212 insertions(+), 3 deletions(-)
+
+  Of these, RegressionMcpServer.java and
+  RegressionMcpServerStdioIntegrationTest.java are this gate's only
+  existing-file edits (the one planned registration edit, plus the one
+  mechanical tool-count fix). pom.xml, regression-mcp-server/pom.xml, and
+  STAGE_15_PROGRESS.md were already modified/staged before this session
+  started (per the session's initial git status) -- not touched by this
+  gate's own work.
+
+`git status --porcelain` under the validation packages: 34 untracked
+files total (18 main + 16 test as of Gate 15.3's state, now 20 main + 22
+test after this gate's 2 new main + 6 new test files). The entire
+com.aqa.mcp.validation package remains untracked in git across all of
+Stage 15 so far -- nothing from Gates 15.2/15.3/15.4 has been committed
+yet, consistent with "merged pending user's own git actions" already
+noted in the Decisions Log.
+
+New files this gate (main, 2 new):
+  FrameworkConventionRules.java, FrameworkConventionsTool.java
+New files this gate (test, 6 new):
+  FrameworkConventionRulesTest.java, FrameworkConventionsToolTest.java,
+  FrameworkConventionsToolContractTest.java, SourceUnitTest.java,
+  ValidatedValidationScopeTest.java, ValidationReportTest.java
+
+No other existing file changed beyond the two named above. No commit,
+branch, or push was made. Stopping here for review, per instructions.
+================================================================================
+GATE 15.4 CLOSEOUT -- file-count discrepancy check (documentation-only)
+================================================================================
+
+TASK
+--------------------------------------------------------------------------
+Reconcile three different com.aqa.mcp.validation file counts before
+starting Gate 15.5:
+  - Gate 15.4 Phase B report: "18 main + 16 test as of Gate 15.3's state,
+    now 20 main + 22 test after this gate's 2 new main + 6 new test files"
+  - Gate 15.4 closeout update to STAGE_15_PROGRESS.md: "19 main classes
+    ... 17 test classes"
+  - Recorded Gate 15.3 inventory: 17 main + 11 test classes
+Run a fresh, scoped git status --porcelain / directory listing directly
+against the filesystem (not memory, not a prior report), report exact
+counts and filenames, identify which number was wrong and why, and make
+the one correction to STAGE_15_PROGRESS.md's inventory section only if it
+actually needs correcting.
+
+--------------------------------------------------------------------------
+FRESH COUNT -- directly from the filesystem via git status --porcelain
+--------------------------------------------------------------------------
+
+`git status --porcelain --untracked-files=all -- regression-mcp-server/src/main/java/com/aqa/mcp/validation regression-mcp-server/src/test/java/com/aqa/mcp/validation` run at closeout time.
+
+Main: 19 .java files, all "??" untracked, in
+regression-mcp-server/src/main/java/com/aqa/mcp/validation:
+  BasePackages.java, EvaluationContext.java, FrameworkConventionRules.java,
+  FrameworkConventionsTool.java, JavaSourceScanner.java,
+  ModuleBoundariesTool.java, ModuleBoundaryRules.java, ModuleProfile.java,
+  ModuleValidationResult.java, RuleProfile.java, RuleProfileResolver.java,
+  SourceUnit.java, ValidatedValidationScope.java, ValidationException.java,
+  ValidationReport.java, ValidationRule.java, ValidationScopeRequest.java,
+  ValidationScopeValidator.java, Violation.java
+
+Test: 17 .java files, all "??" untracked, in
+regression-mcp-server/src/test/java/com/aqa/mcp/validation:
+  BasePackagesTest.java, EvaluationContextTest.java,
+  FrameworkConventionRulesTest.java, FrameworkConventionsToolContractTest.java,
+  FrameworkConventionsToolTest.java, JavaSourceScannerTest.java,
+  ModuleBoundariesToolContractTest.java, ModuleBoundariesToolTest.java,
+  ModuleBoundaryRulesTest.java, ModuleProfileTest.java,
+  ModuleValidationResultTest.java, RuleProfileResolverTest.java,
+  SourceUnitTest.java, ValidatedValidationScopeTest.java,
+  ValidationReportTest.java, ValidationScopeValidatorTest.java,
+  ViolationTest.java
+
+--------------------------------------------------------------------------
+COMPARISON AND ROOT CAUSE
+--------------------------------------------------------------------------
+
+Fresh count: 19 main / 17 test.
+
+STAGE_15_PROGRESS.md's current inventory (as updated at Gate 15.4
+closeout): 19 main / 17 test -- MATCHES the fresh filesystem count exactly,
+and is arithmetically consistent with the recorded Gate 15.3 baseline
+(17 main + 11 test) plus this gate's 2 new main + 6 new test files
+(17+2=19, 11+6=17). No correction needed.
+
+Gate 15.4 Phase B report's claim ("18 main + 16 test as of Gate 15.3's
+state, now 20 main + 22 test ... 34 untracked files total") was WRONG.
+Root cause: a miscounted arithmetic aside written into that report's
+verification section, not derived from an actual fresh recount at the
+time -- it is internally inconsistent even on its own terms (18+16=34,
+but the report's own "now" figures of 20+22=42 do not equal 34 either),
+and it does not match the correctly-named "2 new main / 6 new test" file
+lists given immediately below it in that same Phase B report. The actual
+per-file listings in both the Phase B report and the Gate 15.4 closeout
+update were accurate throughout; only that one summary-arithmetic
+sentence in the Phase B report was in error. This was a slip in prose
+composition, not a stale recollection or a file-outside-the-package
+miscount.
+
+--------------------------------------------------------------------------
+RESULT
+--------------------------------------------------------------------------
+
+STAGE_15_PROGRESS.md's inventory section required no correction -- it
+already carried the correct 19 main / 17 test counts before this check
+began, so no edit was made to it. This entry in output.log is the
+correction record for the erroneous figure that appeared only in the
+Gate 15.4 Phase B report earlier in this file.
+
+No production or test code was touched. No commit, branch, or push was
+made. Not starting Gate 15.5 Phase A.
+================================================================================
+GATE 15.5 -- Phase A (read-only inspect/propose): regression_validate_architecture
+================================================================================
+
+TASK
+--------------------------------------------------------------------------
+Phase A only (no implementation). Propose ArchitectureRules covering
+ARCH-001 (layering), ARCH-002 (no package cycles), ARCH-003 (no assertions
+in page objects), ARCH-004 (BasePage discipline, advisory), grounded in
+direct inspection of the real reactor. No production code touched.
+
+--------------------------------------------------------------------------
+1. LAYER-IDENTIFICATION CONVENTION -- CONFIRMED BY DIRECT INSPECTION
+--------------------------------------------------------------------------
+
+Listed every .java file's package across regression-jhipster,
+regression-nextjs-commerce, regression-petstore-api, and regression-core,
+and read representative definitions classes (LoginDefinitions.java,
+ProductDefinitions.java, AuthDefinitions.java, S3Definitions.java,
+GeneralDefinitions.java) directly.
+
+CONFIRMED: the layer is reliably identifiable from the package's last
+segment alone -- every reactor module that has a layered structure uses
+exactly these segment names, consistently, with no exceptions found:
+`definitions`, `steps`, `pages`, `services`, `components`. No package
+literally named `clients` exists anywhere in the reactor today (Jersey/
+HTTP transport lives under `services`, e.g. regression-core's
+GeneralApiService) -- `clients` remains part of the closed vocabulary per
+CLAUDE.md's text but is currently an empty layer with zero real files, not
+a rule-breaking gap.
+
+Definitions classes are consistently records or small final classes,
+constructor-injected with exactly the layer below them (a Steps class, or
+in regression-core's case sometimes a Controller/Steps combination), and
+their @Given/@When/@Then-annotated methods only ever delegate to that
+injected collaborator -- confirmed clean across every definitions class
+read. Proposed detection signal for ARCH-001: for a class whose package's
+last segment is `definitions`, flag a MethodCallExpr whose immediate
+scope is a field of the definitions class itself, where that field's
+declared type's package (via ImportDeclaration, no symbol solver) ends in
+`.pages`, `.services`, or `.components`, or whose declared type is a
+Selenium `By`/Playwright `Locator`/`Page` type directly -- i.e. only
+single-hop, directly-typed collaborator fields are examined, exactly
+mirroring FC-001-PW's own field-type-based approach rather than resolving
+method return types.
+
+--------------------------------------------------------------------------
+2. ARCH-001 -- A REAL DETECTION-LIMITATION FINDING (needs your decision)
+--------------------------------------------------------------------------
+
+Found a genuine case while reading every real definitions class:
+regression-core's S3Definitions.get(...) calls
+`s3Steps.s3ServiceActions().getObject(...)` -- i.e. it reaches through the
+Steps layer's own accessor to obtain a services-layer object
+(S3ServiceActions) and then calls the actual business action on it
+directly, rather than the Steps class exposing a method that performs the
+action itself. This is a two-hop chained call: `s3Steps` is a legitimate
+`.steps`-typed field (not itself a violation), but `.s3ServiceActions()`
+returns a `.services`-package type, and detecting that requires resolving
+a method's *return type*, not just a field's *declared type* -- which is
+exactly the kind of thing the accepted design says a Symbol Solver should
+only be added for once "genuinely needed for a specific rule," not
+speculatively.
+
+This is a real, concrete case demonstrating that limitation, not a
+hypothetical one. Two honest options: (a) ship ARCH-001 with single-hop,
+field-type-only detection (matches every other rule's no-symbol-solver
+design so far) -- this real S3Definitions case will NOT be flagged, a
+known, accepted gap; or (b) add a Symbol Solver now, since this gate has
+now produced the first concrete demonstrated need the accepted design
+anticipated. Flagging this for your decision rather than picking one
+silently, per the same standard applied to FC-001-PW in Gate 15.4 -- this
+is a real scope-and-precision tradeoff, not a naming/tactical detail.
+
+Separately, and NOT proposed for inclusion without your authorization:
+regression-core's GeneralDefinitions.java calls `assertThat(...)`
+directly inside multiple @Then-annotated methods -- a definitions-layer
+class making assertions directly. CLAUDE.md's "Architecture" section
+says "Do not place browser calls, locators, assertions, services, or
+business branching in definitions," so this is a real, pre-existing
+violation of a documented rule -- but none of the four already-accepted
+ARCH-001..004 rules as scoped actually cover "no assertions in
+definitions" (ARCH-003 covers page objects only). Noting this only as an
+informational finding, exactly as Gate 15.4 Phase A noted the pre-existing
+BasePage.java:46 assertion without proposing to fix it or expand scope --
+not proposing to broaden ARCH-001/003 to cover it without your say-so.
+
+--------------------------------------------------------------------------
+3. ARCH-002 -- package-dependency-cycle detection, confirmed scope
+--------------------------------------------------------------------------
+
+Confirmed scope: package-level cycles within one module only, never
+class-level, never cross-module (cross-module boundaries are MOD-001..
+004's job, already shipped in Gate 15.3, not this rule's).
+
+Proposed construction: for each module, build a directed graph where each
+node is a package derived from each SourceUnit's own
+CompilationUnit.getPackageDeclaration() (the file's actual package, not
+BasePackages's derived common-prefix base package -- that record already
+exists and is reused only to decide which imports are "internal to this
+module" in the next step). For every class in package A, for every
+ImportDeclaration whose target starts with the module's own base package
+(from BasePackages.derive, filtering out JDK/library/other-module
+imports), add an edge A -> B where B is the imported class's own package
+(the import's name minus its last segment). Run a standard DFS-with-
+recursion-stack cycle detection over the resulting graph per module;
+report one Violation per package participating in a detected cycle, with
+`message` listing the full cycle's package sequence -- directly reusing
+Gate 15.1's original design, unchanged, since nothing in the codebase
+inspection this gate contradicts it.
+
+This rule is genuinely module-structure-agnostic (it doesn't care whether
+a module has definitions/steps/pages/services/components at all) and so
+applies meaningfully and uniformly to every module including
+regression-core and regression-mcp-server, unlike ARCH-001/003 (see
+section 5). Not exhaustively verified for zero real cycles across every
+module in Phase A (unlike MOD/FC's grep-verified clean baselines) --
+proposing this be established by Phase B's own tool-level test against
+the real reactor rather than a manual Phase A pass, since cycle detection
+across ~140 real source files is exactly what the rule/tool itself is
+for; flagging this so it isn't silently assumed clean.
+
+--------------------------------------------------------------------------
+4. ARCH-003 -- re-verified against CURRENT file contents, not memory
+--------------------------------------------------------------------------
+
+Re-read every page/component file in both UI-capable modules fresh (not
+from Gate 15.4's report) and grepped for `assertThat(` / `Assertions.assert`
+across both modules' pages and components packages directly:
+
+  regression-jhipster ui.pages (4 files, 14 call sites):
+    BasePage.java:46 (assertThat(page).hasURL(...))
+    LoginPage.java:43,44,45,62 (assertThat(...).isVisible(), x1 more)
+    BankAccountPage.java:45,46,58,59,74
+    BankAccountFormPage.java:43,44,45,46
+  regression-jhipster ui.components (3 files, 4 call sites):
+    BaseComponent.java:20, DataTableComponent.java:32,42,
+    NavigationBar.java:22
+  regression-jhipster ui.pages HomePage.java: re-read fresh, confirmed
+    ZERO assertions (delegates to NavigationBar.assertAuthenticated()
+    instead) -- not every jhipster page has this issue, HomePage is clean.
+  regression-nextjs-commerce pages (all files) and components (all files):
+    re-read/grepped fresh, ZERO assertion calls anywhere in either
+    package.
+
+CONFIRMED total: 18 real, pre-existing ARCH-003 violation call sites
+across 7 files, ALL in regression-jhipster (API_UI/Playwright), ZERO in
+regression-nextjs-commerce (UI/Selenium). This is a materially different
+situation from every rule shipped in Gates 15.3/15.4: MOD-001..004 and
+FC-001..005 all have a clean real-reactor baseline (synthetic @TempDir
+fixtures only prove the rules fire). ARCH-003 will NOT have a clean
+baseline -- calling regression_validate_architecture against the real
+reactor today will immediately surface 18 real violations concentrated
+entirely in one module. This is presumably the validator doing exactly
+its job (surfacing a real, already-known, deliberately-not-fixed-yet
+issue -- Gate 15.4's Phase A already flagged BasePage.java:46 as a
+"useful real fixture reference... deliberately NOT fixed, out of scope
+for the validator project"), so this is reported as a confirmed finding
+for your awareness rather than a blocking ambiguity -- but flagging it
+explicitly since it changes what "shipping ARCH-003" concretely means in
+practice (real, visible findings from day one, not a theoretical rule).
+
+Detection signal, gated the same way FC-001/FC-001-PW were: for a class
+whose package's last segment is `pages` or `components`, flag a
+MethodCallExpr named `assertThat` (or any JUnit `Assertions.assert*`
+static-import call) whose invocation is reachable via one of the known,
+closed entry-point imports -- `org.assertj.core.api.Assertions.assertThat`
+/ `AssertionsForClassTypes.assertThat`, `com.microsoft.playwright.
+assertions.PlaywrightAssertions.assertThat`, `org.junit.jupiter.api.
+Assertions.assert*` -- matched against the file's own static
+ImportDeclarations, exactly as Gate 15.1's original design proposed. No
+symbol solver needed since these are well-known, closed entry points.
+
+--------------------------------------------------------------------------
+5. ARCH-004 -- BasePage discipline, calibrated against BOTH real classes
+--------------------------------------------------------------------------
+
+Confirmed regression-nextjs-commerce DOES have its own BasePage despite
+having no src/main/java: regression-nextjs-commerce/src/test/java/com/aqa/
+nextjscommerce/pages/BasePage.java exists (production framework code
+living under src/test/java, consistent with the already-known fact that
+100% of this module's framework code lives there). Two independent
+BasePage classes confirmed, per-module, not a single shared FQCN --
+matches Gate 15.1's original note.
+
+Re-read both BasePage.java files fresh in full and counted their
+public/protected methods (excluding constructors and private helpers):
+
+  regression-jhipster BasePage.java -- 4 public/protected methods:
+    navigateTo(String) [protected], waitUntilLoaded() [public abstract],
+    byDataCy(String) [protected], assertUrlContains(String) [protected].
+
+  regression-nextjs-commerce BasePage.java -- 7 public/protected methods:
+    navigateTo(String) [protected], waitUntilLoaded() [public],
+    waitForPageContent() [protected abstract], header() [public],
+    cart() [public], currentUrl() [public], title() [public].
+
+DESIGN FINDING -- Gate 15.1's original two-pronged heuristic (method-count
+threshold OR a closed method-name-vocabulary check like
+navigateTo/waitUntil*/byDataCy/assert*) does not hold up cleanly against
+the real nextjs-commerce BasePage: header(), cart(), currentUrl(), and
+title() are all legitimate, narrow accessor responsibilities (giving
+subclasses typed access to shared page chrome and page metadata) but none
+of them match that literal name-prefix vocabulary, so the vocabulary-half
+of the heuristic would flag 4 of 7 methods on a real BasePage that has no
+actual utility-class-creep problem -- a real false-positive risk against
+today's clean code, discovered by direct calibration rather than assumed.
+
+PROPOSAL: drop the name-vocabulary half entirely and use a method-count-
+only threshold. Real data: jhipster=4, nextjs-commerce=7. A threshold of
+"more than 8 public/protected methods" passes both real classes cleanly
+(4 <= 8, 7 <= 8) while still being low enough to catch genuine bloat (a
+BasePage with, say, 15+ public methods). This is a real design deviation
+from Gate 15.1's original two-pronged proposal, grounded in fresh
+calibration data -- flagging it for your confirmation the same way
+FC-001-PW's adaptation was flagged in Gate 15.4, since ARCH-004 is
+advisory-only but its *detection signal* is still a real design choice,
+not a tactical detail.
+
+--------------------------------------------------------------------------
+6. ArchitectureTool registration -- confirmed, no deviation proposed
+--------------------------------------------------------------------------
+
+Confirmed: ArchitectureTool will follow the identical
+`public static SyncToolSpecification tool(Path repositoryRoot,
+Supplier<Map<String,String>> moduleTypeByNameSupplier)` shape as
+ModuleBoundariesTool and FrameworkConventionsTool, with
+moduleTypeByNameSupplier.get() invoked once inside callHandler, never at
+registration time -- identical per-request resolution, no new design
+needed, reusing RegressionMcpServer.java's existing private
+moduleTypeByName(RepositoryRoot) helper via the same registration
+one-liner pattern.
+
+--------------------------------------------------------------------------
+7. PROFILE SCOPING -- confirmed via direct package inspection
+--------------------------------------------------------------------------
+
+Listed every package under regression-mcp-server (com.aqa.mcp,
+com.aqa.mcp.execution, com.aqa.mcp.validation only) and regression-core
+(com.aqa.core.{controllers,convertors,definitions,enumerations,models,
+services,services.s3,steps,utils} -- definitions/services/steps exist,
+but no pages/components).
+
+CONFIRMED: MCP has zero definitions/steps/pages/services/components
+packages -- ARCH-001 and ARCH-003 self-gate to zero matches there exactly
+like FC-001/FC-001-PW self-gate on absent imports, needing no special
+profile exclusion. regression-core has definitions/steps/services but no
+pages/components -- ARCH-001's layering check is still meaningful there
+(see the S3Definitions finding above) even without a full pages/
+components tier; ARCH-003 naturally never fires there (no pages/
+components packages exist to scan). ARCH-002 (package cycles) is
+structure-agnostic by construction and applies uniformly to every module
+regardless of layering, including MCP and core.
+
+PROPOSAL: all four ARCH rules declare EnumSet.allOf(RuleProfile.class) for
+profiles(), exactly matching MOD-001..004 and FC-001..005's existing
+pattern, with real applicability governed entirely by each rule's own
+internal package/import-presence gating rather than any profile
+restriction -- consistent with the standing principle that rules must be
+gated on actual structure found in source, never assumed from RuleProfile
+alone.
+
+--------------------------------------------------------------------------
+8. SUMMARY OF ITEMS NEEDING YOUR DECISION BEFORE PHASE B
+--------------------------------------------------------------------------
+
+  1. ARCH-001: ship with single-hop field-type-only detection (real
+     S3Definitions.s3Steps.s3ServiceActions().getObject(...) case will
+     NOT be caught, a known accepted gap), or add a Symbol Solver now
+     given this concrete demonstrated need?
+  2. ARCH-003 will report 18 real, pre-existing violations across 7 files
+     in regression-jhipster from day one (not a synthetic-fixture-only
+     clean baseline like every prior rule) -- confirmed as intended
+     validator behavior, flagged for awareness, not blocking.
+  3. ARCH-004: confirm the proposed method-count-only threshold (drop the
+     name-vocabulary heuristic; threshold "more than 8", passing both
+     real BasePage classes at 4 and 7) instead of Gate 15.1's original
+     two-pronged design.
+  4. Informational only, no action proposed: regression-core's
+     GeneralDefinitions.java makes direct AssertJ assertions inside
+     @Then-annotated definitions methods -- a real CLAUDE.md violation
+     not covered by any of the four already-scoped ARCH rules.
+
+No production or test code was touched. No commit, branch, or push was
+made.
+================================================================================
+GATE 15.5 -- Phase B resume checkpoint (fresh session, read-only verification)
+================================================================================
+
+TASK
+--------------------------------------------------------------------------
+Fresh session (no memory of the prior conversation) resumed Gate 15.5 Phase
+B after a prior session hit a usage limit before writing any files. Per
+instructions, read CLAUDE.md, README.md, STAGE_15_16_KICKOFF.md, and
+STAGE_15_PROGRESS.md first, then verified every checkpoint claim from the
+resume prompt against the actual repo state before touching any code. No
+production or test code was touched in this session.
+
+--------------------------------------------------------------------------
+1. FILE/TOOL COUNTS -- confirmed exact match to STAGE_15_PROGRESS.md
+--------------------------------------------------------------------------
+
+com.aqa.mcp.validation main: 19 classes (glob matched exactly the 19 named
+in the progress log, ending in ModuleBoundaryRules, ModuleBoundariesTool,
+FrameworkConventionRules, FrameworkConventionsTool).
+
+com.aqa.mcp.validation test: 17 classes (glob matched exactly the 17
+named).
+
+RegressionMcpServer.java's .tools(...) builder call registers
+ModuleBoundariesTool and FrameworkConventionsTool as tools 12 and 13
+(lines 85-86), consistent with the documented "13 tools total."
+
+--------------------------------------------------------------------------
+2. PER-REQUEST SUPPLIER-VS-EAGER PRINCIPLE -- confirmed by direct inspection
+--------------------------------------------------------------------------
+
+RegressionMcpServer.java:85-86 passes `() -> moduleTypeByName(repositoryRoot)`
+as a lambda Supplier (not an eagerly-computed value) into both
+ModuleBoundariesTool.tool(...) and FrameworkConventionsTool.tool(...). The
+comment at lines 90-92 documents why: resolved fresh per call so a
+malformed root pom.xml only fails the tool call that needs module data,
+never server startup. This is the pattern Phase B's ArchitectureTool must
+reuse.
+
+--------------------------------------------------------------------------
+3. CHECKPOINT ITEMS FROM THE INTERRUPTED SESSION -- both confirmed true
+--------------------------------------------------------------------------
+
+(a) No existing test scans the real repository filesystem. Every
+    validation test uses @TempDir synthetic fixtures (grep confirms
+    @TempDir in every Tier-1/Tier-2 test file); FrameworkConventionRulesTest
+    .java's own class-doc comment explicitly labels the pattern
+    "TempDir-based, 'Tier 2'" coverage. No test references REGRESSION_ROOT,
+    toRealPath, or a real reactor path.
+
+(b) No partial files from the interrupted session. git status shows only
+    the pre-existing Gate 15.4 diff (STAGE_15_PROGRESS.md, both POMs,
+    RegressionMcpServer.java, the integration test, plus untracked
+    AGENTS.md and the validation dirs) -- and the validation-dir globs
+    contain exactly the Gate 15.4 closeout inventory, nothing named
+    ArchitectureRules/ArchitectureTool/anything Architecture-related.
+
+--------------------------------------------------------------------------
+4. DISCREPANCY FLAGGED, NOT SILENTLY RESOLVED
+--------------------------------------------------------------------------
+
+STAGE_15_PROGRESS.md's Gate 15.5 row still just says "NEXT" -- it does NOT
+contain a written Gate 15.5 Phase A design (no ARCH-001..004 spec anywhere
+in the file), unlike Gates 15.3/15.4 whose designs were reflected in the
+file before their Phase B started. The ARCH-001..004 design exists in
+writing only in the resume prompt (and in this file's own Gate 15.5 Phase A
+entry above, lines 2111-2395, from the interrupted session). This is
+consistent with "no files were written by the interrupted session" (the
+progress-log update would itself have been a write). Reported to the user
+as a checkpoint discrepancy; user acknowledgment/confirmation to proceed to
+Phase B implementation was requested and is pending as of this entry.
+
+No production or test code was touched. No commit, branch, or push was
+made.
+================================================================================
+GATE 15.5 -- Pre-Phase-B: close doc gap + resolve AGENTS.md question
+================================================================================
+
+TASK
+--------------------------------------------------------------------------
+Two items requested before any Phase B implementation: (1) persist the
+accepted Gate 15.5 Phase A design into STAGE_15_PROGRESS.md, since it
+previously existed only in conversation history / this log; (2) investigate
+the untracked AGENTS.md flagged in the prior checkpoint report. No
+production or test code touched.
+
+--------------------------------------------------------------------------
+1. STAGE_15_PROGRESS.md UPDATED
+--------------------------------------------------------------------------
+
+Added new section "## Gate 15.5 -- Phase A design (ACCEPTED; Phase B not
+yet started)" covering: the layer-identification convention (package last
+segment; `clients` is a non-gap empty layer); ARCH-001 (single-hop,
+field-declared-type-only, ImportDeclaration-based, documented two-hop gap
+re: S3Definitions.s3Steps.s3ServiceActions()); ARCH-002 (per-module
+directed package graph, DFS-with-recursion-stack cycles, module-agnostic,
+real-reactor cleanliness explicitly NOT pre-verified in Phase A); ARCH-003
+(assertThat/Assertions.assert* in pages/components, confirmed 18 real
+violations across 7 regression-jhipster files, zero in nextjs-commerce);
+ARCH-004 (advisory, FC-004's advisoryViolations mechanism reused,
+method-count-only >8 threshold, two-pronged design dropped after
+name-vocabulary false-positived on nextjs-commerce's header()/cart()/
+currentUrl()/title()); the informational-only GeneralDefinitions.java note;
+profile scoping (EnumSet.allOf(RuleProfile.class), self-gated); and the
+ArchitectureTool per-request Supplier<Map<String,String>> wiring shape
+(identical to ModuleBoundariesTool/FrameworkConventionsTool).
+
+Updated the Gate status table row for 15.5 from "**NEXT**" to "Phase A
+design ACCEPTED -- Phase B **NEXT**" (not marked DONE -- implementation has
+not started).
+
+Verification: `mvn validate` -> BUILD SUCCESS (exit 0). `git diff --check
+STAGE_15_PROGRESS.md` -> clean (exit 0, no output).
+
+--------------------------------------------------------------------------
+2. AGENTS.md -- investigated directly, prior report confirmed accurate
+--------------------------------------------------------------------------
+
+Re-ran `git status --porcelain`; exact line present:
+  ?? AGENTS.md
+Confirmed genuinely untracked (not a paraphrase error in the prior report).
+
+Investigated the file itself:
+- `git diff --no-index CLAUDE.md AGENTS.md` -> exit 0, no output: the two
+  files are byte-identical.
+- `wc -c` -> both 6766 bytes.
+- Both files share the same local mtime.
+- `git log --all --oneline -- AGENTS.md` shows AGENTS.md's last tracked
+  history ends at commit 6c89305 ("Rename AGENTS.md to CLAUDE.md..."),
+  which `git show --stat` confirms as a pure rename (`AGENTS.md =>
+  CLAUDE.md`, 0 lines changed) merged via PR #11 before Stage 15 began.
+
+Conclusion: this is a stray untracked duplicate of CLAUDE.md's current
+content, sitting in the working tree under the old pre-rename filename. It
+is not the original pre-rename AGENTS.md resurrected from git history (git
+correctly has no tracked AGENTS.md after 6c89305), and it is not a stale
+leftover predating the rename (content matches CLAUDE.md's *current* text
+exactly, including this session's context, not some older revision). Most
+likely explanation: some tool or process wrote a copy of CLAUDE.md's
+content back out under the AGENTS.md filename after the rename commit,
+and it was never git-added or cleaned up. Left untouched pending explicit
+authorization to delete or otherwise resolve it -- no destructive action
+taken.
+
+No production or test code was touched. No commit, branch, or push was
+made. Phase B implementation has not started; awaiting go-ahead.
+================================================================================
+GATE 15.5 -- Phase B implementation, STOPPED on a genuine ARCH-002 finding
+================================================================================
+
+TASK
+--------------------------------------------------------------------------
+Step 1: deleted the stray untracked AGENTS.md (plain filesystem delete, no
+git command) -- confirmed removed via git status --porcelain. Step 2:
+implemented Gate 15.5 Phase B (ArchitectureRules, ArchitectureTool,
+RegressionMcpServer.java registration, Tier-1/Tier-2 tests including the
+two new real-reactor-facing tests) exactly as scoped, then ran
+`mvn -pl regression-mcp-server -am clean verify`.
+
+--------------------------------------------------------------------------
+1. FILES CREATED / EDITED
+--------------------------------------------------------------------------
+
+New: ArchitectureRules.java (ARCH-001..004, package-private, mirrors
+ModuleBoundaryRules/FrameworkConventionRules shape), ArchitectureTool.java
+(public, mirrors FrameworkConventionsTool's shape including the
+advisoryViolations bucketing for ARCH-004), ArchitectureRulesTest.java
+(Tier 1, 21 tests), ArchitectureToolTest.java (Tier 2, 6 tests, including
+the two new real-reactor-facing tests), ArchitectureToolContractTest.java
+(Tier 2, 3 tests).
+
+Edited: RegressionMcpServer.java (added VALIDATE_ARCHITECTURE_TOOL_NAME
+constant and ArchitectureTool.tool(...) registration, additive only, same
+pattern as Gates 15.3/15.4), RegressionMcpServerStdioIntegrationTest.java
+(mechanical tool-count fix 13 -> 14, added
+RegressionMcpServer.VALIDATE_ARCHITECTURE_TOOL_NAME to the expected tool
+name set).
+
+Real-repository-facing test pattern (new to this suite, documented in
+ArchitectureToolTest's class javadoc): walk up from the test JVM's working
+directory until a directory is found containing both a pom.xml and a
+regression-mcp-server subdirectory. Chosen because it works whether
+Surefire's working directory is the module's own basedir (the default for
+`mvn -pl regression-mcp-server -am clean verify`, i.e. this gate's own
+verification command) or the reactor root itself, without hardcoding
+either shape or depending on an environment variable.
+
+--------------------------------------------------------------------------
+2. mvn -pl regression-mcp-server -am clean verify -- ONE FAILURE
+--------------------------------------------------------------------------
+
+Tests run: 269, Failures: 1, Errors: 0, Skipped: 5 (the 5 skips are
+pre-existing, unrelated to this gate). BUILD FAILURE.
+
+The one failure: ArchitectureToolTest.realReactorHasNoArch002PackageDependencyCycles
+
+  module regression-nextjs-commerce must have no ARCH-002
+  package-dependency-cycle violations: [
+    {file=regression-nextjs-commerce/src/test/java/com/aqa/nextjscommerce/config/CommerceProperty.java,
+     message=Package dependency cycle: com.aqa.nextjscommerce.config -> com.aqa.nextjscommerce.driver -> com.aqa.nextjscommerce.config},
+    {file=regression-nextjs-commerce/src/test/java/com/aqa/nextjscommerce/driver/BrowserType.java,
+     message=Package dependency cycle: com.aqa.nextjscommerce.config -> com.aqa.nextjscommerce.driver -> com.aqa.nextjscommerce.config}
+  ]
+
+--------------------------------------------------------------------------
+3. GENUINE FINDING -- investigated, not fixed, per the standing instruction
+--------------------------------------------------------------------------
+
+Per Gate 15.5's standing instruction ("if ARCH-002 surfaces a real,
+previously-unknown cycle anywhere in the reactor ... stop and report it as
+a genuine finding rather than adjusting the test to match"), this was
+investigated directly rather than worked around:
+
+- com.aqa.nextjscommerce.config.UiSettings.java imports
+  com.aqa.nextjscommerce.driver.BrowserType (config -> driver edge).
+- com.aqa.nextjscommerce.driver.ChromeOptionsFactory.java,
+  DriverSession.java, and DriverFactory.java all import
+  com.aqa.nextjscommerce.config.UiSettings (driver -> config edge).
+
+This is a genuine, real, previously-unknown two-package cycle in
+regression-nextjs-commerce production code (not a rule bug -- ARCH-002 is
+functioning exactly as designed; representative-file anchoring picked
+CommerceProperty.java and BrowserType.java as the two violation anchors
+because they were each package's first-scanned file, even though the
+actual cross-imports live in UiSettings.java/ChromeOptionsFactory.java/
+DriverSession.java/DriverFactory.java -- confirmed by direct inspection of
+all files in both packages).
+
+No test was adjusted to accept this cycle. No production code in
+regression-nextjs-commerce was touched. The build currently fails on this
+one test. Gate 15.5 Phase B implementation is otherwise complete and
+awaiting the user's direction on how to handle this finding before the
+build can pass and the gate can be reported done.
+================================================================================
+GATE 15.5 -- Phase B, ARCH-002 finding resolved per explicit user decision
+================================================================================
+
+TASK
+--------------------------------------------------------------------------
+User reviewed the ARCH-002 genuine-finding stop reported in the previous
+output.log entry and explicitly chose: accept the config<->driver cycle in
+regression-nextjs-commerce as known, pre-existing debt; adjust the
+real-reactor ARCH-002 test to assert exactly this one cycle is present
+(not zero); do not touch regression-nextjs-commerce production code in
+this gate.
+
+--------------------------------------------------------------------------
+1. TEST CHANGE
+--------------------------------------------------------------------------
+
+Renamed/rewrote ArchitectureToolTest's real-reactor ARCH-002 test from
+realReactorHasNoArch002PackageDependencyCycles to
+realReactorHasOnlyTheOneKnownAcceptedArch002PackageCycle. It now asserts,
+across the whole real reactor: exactly 2 ARCH-002 violations exist, both
+have module == regression-nextjs-commerce, both messages mention
+com.aqa.nextjscommerce.config and com.aqa.nextjscommerce.driver, and the
+two violation files are exactly CommerceProperty.java and BrowserType.java
+(the deterministic first-scanned file per package, per
+JavaSourceScanner's sort order). The test's javadoc documents the finding,
+the two-way import edges (UiSettings -> BrowserType;
+ChromeOptionsFactory/DriverSession/DriverFactory -> UiSettings), and that
+this is an explicit user decision, not a unilateral agent choice. The test
+still fails the build the instant a second, different cycle appears
+anywhere in the reactor. No production code was touched.
+
+--------------------------------------------------------------------------
+2. mvn -pl regression-mcp-server -am clean verify -- GREEN
+--------------------------------------------------------------------------
+
+Tests run: 269, Failures: 0, Errors: 0, Skipped: 5 (pre-existing, same 5
+as before this gate). BUILD SUCCESS. Up from Gate 15.4's 239 total tests:
+30 new tests this gate (ArchitectureRulesTest 21, ArchitectureToolTest 6,
+ArchitectureToolContractTest 3).
+
+--------------------------------------------------------------------------
+3. git diff --check / diff scope -- CONFIRMED CLEAN AND SCOPED
+--------------------------------------------------------------------------
+
+`git diff --check` exits 0 (clean, no whitespace errors). `git status
+--porcelain` shows exactly: AGENTS.md deletion (already applied and
+confirmed in a prior entry this gate), STAGE_15_PROGRESS.md modified
+(Phase A design + Phase B implementation notes), pom.xml and
+regression-mcp-server/pom.xml modified (pre-existing from Gate 15.2, not
+touched this session), RegressionMcpServer.java modified (additive:
+VALIDATE_ARCHITECTURE_TOOL_NAME constant + ArchitectureTool.tool(...)
+registration), RegressionMcpServerStdioIntegrationTest.java modified
+(mechanical: tool count 13 -> 14, added the new tool-name constant to the
+expected set), and the new com.aqa.mcp.validation Architecture* files (2
+main: ArchitectureRules.java, ArchitectureTool.java; 3 test:
+ArchitectureRulesTest.java, ArchitectureToolTest.java,
+ArchitectureToolContractTest.java). No other files touched. No commit,
+branch, or push was made.
+
+STAGE_15_PROGRESS.md's Gate 15.5 status row updated to "Phase A ACCEPTED;
+Phase B implemented, mvn green -- pending final review/acceptance" (not
+marked DONE; no Decisions Log entry appended yet, per process discipline
+-- that happens only after the user gives explicit final gate acceptance
+of this Phase B report).
+================================================================================
+GATE 15.5 FINAL ACCEPTANCE + STAGE 15 CLOSEOUT -- verify, document, commit, merge
+================================================================================
+
+TASK
+--------------------------------------------------------------------------
+Gate 15.5 (and the ARCH-002 finding resolution) reviewed and explicitly
+accepted by the user, who authorized commit, push, and merge to master for
+the full Stage 15 closeout (Gates 15.2-15.5 combined, since nothing from
+Stage 15 had been committed before this task).
+
+--------------------------------------------------------------------------
+1. FINAL FULL VERIFICATION -- all green
+--------------------------------------------------------------------------
+
+mvn -pl regression-mcp-server -am clean verify -> Tests run: 269,
+Failures: 0, Errors: 0, Skipped: 5 (pre-existing). BUILD SUCCESS.
+
+mvn validate (full 6-module reactor: regression, regression-core,
+regression-petstore-api, regression-jhipster, regression-nextjs-commerce,
+regression-mcp-server) -> BUILD SUCCESS, all 6 modules.
+
+git diff --check -> clean (exit 0), both before and after the
+documentation edits in step 2.
+
+git status --porcelain confirmed the diff was exactly: STAGE_15_PROGRESS.md
+(new), pom.xml and regression-mcp-server/pom.xml (Gate 15.2's JavaParser
+dependency, M), RegressionMcpServer.java (M, additive), 21 new main +
+20 new test com.aqa.mcp.validation files (?? untracked dirs, itemized by
+git status --untracked-files=all), RegressionMcpServerStdioIntegrationTest.java
+(M, mechanical). AGENTS.md confirmed absent (test -f AGENTS.md failed).
+This is confirmed to be the entire uncommitted Stage 15 diff (Gates
+15.2-15.5) -- no Stage 15 file was previously committed.
+
+--------------------------------------------------------------------------
+2. DOCUMENTATION CLOSEOUT
+--------------------------------------------------------------------------
+
+STAGE_15_PROGRESS.md: Gate 15.5's status row changed to "DONE, accepted".
+Appended a Decisions Log entry (built: ArchitectureRules ARCH-001..004 +
+ArchitectureTool; key decisions: ARCH-001 single-hop no-Symbol-Solver,
+ARCH-004 count-only >8 threshold, ARCH-002's config<->driver cycle
+accepted as documented debt; nothing else deferred). Updated the
+com.aqa.mcp.validation inventory section to final Gate 15.5 counts: 21
+main classes, 20 test classes, 14 tools registered, 269 total tests.
+Removed the stale "not yet ACCEPTED" qualifier from the Phase B
+implementation-notes section heading now that the gate is accepted.
+
+README.md: updated the MCP inspection server section from "Stage 14 ...
+11 tools" to "Stage 15 ... 14 tools", listing all three new validator
+tools by name; added one summary sentence describing what the three
+validator tools check and their violations/advisoryViolations output
+shape. Updated the closing status line from "Stage 14 is complete; Stage
+15 ... upcoming" to "Stages 14 and 15 are complete; Stage 16 ... upcoming",
+pointing to STAGE_15_PROGRESS.md as Stage 15's as-built record.
+
+CLAUDE.md: re-verified directly (grepped for tool-count/stage-status/
+tool-name references) rather than assumed -- confirmed it contains none;
+its "Regression MCP server" section states general, stage-independent
+principles that Stage 15's work already complies with. No change needed
+or made.
+
+mvn -q validate rerun after the doc edits -> exit 0. git diff --check
+rerun -> exit 0.
+
+--------------------------------------------------------------------------
+3. COMMIT
+--------------------------------------------------------------------------
+
+Branch: feature/regression-mcp-architecture-validator, created off master
+at 5c6b606 (the pre-Stage-15 tip).
+
+Staged and committed exactly the confirmed Stage 15 scope: 47 files
+changed, 4897 insertions(+), 5 deletions(-). Commit hash: d09062b
+("Add Stage 15 architecture validator tools to regression-mcp-server").
+Commit message documents the three validator tools, the 11->14 tool-count
+change, the ARCH-002 known-debt finding, and the final 269-test count.
+
+Pushed with upstream tracking: `git push -u origin
+feature/regression-mcp-architecture-validator` -> new branch created on
+origin, tracking configured.
+
+--------------------------------------------------------------------------
+4. MERGE TO MASTER
+--------------------------------------------------------------------------
+
+git checkout master (clean, up to date with origin/master) -> git merge
+--no-ff feature/regression-mcp-architecture-validator -> "Merge made by
+the 'ort' strategy", clean, zero conflicts. File list from the merge
+diffstat matches the feature-branch commit exactly: same 47 files, same
+4897 insertions(+), 5 deletions(-).
+
+Merge commit hash: 1c76d98 ("Merge branch
+'feature/regression-mcp-architecture-validator'").
+
+git push origin master -> 5c6b606..1c76d98 master -> master, pushed
+successfully.
+
+git status --porcelain on master after push -> empty (clean working
+tree). git branch --list feature/regression-mcp-architecture-validator ->
+confirms the local feature branch was left in place, not deleted, per
+instruction.
+
+--------------------------------------------------------------------------
+5. FINAL STATE
+--------------------------------------------------------------------------
+
+master is at 1c76d98, pushed, working tree clean. Stage 15 (Architecture
+Validator) is complete: all three validator tools shipped
+(regression_validate_module_boundaries, regression_validate_framework_
+conventions, regression_validate_architecture), regression-mcp-server
+registers 14 tools, 269 tests (0 failures, 0 errors, 5 pre-existing
+skips). One documented, accepted known-debt finding remains open for a
+future, separately authorized task: the com.aqa.nextjscommerce.config
+<-> com.aqa.nextjscommerce.driver package cycle. No Stage 16 work was
+started in this task.
+================================================================================
+
+================================================================================
+STAGE 16 PREPARATION -- Fresh-session Phase A inspection/proposal (no code,
+no commits, no branch/git operations)
+================================================================================
+
+Context at session start: master at 1c76d98 (Stage 15 merge), clean working
+tree, 269 tests / 0 failures / 5 pre-existing Windows-symlink skips. This
+session performed PART 1 (workspace hygiene inspection) and PART 2 (fresh-
+session context confirmation) only, per the kickoff prompt. No Stage 16 gate
+work was started.
+
+--------------------------------------------------------------------------
+PART 1.1 -- output.log state
+--------------------------------------------------------------------------
+
+output.log exists, is not empty: 163,707 bytes / 2,810 lines before this
+append. It is a chronological, append-only session log starting at
+"Gate 15.1 -- Stage 15 (Architecture Validator) Design Proposal" and ending
+with the Gate 15.5 final-acceptance entry documenting the merge to master
+(commit 1c76d98, "Merge branch 'feature/regression-mcp-architecture-
+validator'", 47 files, 4897 insertions(+), 5 deletions(-)), matching the
+actual git log exactly. Structure and content are internally consistent
+(gate markers, banners, decision points) with no truncation, corruption, or
+orphaned/duplicated entries observed. Not deleted; left in place per
+instructions. (Full 2,810-line content was not reproduced verbatim in this
+report -- it was inspected via head/tail and section-marker search, which is
+sufficient to confirm it is intact and consistent; the file itself remains
+the authoritative record.)
+
+--------------------------------------------------------------------------
+PART 1.2 -- Stray AI-tooling files/folders (repo root scan, including
+gitignored paths)
+--------------------------------------------------------------------------
+
+Found and classified:
+
+1. `.codex/config.toml` -- gitignored (`.gitignore:26`, `/.codex/config.toml`).
+   Local Codex CLI sandbox/approval configuration (approval_policy,
+   sandbox_mode, an `[mcp_servers.idea]` entry pointing at a local IDEA MCP
+   bridge on 127.0.0.1:64342). Load-bearing local machine config, not
+   project documentation. Correctly ignored; nothing to change.
+
+2. `.ai/mcp/mcp.json` -- gitignored (`.gitignore:27`, `/.ai/mcp/mcp.json`).
+   Local MCP client registration pointing at this machine's built
+   `regression-mcp-server.jar` with `REGRESSION_ROOT=D:/mytests`. Load-
+   bearing local machine config (absolute Windows paths), not project
+   documentation. Correctly ignored; nothing to change.
+
+3. `.regression-mcp/` -- gitignored (`.gitignore:33`, `/.regression-mcp/`).
+   Server-generated execution runtime state per CLAUDE.md's design: contains
+   `runs/active.lock` (empty lock file) and one prior run directory
+   (`run-a5f0cf2c8e20813c094b91b22507caab/` with `run.json`, `status.json`,
+   `stdout.log`, `stderr.log`) from a past manual smoke run. This is
+   explicitly server-owned, never client-addressable, load-bearing runtime
+   state, not stray tooling output. Correctly ignored; nothing to change
+   (not deleted).
+
+4. `.junie/plans/` -- NOT gitignored (`git check-ignore -v .junie` returns no
+   match) and NOT tracked by git (git status shows clean tree; git does not
+   track empty directories, and this one is empty). Contains a `plans/`
+   subdirectory with zero files in it. This reads as leftover scaffolding
+   from JetBrains' "Junie" AI assistant (its conventional plans-output
+   location), currently empty -- either its content was already cleaned up
+   or it never wrote anything durable here. Not load-bearing (nothing
+   inside it), not currently causing any harm (invisible to git, doesn't
+   pollute `git status`). Flagged for hygiene only: safe to delete, or add
+   `.junie/` to `.gitignore` if this tool is expected to keep touching the
+   repo, but doing either is a decision for you, not unilaterally actioned
+   here.
+
+5. `.idea/` -- gitignored (`.gitignore:2`). Standard JetBrains IDE metadata,
+   not AI-tooling-specific. Not in scope for this check; noted only for
+   completeness.
+
+No `.aider*`, `.cursor/`, `.windsurf/`, `.cline/`, `.roo/`, `.copilot/`, or
+similarly-named AI-tool directories were found anywhere in the repository
+tree (checked via glob across the whole tree, not just root).
+
+Net: nothing found here is silently load-bearing in a way that would be
+unsafe to leave alone; the only actionable item is the empty `.junie/plans/`
+directory, and it is low-stakes hygiene, not a correctness or security
+concern.
+
+--------------------------------------------------------------------------
+PART 1.3 -- Code-consistency re-inspection of regression-mcp-server
+--------------------------------------------------------------------------
+
+Scope covered: all 61 main-source files and 47 test-source files across
+`com.aqa.mcp`, `com.aqa.mcp.execution`, and `com.aqa.mcp.validation`
+(Stage 15). No TODO/FIXME/XXX/@Deprecated markers exist anywhere in the
+module's source (checked directly) -- no leftover scaffolding markers from
+Stage 13-15.
+
+Findings, rated as requested:
+
+1. [MODERATE -- worth doing before v1.0] Near-total structural duplication
+   across the three Stage 15 `*Tool` classes: `ModuleBoundariesTool.java`
+   (179 lines), `FrameworkConventionsTool.java` (193 lines), and
+   `ArchitectureTool.java` (192 lines). Directly diffed `ModuleBoundariesTool`
+   against `ArchitectureTool`: `evaluate(...)`, `parseRequest(...)`,
+   `violationOutput(...)`, `inputSchema()`, `violationSchema()`,
+   `readOnlyAnnotations()`, `successResult(...)`, `errorResult(...)`, and
+   `serialize(...)` are byte-for-byte identical or near-identical (only the
+   rule-source class name and, in `ArchitectureTool`'s case, the
+   advisory-violations partitioning differ). This is roughly 120-140
+   duplicated lines x3. STAGE_15_PROGRESS.md's own Gate 15.5 notes already
+   acknowledge this explicitly ("ArchitectureTool follows the identical
+   per-request Supplier wiring pattern... no new wiring pattern is
+   introduced"), so this was a known, deliberate, incremental choice at each
+   gate rather than an oversight -- but with all three tools now shipped, a
+   shared `ValidationToolSupport`-style helper (schema builders, result
+   envelopes, the scope-resolve-then-evaluate loop) would remove the
+   duplication without touching any one tool's distinct behavior. This is a
+   genuine "worth doing before v1.0" candidate given how much of the file
+   count is now pure repetition, not a "nice to have" of taste. NOT
+   implemented -- proposal only, awaiting your authorization if you want
+   Stage 16 (or a dedicated gate) to include it.
+
+2. [TRIVIAL/COSMETIC] `RegressionMcpServer.java`'s `errorResult(code,
+   message)` is a one-line passthrough to `moduleErrorResult(code,
+   message)` -- same body, two names, both used across the file for
+   entirely generic (not module-specific) errors. `moduleErrorResult` reads
+   as a name left over from when only the module-list tool needed an error
+   envelope; the method has since become the generic error-envelope builder
+   for every tool in the file. Cosmetic naming leftover, zero behavioral
+   impact.
+
+3. [TRIVIAL/COSMETIC] `RegressionMcpServer.java` mixes two formatting
+   styles: verbose multi-line tool-builder methods (e.g. `overviewTool`,
+   `listModulesTool`) versus very dense single-line-chained methods (e.g.
+   `startTestRunTool`, `runActionTool`, most of the schema builders from
+   line ~380 onward). This makes the file's own internal style
+   inconsistent, though each individual method is still readable in
+   isolation. No functional issue; a readability/consistency nit only.
+
+4. [TRIVIAL/COSMETIC] Test-naming mismatch: `execution/SurefireSummaryStoreTest.java`
+   exercises `RunStore`'s `summary(...)` method (there is no
+   `SurefireSummaryStore` class anywhere in main source -- confirmed by
+   listing all 44 main-source files). The class under test is `RunStore`;
+   the test class name suggests a `SurefireSummaryStore` type that does not
+   exist. Purely a naming artifact, not a coverage gap -- the test itself is
+   substantive and correctly scoped to `RunStore`.
+
+5. [INFORMATIONAL, not a proposal] Three structurally identical (`code` +
+   `message`, extends `IllegalArgumentException`) exception classes exist,
+   one per package: `com.aqa.mcp.RepositoryInspectionException`,
+   `com.aqa.mcp.execution.ExecutionPlanningException`,
+   `com.aqa.mcp.validation.ValidationException`. Directly compared all
+   three; they are near-identical (~18-20 lines each). Unlike finding 1,
+   this triplication reads as consistent with the same deliberate
+   package-isolation rationale already documented and accepted at Gate
+   15.0.5 (rejecting a package reorg specifically to avoid widening
+   cross-package visibility) -- a shared exception type would need to live
+   in a shared public location, which is exactly the kind of coupling that
+   gate already declined. Not proposing any change; noting it only so it's
+   visible it was checked, not missed.
+
+6. [Explicitly checked, nothing found] Package structure sanity: `com.aqa.mcp`
+   (root discovery/overview types), `com.aqa.mcp.execution` (21+ execution/
+   run-store classes), and `com.aqa.mcp.validation` (21 Stage 15 classes)
+   remain cleanly separated with no new cross-package leakage introduced
+   since Gate 15.5's own visibility audit. No dead/unreferenced classes were
+   found in the validation package inventory (matches STAGE_15_PROGRESS.md's
+   documented 21 main / 20 test class inventory exactly -- recounted
+   directly via file listing, same numbers).
+
+No findings beyond the six above and the three already-known/accepted debt
+items were manufactured. Nothing else in the module reads as leftover
+scaffolding, dead code, or a structural problem.
+
+--------------------------------------------------------------------------
+PART 1.4 -- Cross-check against already-known, already-accepted debt
+--------------------------------------------------------------------------
+
+Confirmed all three are visible in the current tree/docs and are NOT being
+re-flagged as new findings, and no change to any of them is proposed without
+separate authorization:
+
+(a) ARCH-002 package cycle `com.aqa.nextjscommerce.config` <->
+    `com.aqa.nextjscommerce.driver` -- documented in STAGE_15_PROGRESS.md's
+    Gate 15.5 Phase B notes and Decisions Log; the real-reactor ARCH-002
+    test asserts exactly this one cycle and nothing else. Confirmed present
+    in the docs; not re-inspected at the source level this session (out of
+    scope -- product-module source, not `regression-mcp-server`).
+
+(b) ARCH-001's two-hop detection gap (e.g. `S3Definitions.s3Steps
+    .s3ServiceActions().getObject(...)`) -- documented as a deliberate,
+    Symbol-Solver-free design limitation in STAGE_15_PROGRESS.md's Gate 15.5
+    section. Confirmed present in the docs; this session did not re-derive
+    or re-verify the underlying JavaParser behavior.
+
+(c) `regression-core`'s `GeneralDefinitions.java` making direct AssertJ
+    assertions inside `@Then` methods -- documented as "informational only,
+    no rule, no action" in STAGE_15_PROGRESS.md's Gate 15.5 section.
+    Confirmed present in the docs; not re-inspected at the source level this
+    session (out of scope -- product-module source).
+
+--------------------------------------------------------------------------
+PART 2 -- Fresh-session context confirmation
+--------------------------------------------------------------------------
+
+Read in full this session: CLAUDE.md (already resident via system context,
+confirmed unchanged), README.md, STAGE_15_16_KICKOFF.md, STAGE_15_PROGRESS.md.
+
+Stage 16 checklist confirmed as understood, grounded in STAGE_15_16_KICKOFF.md:
+
+- Mandatory checks: `mvn -pl regression-mcp-server -am clean verify`,
+  `mvn validate`, `git diff --check`, `git status`.
+- CI matrix: `ubuntu-latest` + `windows-latest`.
+- External UI/API smoke tests are manual-only -- never automatic in CI
+  without explicit authorization.
+- Full manual user journey required before v1.0 sign-off: overview ->
+  modules -> features -> scenarios with filter -> start run -> polling ->
+  terminal state -> summary -> artifacts -> architecture validation -> no
+  orphaned processes.
+- Required v1.0 documentation set: installation, IDEA/Codex configuration,
+  tools and schemas, security model, execution lifecycle, run store,
+  artifact limits, JAR-lock troubleshooting, v1.0 limitations.
+- Final state: README and CLAUDE.md current, clean git tree, final PR,
+  merge to master, version 1.0.0, optional tag
+  `regression-mcp-server-v1.0.0`.
+
+Standing workflow rules confirmed as understood and will be followed for the
+rest of this effort:
+
+- Phase A (inspection/proposal) always precedes Phase B (implementation) --
+  never mixed in one step.
+- Any genuine architectural ambiguity is stopped on and reported, never
+  unilaterally decided.
+- Every commit/branch/push/merge requires separate, fresh, explicit
+  authorization each time it happens -- no batching, no assumed carry-over
+  consent (this session performed none of these).
+- After each accepted gate, a short entry is appended to
+  STAGE_15_PROGRESS.md's Decisions Log (not done this session -- no gate was
+  accepted or worked on).
+
+No Stage 16 gate work was started. This entire report (Parts 1 and 2) is
+being appended to output.log per instruction.
+
+--------------------------------------------------------------------------
+PROPOSED FIRST STAGE 16 GATE
+--------------------------------------------------------------------------
+
+Proposed Gate 16.0 (Phase A only): run and report the four mandatory Stage
+16 checks against the current clean master (1c76d98) with no code changes --
+`mvn -pl regression-mcp-server -am clean verify`, `mvn validate`,
+`git diff --check`, `git status` -- to establish the actual as-built
+baseline numbers (test count, failures, skips, timing) before any
+documentation or CI-matrix work begins, and to decide in the same gate
+whether the Part 1.3 finding #1 (Tool-class duplication) should be folded
+into Stage 16 as its own authorized sub-step or explicitly deferred past
+v1.0.
+
+Awaiting explicit go-ahead before starting Gate 16.0 or any other Stage 16
+work.
+================================================================================

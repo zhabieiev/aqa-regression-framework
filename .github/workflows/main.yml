@@ -23,6 +23,9 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
 
+      - name: Validate the full reactor POMs
+        run: mvn validate
+
       - name: Verify the local read-only MCP server
         run: mvn -pl regression-mcp-server -am clean verify
 

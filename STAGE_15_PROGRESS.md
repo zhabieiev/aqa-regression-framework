@@ -297,6 +297,16 @@ deferred to a separate, out-of-scope, not-yet-authorized task — this gate
 is scoped to `regression-mcp-server` only and does not touch product
 module source.
 
+**Known v1.0 debt found during Stage 16 pre-inspection**: near-total
+structural duplication across the three Stage 15 validator `Tool` classes
+(`ModuleBoundariesTool`, `FrameworkConventionsTool`, `ArchitectureTool`) —
+roughly 120-140 duplicated lines each, spanning `evaluate`, `parseRequest`,
+`violationOutput`, `inputSchema`, `violationSchema`, `readOnlyAnnotations`,
+`successResult`, `errorResult`, and `serialize`. Accepted as known v1.0
+debt, not a blocker. A shared `ValidationToolSupport`-style helper is a
+candidate for a future, separately-authorized refactor after the v1.0
+release — not scheduled, not started.
+
 ARCH-003's real-reactor test confirmed the expected 18 violations across
 exactly the 7 named `regression-jhipster` files, exactly as Phase A
 predicted — no surprise there.

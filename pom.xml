@@ -49,6 +49,7 @@
         <slf4j.version>2.0.9</slf4j.version>
         <jna.version>5.19.1</jna.version>
         <playwright.version>1.61.0</playwright.version>
+        <javaparser.version>3.27.0</javaparser.version>
 
         <regression.core>1.0.0</regression.core>
         <regression.petstore.api>1.0.0</regression.petstore.api>
@@ -221,6 +222,12 @@
                 <groupId>net.java.dev.jna</groupId>
                 <artifactId>jna</artifactId>
                 <version>${jna.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.github.javaparser</groupId>
+                <artifactId>javaparser-core</artifactId>
+                <version>${javaparser.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

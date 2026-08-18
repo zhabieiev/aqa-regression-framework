@@ -313,7 +313,7 @@ class RegressionMcpServerStdioIntegrationTest {
     }
 
     private void assertToolList(JsonNode toolsList) {
-        assertThat(toolsList.path("result").path("tools").size()).isEqualTo(11);
+        assertThat(toolsList.path("result").path("tools").size()).isEqualTo(14);
         for (JsonNode tool : toolsList.path("result").path("tools")) {
             assertThat(tool.path("inputSchema").path("additionalProperties").asBoolean()).isFalse();
         }
@@ -334,7 +334,8 @@ class RegressionMcpServerStdioIntegrationTest {
                 RegressionMcpServer.LIST_FEATURES_TOOL_NAME, RegressionMcpServer.LIST_SCENARIOS_TOOL_NAME, RegressionMcpServer.START_TEST_RUN_TOOL_NAME,
                 RegressionMcpServer.GET_TEST_RUN_TOOL_NAME, RegressionMcpServer.CANCEL_TEST_RUN_TOOL_NAME, RegressionMcpServer.GET_TEST_SUMMARY_TOOL_NAME,
                 RegressionMcpServer.GET_FAILURE_SUMMARY_TOOL_NAME, RegressionMcpServer.GET_FAILURE_ARTIFACTS_TOOL_NAME,
-                RegressionMcpServer.READ_FAILURE_ARTIFACT_TOOL_NAME);
+                RegressionMcpServer.READ_FAILURE_ARTIFACT_TOOL_NAME, RegressionMcpServer.VALIDATE_MODULE_BOUNDARIES_TOOL_NAME,
+                RegressionMcpServer.VALIDATE_FRAMEWORK_CONVENTIONS_TOOL_NAME, RegressionMcpServer.VALIDATE_ARCHITECTURE_TOOL_NAME);
         assertThat(byName.get(RegressionMcpServer.START_TEST_RUN_TOOL_NAME).path("annotations").path("readOnlyHint").asBoolean()).isFalse();
         assertThat(byName.get(RegressionMcpServer.START_TEST_RUN_TOOL_NAME).path("annotations").path("destructiveHint").asBoolean()).isTrue();
         assertThat(byName.get(RegressionMcpServer.START_TEST_RUN_TOOL_NAME).path("annotations").path("idempotentHint").asBoolean()).isFalse();

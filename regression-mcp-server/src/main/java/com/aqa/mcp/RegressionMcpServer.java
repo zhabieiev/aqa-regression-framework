@@ -14,6 +14,9 @@ import com.aqa.mcp.execution.RunSnapshot;
 import com.aqa.mcp.execution.StartTestRunRequest;
 import com.aqa.mcp.execution.SurefireSummary;
 import com.aqa.mcp.execution.TestRunCoordinator;
+import com.aqa.mcp.validation.ArchitectureTool;
+import com.aqa.mcp.validation.FrameworkConventionsTool;
+import com.aqa.mcp.validation.ModuleBoundariesTool;
 import io.cucumber.tagexpressions.Expression;
 import io.cucumber.tagexpressions.TagExpressionParser;
 
@@ -45,6 +48,9 @@ public final class RegressionMcpServer {
     static final String GET_FAILURE_SUMMARY_TOOL_NAME = "regression_get_failure_summary";
     static final String GET_FAILURE_ARTIFACTS_TOOL_NAME = "regression_get_failure_artifacts";
     static final String READ_FAILURE_ARTIFACT_TOOL_NAME = "regression_read_failure_artifact";
+    static final String VALIDATE_MODULE_BOUNDARIES_TOOL_NAME = ModuleBoundariesTool.TOOL_NAME;
+    static final String VALIDATE_FRAMEWORK_CONVENTIONS_TOOL_NAME = FrameworkConventionsTool.TOOL_NAME;
+    static final String VALIDATE_ARCHITECTURE_TOOL_NAME = ArchitectureTool.TOOL_NAME;
     private static final String INSTRUCTIONS =
             "This is a local, read-only framework inspection server. It exposes only deterministic inspection "
                     + "tools for the repository configured by REGRESSION_ROOT.";
@@ -77,8 +83,22 @@ public final class RegressionMcpServer {
                 .capabilities(ServerCapabilities.builder().tools(false).build())
                 .tools(overviewTool(repositoryRoot), listModulesTool(repositoryRoot), featureListTool(repositoryRoot), scenarioListTool(repositoryRoot),
                         startTestRunTool(coordinator), getTestRunTool(coordinator), cancelTestRunTool(coordinator), testSummaryTool(coordinator),
-                        failureSummaryTool(coordinator), failureArtifactsTool(coordinator), readFailureArtifactTool(coordinator))
+                        failureSummaryTool(coordinator), failureArtifactsTool(coordinator), readFailureArtifactTool(coordinator),
+                        ModuleBoundariesTool.tool(repositoryRoot.path(), () -> moduleTypeByName(repositoryRoot)),
+                        FrameworkConventionsTool.tool(repositoryRoot.path(), () -> moduleTypeByName(repositoryRoot)),
+                        ArchitectureTool.tool(repositoryRoot.path(), () -> moduleTypeByName(repositoryRoot)))
                 .build();
+    }
+
+    /** Resolved fresh on every call (not cached at startup) so a malformed root pom.xml only fails the tool
+     * call that needs it, matching every other read-only tool's per-request resolution instead of failing
+     * server startup itself. */
+    private static Map<String, String> moduleTypeByName(RepositoryRoot repositoryRoot) {
+        Map<String, String> types = new java.util.LinkedHashMap<>();
+        for (ModuleDescriptor module : ModuleList.forRoot(RepositoryRootResolver.resolve(repositoryRoot.path())).modules()) {
+            types.put(module.name(), module.type().name());
+        }
+        return java.util.Collections.unmodifiableMap(types);
     }
 
     static SyncToolSpecification startTestRunTool(TestRunCoordinator coordinator) {

@@ -133,4 +133,4 @@ Each product module has its own documentation with its product-specific configur
 
 See [`regression-mcp-server/README.md`](regression-mcp-server/README.md) for installation, IDEA/Codex client configuration, the security model, the execution lifecycle, the run store, artifact limits, JAR-lock troubleshooting, and known v1.0 limitations, and [`regression-mcp-server/docs/TOOLS.md`](regression-mcp-server/docs/TOOLS.md) for every tool's full input/output schema.
 
-Stages 14 and 15 are complete; Stage 16 (final v1.0 acceptance) is in progress. See `STAGE_15_16_KICKOFF.md` for its original scope and `STAGE_15_PROGRESS.md` for Stage 15's final, as-built record.
+Stages 14 and 15 are complete; Stage 16 (final v1.0 acceptance) is in progress. See `docs/dev-history/STAGE_15_16_KICKOFF.md` for its original scope and `docs/dev-history/STAGE_15_PROGRESS.md` for Stage 15's final, as-built record.

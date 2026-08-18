@@ -233,18 +233,18 @@ the failure.
   discipline) uses single-hop, field-declared-type-only detection with no
   Symbol Solver; it has a known, accepted gap for two-hop calls such as
   `regression-core`'s `S3Definitions.s3Steps.s3ServiceActions()
-  .getObject(...)` (see `STAGE_15_PROGRESS.md`'s Gate 15.5 section).
+  .getObject(...)` (see `../docs/dev-history/STAGE_15_PROGRESS.md`'s Gate 15.5 section).
 - `regression-nextjs-commerce` has a real, pre-existing package-dependency
   cycle between `com.aqa.nextjscommerce.config` and
   `com.aqa.nextjscommerce.driver`. The architecture validator's `ARCH-002`
   rule correctly reports it as present — this is known, accepted product-
   module debt, not a validator bug, and its real-reactor test specifically
   asserts that exactly this one cycle exists and no other
-  (`STAGE_15_PROGRESS.md`'s Gate 15.5 section).
+  (`../docs/dev-history/STAGE_15_PROGRESS.md`'s Gate 15.5 section).
 - The three Stage 15 validator tools (`ModuleBoundariesTool`,
   `FrameworkConventionsTool`, `ArchitectureTool`) share roughly 120-140
   duplicated lines of schema/envelope/evaluation-loop code each. This is
-  known internal debt (added to `STAGE_15_PROGRESS.md` during Stage 16
+  known internal debt (added to `../docs/dev-history/STAGE_15_PROGRESS.md` during Stage 16
   pre-cleanup), does not affect any tool's external behavior or schema, and
   is listed here only for transparency.
 - External UI/API smoke tests (Playwright in `regression-jhipster`,

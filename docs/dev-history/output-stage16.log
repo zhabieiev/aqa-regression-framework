@@ -1,0 +1,1482 @@
+================================================================================
+STAGE 16 PRE-CLEANUP — Phase B housekeeping (three explicitly authorized
+actions only; no commits, no branch/git operations performed)
+================================================================================
+
+Context: master at 1c76d98, clean working tree at session start. This
+follows the earlier Phase A inspection report (now archived in
+output-stage15.log). Three explicitly authorized actions were performed;
+nothing else was touched.
+
+--------------------------------------------------------------------------
+1. Delete empty, untracked .junie/plans/
+--------------------------------------------------------------------------
+
+`.junie/plans/` contained zero files (confirmed in Phase A). Deleted with a
+plain filesystem removal. After removal, `.junie/` itself contained nothing
+else, so `.junie/` was also removed per instruction ("if .junie/ becomes
+fully empty as a result, delete .junie/ itself too"). Confirmed: `.junie`
+no longer exists anywhere under the repository root.
+
+--------------------------------------------------------------------------
+2. Archive output.log, start a fresh one
+--------------------------------------------------------------------------
+
+`mv output.log output-stage15.log` — plain rename, content unchanged
+(3,067 lines / 178,107 bytes, since the Phase A report had already been
+appended to it during the prior turn; this is the full Stage 13-15 history
+plus that Phase A report, as expected). A new, empty `output.log` was then
+created at the repository root. This report is the first entry written to
+that new file.
+
+--------------------------------------------------------------------------
+3. STAGE_15_PROGRESS.md — fourth known-debt entry
+--------------------------------------------------------------------------
+
+Added under the existing "## Gate 15.5 — Phase B implementation notes"
+section, as a new paragraph immediately following the existing ARCH-002
+package-cycle known-debt paragraph and immediately before the pre-existing
+"ARCH-003's real-reactor test confirmed..." paragraph. No section heading
+was added or changed; no other part of the file was touched.
+
+Note on placement: the instruction referred to "whatever section already
+documents the three existing known/accepted v1.0 debt items," but on
+re-inspection the three items are not consolidated in one place in
+STAGE_15_PROGRESS.md — the ARCH-001 two-hop gap and the GeneralDefinitions
+informational note live in the "Gate 15.5 — Phase A design" section, while
+the ARCH-002 cycle's "accept it as known, pre-existing debt" language lives
+in "Gate 15.5 — Phase B implementation notes." (My own Phase A report was
+the place that first listed all three together, but that report lives in
+output-stage15.log, not in STAGE_15_PROGRESS.md.) This is a tactical
+placement question, not an architectural one, so it was resolved directly
+rather than escalated: the new entry was placed in the Phase B
+implementation-notes section, immediately after the ARCH-002 paragraph,
+because that paragraph is the closest existing precedent in wording and
+tone ("accept it as known, pre-existing debt... deferred to a separate,
+out-of-scope, not-yet-authorized task") for what the new entry needed to
+say. Flagging this choice explicitly in case a different placement is
+preferred.
+
+New paragraph text added (verbatim):
+
+"**Known v1.0 debt found during Stage 16 pre-inspection**: near-total
+structural duplication across the three Stage 15 validator `Tool` classes
+(`ModuleBoundariesTool`, `FrameworkConventionsTool`, `ArchitectureTool`) —
+roughly 120-140 duplicated lines each, spanning `evaluate`, `parseRequest`,
+`violationOutput`, `inputSchema`, `violationSchema`, `readOnlyAnnotations`,
+`successResult`, `errorResult`, and `serialize`. Accepted as known v1.0
+debt, not a blocker. A shared `ValidationToolSupport`-style helper is a
+candidate for a future, separately-authorized refactor after the v1.0
+release — not scheduled, not started."
+
+Confirmed applied cleanly: the edit matched its anchor text exactly on the
+first attempt, no conflicts, no other lines in the file altered.
+
+--------------------------------------------------------------------------
+Explicitly NOT actioned (per instruction)
+--------------------------------------------------------------------------
+
+The trivial/cosmetic Phase A findings (`moduleErrorResult`/`errorResult`
+naming, `RegressionMcpServer.java`'s mixed formatting style, the
+`SurefireSummaryStoreTest` naming mismatch) and the informational-only
+exception-class triplication were left untouched, as instructed. No other
+cleanup, deletion, or refactoring was performed.
+
+--------------------------------------------------------------------------
+No git write operations performed
+--------------------------------------------------------------------------
+
+Nothing was staged, committed, branched, or pushed. `git status` output
+follows in the chat response for review before any git write operation is
+authorized.
+================================================================================
+================================================================================
+GATE 16.0 — Stage 16 baseline verification (Phase A only — checks run,
+report only, no code changes, no git write operations)
+================================================================================
+
+Context: master at 1c76d98. Working tree carried two intentional,
+not-yet-committed Stage 16 pre-cleanup changes into this gate
+(STAGE_15_PROGRESS.md's new known-debt paragraph, untracked
+output-stage15.log archive) — neither was reverted, staged, or committed.
+The fresh output.log was left in place; this report is appended to it.
+
+--------------------------------------------------------------------------
+1. mvn -pl regression-mcp-server -am clean verify
+--------------------------------------------------------------------------
+
+BUILD SUCCESS.
+
+Reactor Summary:
+  regression ......................................... SUCCESS [  0.196 s]
+  regression-mcp-server .............................. SUCCESS [01:06 min]
+Total time: 01:06 min
+
+Test totals: 269/0/0/5 skipped (Tests run: 269, Failures: 0, Errors: 0,
+Skipped: 5) — identical to the last recorded Gate 15.5 baseline in
+STAGE_15_PROGRESS.md. The 5 skips are the same pre-existing
+Windows-symlink-permission skips noted throughout Stage 15 (one each in
+FeatureDiscoveryTest, ModuleListTest, JavaSourceScannerTest, and two more
+accounted for in the same category — not re-enumerated individually here
+since the count and cause match the known baseline exactly).
+
+Only WARNINGs, no errors: two expected/harmless Fatal Error XML-parser log
+lines from ModuleListTest's own malformed-pom.xml fixture test (expected —
+that test deliberately feeds a malformed pom to verify structured error
+handling), and the usual maven-shade-plugin overlapping-resource warnings
+when building the uber-jar (META-INF/LICENSE, NOTICE, module-info.class,
+etc. — pre-existing, not new, not build-breaking).
+
+Jar built successfully: regression-mcp-server-1.0.0.jar,
+regression-mcp-server/target/regression-mcp-server.jar (shaded).
+
+--------------------------------------------------------------------------
+2. mvn validate
+--------------------------------------------------------------------------
+
+BUILD SUCCESS across all 6 reactor modules:
+  regression ......................................... SUCCESS
+  regression-core .................................... SUCCESS
+  regression-petstore-api ............................ SUCCESS
+  regression-jhipster ................................ SUCCESS
+  Regression - Next.js Commerce UI ................... SUCCESS
+  regression-mcp-server .............................. SUCCESS
+Total time: 0.241 s. Clean.
+
+--------------------------------------------------------------------------
+3. git diff --check
+--------------------------------------------------------------------------
+
+Clean. No output, exit code 0. No whitespace errors or conflict markers in
+the current unstaged diff (STAGE_15_PROGRESS.md's new paragraph).
+
+--------------------------------------------------------------------------
+4. git status
+--------------------------------------------------------------------------
+
+On branch master
+Your branch is up to date with 'origin/master'.
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   STAGE_15_PROGRESS.md
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	output-stage15.log
+
+no changes added to commit (use "git add" and/or "git commit -a")
+
+--------------------------------------------------------------------------
+Baseline assessment
+--------------------------------------------------------------------------
+
+Baseline is clean: build succeeds, test counts match the last known-good
+Stage 15 numbers exactly (269/0/0/5), mvn validate is clean across all 6
+modules, git diff --check is clean, and git status shows only the two
+expected, already-authorized pending housekeeping changes — clean enough to
+proceed to the next Stage 16 gate.
+================================================================================
+================================================================================
+GATE 16.1 — CI matrix inspection (Phase A only — inspect and report, propose
+if needed, NO workflow file edits performed)
+================================================================================
+
+Context: master at 1c76d98, Gate 16.0 baseline accepted (269/0/0/5 skipped,
+clean build, clean validate, clean git diff --check).
+
+--------------------------------------------------------------------------
+1. Workflow files under .github/workflows/
+--------------------------------------------------------------------------
+
+Exactly one workflow file exists: `.github/workflows/main.yml`
+("Java CI with Maven and Reports (Java 21)").
+
+Triggers:
+  on:
+    push:
+      branches: [ "master", "actions" ]
+    pull_request:
+      branches: [ "master", "actions" ]
+
+Two jobs are defined: `regression-mcp-server-security` and
+`build-and-test`.
+
+--------------------------------------------------------------------------
+2. Matrix pattern for regression-mcp-server
+--------------------------------------------------------------------------
+
+`regression-mcp-server-security` already uses a genuine
+`strategy.matrix` — ONE job definition parameterized over both OSes, not
+two separately-defined jobs:
+
+  regression-mcp-server-security:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+
+This is the matrix pattern the Stage 16 checklist asks for
+(ubuntu-latest + windows-latest), already present and unchanged since
+Stage 14/15 per the prior history mentioned in the kickoff — confirmed by
+direct inspection, not assumed.
+
+The second job, `build-and-test`, is unrelated to `regression-mcp-server`:
+it runs only `regression-core` on `ubuntu-latest` only (no matrix, no
+Windows leg) and is pre-existing/out of scope for this gate — not proposing
+any change to it.
+
+--------------------------------------------------------------------------
+3. Stage 16 mandatory Maven checks in CI
+--------------------------------------------------------------------------
+
+`mvn -pl regression-mcp-server -am clean verify` — PRESENT, verbatim, as
+the "Verify the local read-only MCP server" step, running on both matrix
+legs (ubuntu-latest and windows-latest).
+
+`mvn validate` — NOT PRESENT anywhere in the workflow, on either job, on
+either OS. This is a real gap: the scoped `-pl regression-mcp-server -am
+clean verify` command already runs Maven's validate phase, but only for the
+`regression` parent + `regression-mcp-server` themselves (that is what
+`-am` includes) — it does NOT validate the other four reactor modules
+(regression-core, regression-petstore-api, regression-jhipster,
+regression-nextjs-commerce), which is exactly what the bare, no-`-pl`
+`mvn validate` used in Gate 16.0 covers (confirmed there: BUILD SUCCESS
+across all 6 modules). STAGE_15_16_KICKOFF.md lists `mvn validate` as its
+own required check, separate from the clean-verify command, so this is
+missing rather than redundantly covered.
+
+--------------------------------------------------------------------------
+4. External UI/API smoke-test compliance check
+--------------------------------------------------------------------------
+
+No compliance risk found. Neither job references `regression-jhipster`,
+`regression-nextjs-commerce`, or `regression-petstore-api` at all —
+`regression-mcp-server-security` only touches `regression` +
+`regression-mcp-server` (via `-pl ... -am`), and `build-and-test` only
+touches `regression-core` (via `-pl regression-core -am`). No Playwright UI
+job, no Selenium UI job, no live external Petstore API call exists anywhere
+in the workflow. The kickoff doc's "external smoke tests must never run
+automatically in CI" constraint is currently satisfied — nothing to flag.
+
+Also confirmed while reading the workflow (not a new finding, cross-checked
+against CLAUDE.md's own MCP-server requirement): the
+"Require all MCP security tests to execute" step, gated on
+`runner.os == 'Linux'`, inspects `regression-mcp-server`'s own Surefire
+reports and fails the build if any test reports `skipped="[1-9]..."` on
+Ubuntu specifically. This matches CLAUDE.md's standing instruction ("The
+Ubuntu MCP CI job must fail if any MCP security test is skipped, including
+the symlink-escape test") and is consistent with why Gate 16.0's local
+Windows run showed 5 skips (Windows symlink-permission limitation) while
+Ubuntu CI is required to show zero. Already correct; not part of this
+gate's proposal.
+
+--------------------------------------------------------------------------
+5/6. Assessment and proposal
+--------------------------------------------------------------------------
+
+The matrix itself, the exact `mvn -pl regression-mcp-server -am clean
+verify` command, and the no-automatic-smoke-test constraint are ALL already
+correctly satisfied — confirmed by direct inspection, nothing to change
+there.
+
+One gap requires a change: `mvn validate` (full reactor, no `-pl` scoping)
+is not run anywhere in CI. Proposing the following addition to the
+`regression-mcp-server-security` job in `.github/workflows/main.yml` (added
+as a new step immediately after "Set up JDK 21" and before "Verify the
+local read-only MCP server", so a reactor-wide POM problem is caught before
+spending time on the longer scoped build; running on both matrix legs since
+the step is cheap — ~0.2s locally in Gate 16.0 — and matches how the other
+three mandatory checks are already run per-OS in this job):
+
+  - name: Validate the full reactor POMs
+    run: mvn validate
+
+Full corrected job block (steps only; job header/matrix unchanged) would
+read:
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Validate the full reactor POMs
+        run: mvn validate
+
+      - name: Verify the local read-only MCP server
+        run: mvn -pl regression-mcp-server -am clean verify
+
+      - name: Require all MCP security tests to execute
+        if: runner.os == 'Linux'
+        run: |
+          report_directory=regression-mcp-server/target/surefire-reports
+          if [[ ! -d "$report_directory" ]]; then
+            echo "MCP Surefire report directory is missing: $report_directory"
+            exit 1
+          fi
+
+          shopt -s nullglob
+          reports=("$report_directory"/TEST-*.xml)
+          if (( ${#reports[@]} == 0 )); then
+            echo "No MCP Surefire TEST-*.xml reports were produced."
+            exit 1
+          fi
+
+          if grep -E 'skipped="[1-9][0-9]*"' "${reports[@]}"; then
+            echo "MCP security tests must not be skipped on Linux."
+            exit 1
+          fi
+
+This is a proposal only. No workflow file was edited in this gate.
+================================================================================
+================================================================================
+GATE 16.1 — Apply CI validate step (Phase B — single authorized edit only,
+no commit, no other workflow changes)
+================================================================================
+
+Context: master at 1c76d98, Gate 16.0 and Gate 16.1 (inspection) accepted.
+Applied the one authorized change from the Gate 16.1 proposal.
+
+--------------------------------------------------------------------------
+Edit applied
+--------------------------------------------------------------------------
+
+In `.github/workflows/main.yml`, inside the `regression-mcp-server-security`
+job's `steps:`, inserted a new step immediately after "Set up JDK 21" and
+immediately before "Verify the local read-only MCP server":
+
+  - name: Validate the full reactor POMs
+    run: mvn validate
+
+No OS conditional was added — the step runs on both matrix legs by
+inheriting the job's existing `strategy.matrix: os: [ubuntu-latest,
+windows-latest]`. Nothing else in the file was touched: trigger conditions,
+the `build-and-test` job, the "Require all MCP security tests to execute"
+step, and all other step ordering are unchanged.
+
+--------------------------------------------------------------------------
+1. git diff -- .github/workflows/main.yml
+--------------------------------------------------------------------------
+
+diff --git a/.github/workflows/main.yml b/.github/workflows/main.yml
+index 3050571..0e7f7d5 100644
+--- a/.github/workflows/main.yml
++++ b/.github/workflows/main.yml
+@@ -23,6 +23,9 @@ jobs:
+           java-version: '21'
+           distribution: 'temurin'
+
++      - name: Validate the full reactor POMs
++        run: mvn validate
++
+       - name: Verify the local read-only MCP server
+         run: mvn -pl regression-mcp-server -am clean verify
+
+Confirmed: exactly this one addition (3 new lines: the step name, the run
+command, and a blank separator line matching the file's existing step
+spacing convention) and nothing else in the diff.
+
+--------------------------------------------------------------------------
+2. git diff --check
+--------------------------------------------------------------------------
+
+Clean. No output, exit code 0. No whitespace errors or conflict markers.
+
+--------------------------------------------------------------------------
+3. Manual local confirmation of `mvn validate`
+--------------------------------------------------------------------------
+
+Not a CI simulation — GitHub Actions was not triggered (only runs on
+push/PR). Ran `mvn validate` locally as a plain sanity check that the exact
+command added to the workflow still succeeds: BUILD SUCCESS across all 6
+reactor modules (regression, regression-core, regression-petstore-api,
+regression-jhipster, regression-nextjs-commerce, regression-mcp-server),
+total time 0.268 s — consistent with Gate 16.0's earlier result.
+
+--------------------------------------------------------------------------
+4. No git write operations performed
+--------------------------------------------------------------------------
+
+Nothing was staged, committed, branched, or pushed.
+================================================================================
+================================================================================
+GATE 16.2 — v1.0 documentation gap analysis (Phase A only — inventory and
+propose, NO documentation content written)
+================================================================================
+
+Context: master at 1c76d98 + pending, uncommitted Gate 16.1 workflow edit.
+Read README.md and CLAUDE.md in full this gate (CLAUDE.md was already
+resident from system context and confirmed unchanged on disk).
+
+--------------------------------------------------------------------------
+1. Existing documentation inventory
+--------------------------------------------------------------------------
+
+All .md files in the repository (target/ and node_modules/ excluded):
+  ./CLAUDE.md
+  ./README.md
+  ./STAGE_15_16_KICKOFF.md
+  ./STAGE_15_PROGRESS.md
+  ./regression-nextjs-commerce/README.md
+  ./regression-petstore-api/README.md
+  ./regression-jhipster/README.MD   (uppercase extension, pre-existing)
+
+No `docs/`-style directory exists anywhere (only unrelated git-branch-name
+matches under .git/ — a merged branch was historically named
+`docs/stage-15-16-kickoff-and-claude-md-rename`, now `refs/heads/docs/...`;
+not a documentation directory, dismissed as a false lead).
+
+Key precedent fact: `regression-core` has NO module-level README — it is
+documented centrally in the top-level README.md only. The three product
+modules (`regression-petstore-api`, `regression-jhipster`,
+`regression-nextjs-commerce`) each DO have their own README.
+`regression-mcp-server` currently has NEITHER a module-level README NOR any
+file of its own under `docs/` — everything about it lives in one dense
+paragraph-cluster inside the top-level README.md's "MCP inspection server"
+section, plus rule-style bullets in CLAUDE.md's "Regression MCP server"
+section (agent-facing rules, not end-user documentation), plus
+STAGE_15_16_KICKOFF.md/STAGE_15_PROGRESS.md (internal process/planning
+docs, not meant for an end user installing the server).
+
+--------------------------------------------------------------------------
+2. Per-topic status
+--------------------------------------------------------------------------
+
+1. INSTALLATION — PARTIAL. README.md's "MCP inspection server" section
+   gives the build+run commands (`mvn -pl regression-mcp-server -am clean
+   verify`, then `java -jar ...` with `REGRESSION_ROOT`/
+   `REGRESSION_MAVEN_HOME` env vars) but as a single code block with no
+   prerequisites list, no REGRESSION_ROOT validation walkthrough, no
+   "how do I know it started correctly" verification step.
+
+2. IDEA/CODEX CONFIGURATION — MISSING. No file anywhere documents how to
+   register this server as an MCP client in IDEA or Codex. The only
+   related artifacts are two gitignored, machine-local files found during
+   Gate 15's Phase A hygiene scan: `.ai/mcp/mcp.json` (a real
+   `mcpServers.regression-framework` entry pointing at this machine's built
+   jar) and `.codex/config.toml` (which registers a *different*,
+   unrelated `mcp_servers.idea` bridge, not this server at all). Neither is
+   documentation; both are local runtime config, and neither is
+   discoverable by someone new to the project.
+
+3. TOOLS AND SCHEMAS — PARTIAL. README.md names and one-line-describes all
+   14 tools (4 discovery, 3 execution, 4 report/artifact, 3 Stage-15
+   validator) and calls out required/optional fields for the execution
+   tools in prose, but no full input/output JSON Schema is published
+   anywhere outside source — schemas exist only inside
+   `RegressionMcpServer.java` and the three `*Tool.java` classes.
+
+4. SECURITY MODEL — PARTIAL, scattered. CLAUDE.md's "Regression MCP
+   server" section states the governing principles (STDIO-only stdout,
+   no shell/arbitrary command, `REGRESSION_ROOT`-only scope, closed-world
+   read-only tools, the three explicitly authorized execution tools,
+   Gherkin-discovery containment, Stage-12 security evidence) but as rules
+   for an agent editing the codebase, interleaved with unrelated process
+   rules — not a single reference a security reviewer or installer could
+   read start to finish. It also doesn't cite the concrete code-level
+   mechanisms backing each rule (see outline below) — those exist only in
+   source.
+
+5. EXECUTION LIFECYCLE — PARTIAL. README.md correctly states the seven
+   states (`QUEUED, RUNNING, PASSED, FAILED, CANCELLED, TIMED_OUT, ERROR`),
+   "only one run may be active," the 30-1800s timeout bound, and the
+   PID-based, never-by-name cleanup discipline — but all of this is packed
+   into one long paragraph with the run-store and security content, not a
+   structured lifecycle reference (e.g. no explicit state-transition list).
+
+6. RUN STORE — PARTIAL. README.md correctly states the on-disk shape
+   (`.regression-mcp/runs/<runId>`, immutable `run.json`, atomically
+   replaced `status.json`, 16 MiB stdout/stderr log caps, 64 KiB in-memory
+   tail per stream) but again as one clause inside the same dense
+   paragraph, not a standalone reference.
+
+7. ARTIFACT LIMITS — effectively MISSING as usable reference documentation.
+   README.md names the *mechanism* ("a MIME allow-list and a bounded
+   response size") but publishes none of the actual numbers. Verified
+   directly in source (none of these appear in any .md file today):
+     - `RegressionMcpServer.MAX_FAILURE_SUMMARY_RESPONSE_BYTES` = 96 * 1024
+       (96 KiB) — caps `regression_get_failure_summary` responses.
+     - `RegressionMcpServer.MAX_ARTIFACT_READ_RESPONSE_BYTES` = 2 * 1024 *
+       1024 (2 MiB) — caps `regression_read_failure_artifact` responses.
+     - `RunStore.ALLOWED_ARTIFACT_MIME_TYPES` = {image/png, image/jpeg,
+       text/plain, application/json, text/xml} — the actual MIME allow-list.
+     - `ReportCapture.MAX_FILE_BYTES` = 8 MiB per captured file,
+       `MAX_TOTAL_BYTES` = 64 MiB total per run's captured Surefire/Allure
+       artifacts.
+     - `SurefireSummaryParser.MAX_FAILURE_DETAIL_BYTES` = 28 KiB per
+       failure's message/stack-trace detail.
+     - (Related, not artifact-specific but same bounding family:
+       `TestRunRequestValidator.MIN_TIMEOUT_SECONDS`/`MAX_TIMEOUT_SECONDS` =
+       30/1800; `FeatureDiscovery.MAX_FEATURE_FILE_BYTES` and
+       `JavaSourceScanner.MAX_JAVA_FILE_BYTES` both = 1 MiB per scanned
+       file.)
+
+8. JAR-LOCK TROUBLESHOOTING — PARTIAL, one sentence exists. See dedicated
+   section 5 below for the grounding search.
+
+9. v1.0 LIMITATIONS — MISSING as a consolidated topic. The individual facts
+   exist scattered across README.md and STAGE_15_PROGRESS.md (execution v1
+   restricted to `regression-nextjs-commerce`/`dev` only; only one run may
+   be active at a time; ARCH-001's two-hop detection gap; the
+   `com.aqa.nextjscommerce.config`<->`driver` package-cycle known debt;
+   external UI/API smoke tests are manual-only; the Tool-class-duplication
+   debt added in Stage 16 pre-cleanup) but nowhere are they gathered into
+   one "what v1.0 does NOT do / known gaps" list a new user would read
+   before relying on the server.
+
+--------------------------------------------------------------------------
+3. Proposed documentation structure (reasoned, not assumed)
+--------------------------------------------------------------------------
+
+Precedent observed: shared/infra modules with no distinct external
+audience (`regression-core`) stay documented centrally in the top-level
+README; product modules with their own configuration/execution concerns
+(`regression-petstore-api`, `regression-jhipster`, `regression-nextjs-commerce`)
+each get their own README.
+
+`regression-mcp-server` does not fit either precedent cleanly: it is
+architecturally isolated infra (like `regression-core`), but it has a
+genuinely distinct external audience — someone installing/configuring it as
+an MCP client in IDEA or Codex, who is not the same reader as someone
+skimming the top-level README for "what modules does this reactor have," and
+is also not CLAUDE.md's audience (a coding agent editing this repository's
+source). The top-level README's current single paragraph-cluster is already
+straining under Stage 14/15 content growth (~4 dense paragraphs covering
+lifecycle, security, run store, artifacts, and tool inventory all at once).
+
+Recommendation: give `regression-mcp-server` its own
+`regression-mcp-server/README.md`, matching the pattern already used by the
+three product modules, and move the full v1.0 documentation set there:
+installation, IDEA/Codex configuration, tools and schemas, security model,
+execution lifecycle, run store, artifact limits, JAR-lock troubleshooting,
+v1.0 limitations. The top-level README.md's "MCP inspection server" section
+would then shrink to a short summary + pointer (mirroring how the
+top-level README already handles the three product modules via its
+"Further reading" list), rather than continuing to grow in place.
+CLAUDE.md's existing "Regression MCP server" section needs no change — its
+audience and purpose (agent-facing repository rules) are already correctly
+scoped and distinct from end-user installation/configuration docs; the two
+should stay separate, not merged.
+
+One open, genuinely tactical (not architectural) sub-question, flagged
+rather than silently decided: whether "tools and schemas" is large enough
+to warrant splitting into its own file (e.g.
+`regression-mcp-server/docs/TOOLS.md`) once written, given 14 tools each
+with input/output JSON Schema, versus keeping it as one section of the new
+README.md like every other topic. Default recommendation is to keep it as
+one section of the new README.md unless drafting it turns out to make the
+file unwieldy — no other module in this repository splits its docs across
+multiple files today, so a single new README.md is the more consistent
+choice absent a concrete size problem. This is a judgment call, not a
+locked decision — happy to split if preferred.
+
+Nothing above was written yet — this is the structural proposal only,
+Phase A.
+
+--------------------------------------------------------------------------
+4. Outlines for PARTIAL/MISSING topics (bullets only, grounded in source)
+--------------------------------------------------------------------------
+
+INSTALLATION (PARTIAL -> expand):
+  - Prerequisites: Java 21, Maven, a checked-out copy of this reactor.
+  - Build: `mvn -pl regression-mcp-server -am clean verify` (already in
+    README, reuse verbatim).
+  - Run: `java -jar regression-mcp-server/target/regression-mcp-server.jar`
+    with required `REGRESSION_ROOT` and optional `REGRESSION_MAVEN_HOME`.
+  - What `REGRESSION_ROOT` must point at: an existing directory containing
+    the reactor's root `pom.xml` (grounded in `RepositoryRootResolver`:
+    existence check, `toRealPath()` normalization, directory check,
+    `pom.xml` regular-file check — each with its own
+    `IllegalArgumentException` message).
+  - How to confirm successful startup: server writes only to stderr for
+    diagnostics; stdout is reserved for JSON-RPC (already stated in
+    README, reuse).
+
+IDEA/CODEX CONFIGURATION (MISSING -> write):
+  - The real, grounded example already exists on this machine (not to be
+    committed, but its *shape* is the right template):
+    `.ai/mcp/mcp.json`'s `mcpServers.regression-framework` entry (`command`
+    = path to a Java 21 `java.exe`, `args` = `-jar
+    .../regression-mcp-server.jar`, `env.REGRESSION_ROOT` = the reactor
+    root).
+  - Document the equivalent Codex CLI registration shape (Codex's
+    `mcp_servers.<name>` TOML table under `.codex/config.toml`) — note
+    that the `.codex/config.toml` currently on this machine registers an
+    unrelated `mcp_servers.idea` bridge, not this server, so the new doc
+    needs its own worked example, not a copy of what's already there.
+  - State plainly that both `.ai/mcp/mcp.json` and `.codex/config.toml`
+    are machine-local and gitignored — the doc should show the *shape* to
+    create locally, not claim a checked-in file already does this.
+
+TOOLS AND SCHEMAS (PARTIAL -> expand):
+  - One table/list per tool: name, one-line purpose, required/optional
+    input fields, whether it's read-only or execution, output `status`
+    envelope shape (`{status:"ok", data:{...}}` /
+    `{status:"error", error:{code,message}}` — already the schema pattern
+    used by every tool per `RegressionMcpServer.java`/each `*Tool.java`).
+  - Cite the 14 tool-name constants already defined in
+    `RegressionMcpServer.java` and the three `TOOL_NAME` constants in the
+    validation `*Tool.java` classes as the source of truth to keep the doc
+    from drifting out of sync with the code.
+
+SECURITY MODEL (PARTIAL -> consolidate + ground in code):
+  - `REGRESSION_ROOT`-only scope, `toRealPath()` normalization, required
+    root `pom.xml` (cite `RepositoryRootResolver.resolve`, verified above).
+  - STDIO-only transport: stdout reserved for JSON-RPC, all diagnostics to
+    stderr (already stated in README).
+  - No shell/arbitrary command: Stage 13's three execution tools launch
+    Maven only via a direct Java/Classworlds path, never `mvn.cmd` or a
+    shell (already stated in README/CLAUDE.md).
+  - Process-ownership discipline: PID + start instant + parent PID +
+    observation depth, never terminate by name/shell/taskkill/WMI (already
+    stated in README).
+  - Bounded, allow-listed artifact reads: cite the concrete
+    `ALLOWED_ARTIFACT_MIME_TYPES` set and the two response-size caps found
+    in section 2, item 7 above.
+  - CI security gate: the Ubuntu leg of `regression-mcp-server-security`
+    fails the build if any MCP Surefire report shows a skip (grounded in
+    `.github/workflows/main.yml`'s "Require all MCP security tests to
+    execute" step, inspected in Gate 16.1).
+
+EXECUTION LIFECYCLE (PARTIAL -> structure as a state reference):
+  - The 7 states verbatim, framed as a transition list rather than prose:
+    QUEUED -> RUNNING -> (PASSED | FAILED | TIMED_OUT | ERROR), plus
+    CANCELLED as a client-triggered exit from QUEUED/RUNNING.
+  - Single-active-run constraint and what a second `start` call returns.
+  - Timeout bound (30-1800s, cite `TestRunRequestValidator`).
+  - Stale-run recovery: what "possibly-live stale identity blocks a new
+    execution" means in practice for a user (already described densely in
+    README; needs a plain-language walkthrough).
+
+RUN STORE (PARTIAL -> structure as a reference):
+  - On-disk layout under `.regression-mcp/runs/<runId>/`: `run.json`
+    (immutable), `status.json` (atomically replaced), `stdout.log`/
+    `stderr.log` (16 MiB cap each, 64 KiB in-memory tail after cap — cite
+    README, already accurate).
+  - State that this directory is server-generated only, never
+    client-addressable, and is gitignored (`/.regression-mcp/` in
+    `.gitignore`, confirmed in Gate 15 Phase A).
+
+ARTIFACT LIMITS (effectively MISSING -> write, numbers from section 2 item 7):
+  - Table of every bound found in source: failure-summary response cap
+    (96 KiB), artifact-read response cap (2 MiB), MIME allow-list (5
+    types, listed), per-file/per-run capture caps (8 MiB / 64 MiB), and
+    per-failure detail cap (28 KiB).
+  - What happens when a limit is hit: the specific error codes already in
+    source (`REPORT_MALFORMED`, `ARTIFACT_TOO_LARGE`,
+    `UNSUPPORTED_MIME_TYPE`) so the doc matches real client-visible
+    behavior, not a generic description.
+
+v1.0 LIMITATIONS (MISSING -> write):
+  - Execution v1 is `regression-nextjs-commerce` + `dev` + Boolean
+    `headless` + 30-1800s timeout + optional 1024-char tag expression only
+    (cite README, already accurate) — no other module, environment, or
+    execution shape is supported yet.
+  - Only one run may be active at a time (no queueing beyond that).
+  - ARCH-001's two-hop detection gap (already documented in
+    STAGE_15_PROGRESS.md; cite as a v1.0 architecture-validator limitation).
+  - Known package cycle in `regression-nextjs-commerce`
+    (`config`<->`driver`) is real, pre-existing debt the validator
+    correctly reports as present, not a validator bug.
+  - Tool-class duplication across the three Stage 15 validator tools is
+    known internal debt (added to STAGE_15_PROGRESS.md in Stage 16
+    pre-cleanup); does not affect external behavior, listed here only for
+    completeness/transparency, not as a user-facing functional gap.
+  - External UI/API smoke tests are manual-only by design — v1.0 does not
+    (and per the kickoff doc's constraint, must not) run them automatically.
+
+--------------------------------------------------------------------------
+5. JAR-lock troubleshooting — grounding search
+--------------------------------------------------------------------------
+
+Searched output-stage15.log (full Stage 13-15 history, 2,810 lines pre-
+archive) for any prior incident narrative: no incident description exists
+there beyond the kickoff document's own line listing "JAR-lock
+troubleshooting" as a required v1.0 doc topic (no story, no reproduction
+steps, no session where it actually happened, recorded in that log).
+
+The one real, pre-existing piece of grounding is a single sentence already
+in README.md's "MCP inspection server" section: "If Windows locks the
+shaded JAR, stop the configured MCP server, confirm its Java process has
+exited, then rebuild and restart it." This is a real, specific, actionable
+instruction already in the codebase's documentation — not something to be
+invented from scratch — but it is exactly one sentence with no explanation
+of *why* this happens or *how to diagnose* it (e.g. what the actual Maven
+error message from the shade/jar plugin looks like when this occurs on
+Windows). No fuller diagnostic detail (a captured stack trace, a Maven
+error snippet, a specific test or gate where this was hit) exists anywhere
+else in the repository's history or documentation.
+
+Recommendation for the eventual troubleshooting entry: expand this existing
+sentence with (a) the underlying cause in plain terms — Windows does not
+allow overwriting/deleting a file that a running process still holds open,
+and a currently-running `regression-mcp-server.jar` process is exactly such
+a lock on the file `mvn ... clean verify`'s shade step needs to
+overwrite — and (b) the exact recovery steps already given (stop the
+configured MCP server, confirm the Java process has exited, e.g. via Task
+Manager or `Get-Process java`, then rebuild and restart). Do NOT invent a
+specific error-message quote or incident timeline that isn't backed by
+real prior evidence — none was found.
+
+--------------------------------------------------------------------------
+Nothing written this gate
+--------------------------------------------------------------------------
+
+No documentation content, new files, or edits to README.md/CLAUDE.md were
+created or applied. This is the inventory, gap analysis, and structural
+proposal only, per Phase A scope.
+================================================================================
+================================================================================
+GATE 16.2 — Write v1.0 documentation content (Phase B — content authoring
+only, no commit, no other files touched)
+================================================================================
+
+Context: master at 1c76d98 + pending, uncommitted Gate 16.1 workflow edit +
+Gate 16.2 gap-analysis (accepted structure: new regression-mcp-server/README.md,
+new regression-mcp-server/docs/TOOLS.md, shrink top-level README's MCP
+section, CLAUDE.md untouched).
+
+Before writing, every numeric/factual claim was re-verified directly
+against source this gate (not trusted from the earlier report's
+transcription):
+  - MAX_FAILURE_SUMMARY_RESPONSE_BYTES = 96 * 1024 (RegressionMcpServer.java:35)
+  - MAX_ARTIFACT_READ_RESPONSE_BYTES = 2 * 1024 * 1024 (RegressionMcpServer.java:36)
+  - ReportCapture.MAX_FILE_BYTES = 8L * 1024 * 1024, MAX_TOTAL_BYTES =
+    64L * 1024 * 1024 (ReportCapture.java:35-36)
+  - SurefireSummaryParser.MAX_FAILURE_DETAIL_BYTES = 28 * 1024 (:32)
+  - TestRunRequestValidator.MIN_TIMEOUT_SECONDS = 30, MAX_TIMEOUT_SECONDS =
+    1800 (:9-10)
+  - FeatureDiscovery.MAX_FEATURE_FILE_BYTES = 1_048_576 (:29)
+  - JavaSourceScanner.MAX_JAVA_FILE_BYTES = 1_048_576 (:23)
+  - RunStore.ALLOWED_ARTIFACT_MIME_TYPES = {image/png, image/jpeg,
+    text/plain, application/json, text/xml} (:33-34)
+  - BoundedLogDrainer.FILE_LIMIT = 16L * 1024 * 1024 (16 MiB),
+    TAIL_LIMIT = 64 * 1024 (64 KiB) (:11-12) — this constant was not
+    individually cited by name in the earlier Gate 16.2 report (it only
+    reported the 16 MiB/64 KiB figures via README prose); confirmed here
+    they come from `BoundedLogDrainer`, not `RunStore` or `TestRunCoordinator`.
+  - `tags` maxLength = 1024 on start's schema (RegressionMcpServer.java:383)
+  - Error codes REPORT_MALFORMED, ARTIFACT_TOO_LARGE
+    (RegressionMcpServer.java), UNSUPPORTED_MIME_TYPE (RunStore.java:250) —
+    all confirmed present verbatim.
+  - ModuleType enum = {CORE, UI, API, API_UI, MCP, UNKNOWN}
+    (ModuleType.java:7) — read directly for docs/TOOLS.md's module-list
+    output schema.
+  - RuleProfile enum = {CORE, API, UI, API_UI, MCP, TEST_ONLY}
+    (RuleProfile.java:7) — read directly for the three validator tools'
+    profile filter/output enum.
+  - Read `FrameworkConventionsTool.java` in full this gate (had not been
+    read in Gate 15's Phase A inspection) to confirm its schema/wiring
+    matches `ModuleBoundariesTool`/`ArchitectureTool` exactly as the
+    duplication finding claimed — confirmed, no contradiction found.
+
+No contradiction was found between the earlier Gate 16.2 report and direct
+source re-verification; nothing required stopping to report an ambiguity.
+
+--------------------------------------------------------------------------
+Files written
+--------------------------------------------------------------------------
+
+1. `regression-mcp-server/README.md` — NEW FILE, 254 lines. Sections:
+   overview, Installation, IDEA/Codex configuration, Security model,
+   Execution lifecycle, Run store, Artifact limits (table of all 10
+   source-verified bounds), JAR-lock troubleshooting, v1.0 limitations.
+   (One typo introduced and fixed during authoring: a stray non-ASCII
+   character in the Run store section was caught and corrected to "each"
+   before finishing.)
+
+2. `regression-mcp-server/docs/TOOLS.md` — NEW FILE, 172 lines. One entry
+   per tool (all 14, grouped as discovery / execution / report-artifact /
+   architecture-validator), each with purpose, read-only/execution status,
+   required/optional input fields, and output shape, plus a closing
+   "Common error codes" reference list.
+
+3. `README.md` (top-level) — EDITED. The "MCP inspection server" section
+   was shrunk from ~9 dense paragraphs to 3 short paragraphs: a 2-sentence
+   summary, a pointer to the two new files, and the existing closing
+   sentence about Stage 14/15 completion. One small factual update beyond
+   pure shrinking: "Stage 16 ... is upcoming and not yet started" was
+   changed to "is in progress," since Stage 16 gates have actually been
+   running this session — flagging this explicitly since it's a fact
+   change, not just a length reduction; the full diff is below for review.
+
+CLAUDE.md was not touched, per instruction.
+
+--------------------------------------------------------------------------
+1. New file line counts
+--------------------------------------------------------------------------
+
+  254 regression-mcp-server/README.md
+  172 regression-mcp-server/docs/TOOLS.md
+
+--------------------------------------------------------------------------
+2. Top-level README.md diff
+--------------------------------------------------------------------------
+
+diff --git a/README.md b/README.md
+index b5e4875..d574b61 100644
+--- a/README.md
++++ b/README.md
+@@ -129,21 +129,8 @@ Each product module has its own documentation with its product-specific configur
+
+ ## MCP inspection server
+
+-`regression-mcp-server` is an isolated Java 21 MCP Java SDK 2.0.0 STDIO server. As of Stage 15 it exposes 14 tools: 4 deterministic discovery tools (`regression_get_framework_overview`, `regression_list_modules`, `regression_list_features`, `regression_list_scenarios`), Stage 13 execution tools (`regression_start_test_run`, `regression_get_test_run`, `regression_cancel_test_run`), Stage 14 report/artifact tools (`regression_get_test_summary`, `regression_get_failure_summary`, `regression_get_failure_artifacts`, `regression_read_failure_artifact`), and Stage 15 architecture-validator tools (`regression_validate_module_boundaries`, `regression_validate_framework_conventions`, `regression_validate_architecture`). Execution v1 is intentionally limited to `regression-nextjs-commerce`, `dev`, a Boolean `headless` value, a 30-1800 second timeout, and an optional 1024-character Cucumber tag expression. Start requires `module`, `environment`, `headless`, and `timeoutSeconds`, and accepts only optional `tags`; get and cancel accept only the server-generated `runId`. The server always adds `not @wip`; a client `@cart` request becomes `(@cart) and not @wip`.
++`regression-mcp-server` is an isolated Java 21 MCP Java SDK 2.0.0 STDIO server that exposes 14 deterministic, closed-schema tools for inspecting and (in a narrowly scoped way) executing this reactor's tests: 4 discovery tools, 3 Stage 13 execution tools, 4 Stage 14 report/artifact tools, and 3 Stage 15 architecture-validator tools. Its only configurable boundary is `REGRESSION_ROOT`, and standard output is reserved exclusively for MCP JSON-RPC.
+
+-The three Stage 15 validator tools check declared reactor module source with JavaParser (no Symbol Solver) against fixed, closed-schema rule sets: `regression_validate_module_boundaries` (sibling-module and layering-boundary rules), `regression_validate_framework_conventions` (Selenium/Playwright locator discipline, no blocking waits, constructor injection, static mutable UI state), and `regression_validate_architecture` (definitions-layer discipline, package-dependency cycles, no assertions in pages/components, an advisory thin-`BasePage` check). Each accepts only optional `module`/`profile` filters and reports per-module `violations` (blocking) and, where a rule is advisory, a separate `advisoryViolations` array.
++See [`regression-mcp-server/README.md`](regression-mcp-server/README.md) for installation, IDEA/Codex client configuration, the security model, the execution lifecycle, the run store, artifact limits, JAR-lock troubleshooting, and known v1.0 limitations, and [`regression-mcp-server/docs/TOOLS.md`](regression-mcp-server/docs/TOOLS.md) for every tool's full input/output schema.
+
+-The server reads its only repository boundary from `REGRESSION_ROOT`. The value must resolve to an existing directory containing the reactor root `pom.xml`. Package the executable server and run it with:
+-
+-```bash
+-mvn -pl regression-mcp-server -am clean verify
+-REGRESSION_ROOT=/path/to/regression REGRESSION_MAVEN_HOME=/path/to/apache-maven java -jar regression-mcp-server/target/regression-mcp-server.jar
+-```
+-
+-Standard output is reserved for MCP JSON-RPC. Diagnostics are written to standard error.
+-
+-Every tool declares closed schemas and structured `status` envelopes. Execution runs are server-generated below `.regression-mcp/runs/<runId>` with immutable `run.json`, atomically replaced `status.json`, and separate 16 MiB stdout/stderr logs; this ignored directory is never client-addressable. Each stream retains a final 64 KiB in-memory tail after its persisted log cap. Only one run may be active. States are `QUEUED`, `RUNNING`, `PASSED`, `FAILED`, `CANCELLED`, `TIMED_OUT`, and `ERROR`.
+-
+-The coordinator records every observed owned process as a PID plus start instant, parent PID when known, and observation depth. It never terminates by PID alone, process name, shell, `taskkill`, or WMI. Cancellation, timeout, EOF, JVM shutdown, and stale-run recovery use the same bounded, deepest-first identity-safe cleanup path; an unprovable possibly-live stale identity blocks a new execution until recovery is resolved. Maven is launched through trusted Java and Maven Classworlds arguments, never `mvn.cmd` or a shell; Maven Surefire may create a downstream Windows `cmd.exe`. Standard output remains JSON-RPC-only. External Commerce smoke execution is manual. Stage 14 adds bounded, authoritative Surefire summaries with optional capture-time-only Allure enrichment (`regression_get_test_summary`, `regression_get_failure_summary`), plus server-generated-`artifactId`-only failure-artifact listing and reading with a MIME allow-list and a bounded response size (`regression_get_failure_artifacts`, `regression_read_failure_artifact`); all four require a terminal server-generated run and return structured `NOT_FOUND` for a missing, foreign, or stale run or artifact. If Windows locks the shaded JAR, stop the configured MCP server, confirm its Java process has exited, then rebuild and restart it. The MCP workflow is ready for Windows and Linux; Linux requires all MCP security tests, including symlink checks, to execute.
+-
+-Stages 14 and 15 are complete; Stage 16 (final v1.0 acceptance) is upcoming and not yet started. See `STAGE_15_16_KICKOFF.md` for its original scope and `STAGE_15_PROGRESS.md` for Stage 15's final, as-built record.
++Stages 14 and 15 are complete; Stage 16 (final v1.0 acceptance) is in progress. See `STAGE_15_16_KICKOFF.md` for its original scope and `STAGE_15_PROGRESS.md` for Stage 15's final, as-built record.
+
+--------------------------------------------------------------------------
+3. git status / git diff --check
+--------------------------------------------------------------------------
+
+git status:
+
+On branch master
+Your branch is up to date with 'origin/master'.
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   .github/workflows/main.yml
+	modified:   README.md
+	modified:   STAGE_15_PROGRESS.md
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	output-stage15.log
+	regression-mcp-server/README.md
+	regression-mcp-server/docs/
+
+no changes added to commit (use "git add" and/or "git commit -a")
+
+git diff --check: clean, no output, exit code 0.
+
+--------------------------------------------------------------------------
+4. No git write operations performed
+--------------------------------------------------------------------------
+
+Nothing was staged, committed, branched, or pushed.
+================================================================================
+================================================================================
+GATE 16.3 — Commit accumulated Stage 16 changes to master (Phase B —
+explicitly authorized direct commit to master, no branch, no PR)
+================================================================================
+
+Context: master was at 1c76d98. Six pending items from Gates 16.1/16.2 and
+Stage 16 pre-cleanup, all previously reviewed and accepted this session.
+
+--------------------------------------------------------------------------
+1. Pre-commit git status confirmation
+--------------------------------------------------------------------------
+
+`git status` before staging showed exactly the six expected items and
+nothing else:
+  modified:   .github/workflows/main.yml
+  modified:   README.md
+  modified:   STAGE_15_PROGRESS.md
+  (untracked) output-stage15.log
+  (untracked) regression-mcp-server/README.md
+  (untracked) regression-mcp-server/docs/
+Nothing unexpected — proceeded to commit as authorized.
+
+--------------------------------------------------------------------------
+2. Staging
+--------------------------------------------------------------------------
+
+`git add .github/workflows/main.yml README.md STAGE_15_PROGRESS.md
+output-stage15.log regression-mcp-server/README.md
+regression-mcp-server/docs/` — staged cleanly. Only LF->CRLF
+line-ending-normalization warnings on the three new files (Windows
+checkout convention), no errors.
+
+--------------------------------------------------------------------------
+3. Commit
+--------------------------------------------------------------------------
+
+Committed directly to master (no branch, no PR, per explicit
+authorization) as commit `8f80db4`.
+
+--------------------------------------------------------------------------
+4. Push
+--------------------------------------------------------------------------
+
+`git push origin master` succeeded: `1c76d98..8f80db4  master -> master`.
+
+--------------------------------------------------------------------------
+5. Verification
+--------------------------------------------------------------------------
+
+git log -1 --stat:
+
+commit 8f80db44ad91d9422b87151acbdd5a7126fe96f5
+Author: Georgii Zhabieiev <zhabeev@gmail.com>
+Date:   Tue Aug 18 17:03:22 2026 +0200
+
+    Stage 16: CI validate step, v1.0 documentation, pre-cleanup housekeeping
+
+    (full message as authored, matching the commit body)
+
+ .github/workflows/main.yml          |    3 +
+ README.md                           |   19 +-
+ STAGE_15_PROGRESS.md                |   10 +
+ output-stage15.log                  | 3067 +++++++++++++++++++++++++++++++++++
+ regression-mcp-server/README.md     |  254 +++
+ regression-mcp-server/docs/TOOLS.md |  172 ++
+ 6 files changed, 3509 insertions(+), 16 deletions(-)
+
+File list matches exactly the six items expected and accepted this
+session — nothing extra, nothing missing.
+
+git status after push:
+
+On branch master
+Your branch is up to date with 'origin/master'.
+
+nothing to commit, working tree clean
+
+Push confirmed successful: working tree clean, master up to date with
+origin/master, commit 8f80db4 is now the tip of both.
+================================================================================
+================================================================================
+PART B — Full user journey via regression-mcp-server MCP tools (real tool
+calls, raw responses reported verbatim, stop on any status:"error" OR any
+unexpected result per instruction)
+================================================================================
+
+Context: master at 8f80db4, clean working tree. Journey executed against the
+live `regression-framework` MCP server (STDIO, connected; confirmed earlier
+this session via `claude mcp list`).
+
+--------------------------------------------------------------------------
+1. regression_get_framework_overview (no arguments)
+--------------------------------------------------------------------------
+
+Raw response:
+{"data":{"javaVersion":"21","availability":"AVAILABLE","name":"regression","buildTool":"Maven","root":"D:/mytests"},"status":"ok"}
+
+status: ok. Proceeded to step 2.
+
+--------------------------------------------------------------------------
+2. regression_list_modules (no arguments)
+--------------------------------------------------------------------------
+
+Raw response:
+{"data":{"modules":[
+  {"type":"CORE","directoryExists":true,"relativePath":"regression-core","name":"regression-core","pomExists":true},
+  {"type":"API","directoryExists":true,"relativePath":"regression-petstore-api","name":"regression-petstore-api","pomExists":true},
+  {"type":"API_UI","directoryExists":true,"relativePath":"regression-jhipster","name":"regression-jhipster","pomExists":true},
+  {"type":"UI","directoryExists":true,"relativePath":"regression-nextjs-commerce","name":"regression-nextjs-commerce","pomExists":true},
+  {"type":"MCP","directoryExists":true,"relativePath":"regression-mcp-server","name":"regression-mcp-server","pomExists":true}
+]},"status":"ok"}
+
+status: ok, but UNEXPECTED RESULT — only 5 modules were returned, not the 6
+expected per the journey instructions. All 5 present entries have
+directoryExists:true and pomExists:true with plausible type values, but a
+6th module (present in the actual reactor per Gate 16.0's `mvn validate`
+BUILD SUCCESS log earlier in this file, which enumerated 6 reactor modules:
+regression, regression-core, regression-petstore-api, regression-jhipster,
+"Regression - Next.js Commerce UI", regression-mcp-server) is absent from
+this tool's output. Per instruction ("Do not fix, silence, or explain away
+any unexpected result — report it exactly and stop for a decision"), the
+journey was paused here and the discrepancy was reported to the user for a
+decision before proceeding to step 3. No source files, no MCP server code,
+and no further tool calls were made after this point in this entry. This
+log entry itself was added at the user's explicit request, appended here
+without altering any prior content in this file.
+================================================================================
+================================================================================
+PART B side-check — root pom.xml <modules> declaration (read-only, no tool
+calls, no code changes)
+================================================================================
+
+Confirmed by direct inspection of D:\mytests\pom.xml (root artifactId
+`regression`, groupId `com.aqa`, version `1.0.0`, packaging `pom`):
+
+  <modules>
+      <module>regression-core</module>
+      <module>regression-petstore-api</module>
+      <module>regression-jhipster</module>
+      <module>regression-nextjs-commerce</module>
+      <module>regression-mcp-server</module>
+  </modules>
+
+Exactly 5 <module> entries, matching regression_list_modules's step-2
+response exactly. The root project correctly does not declare itself as its
+own module. Conclusion: the earlier "expected 6" framing in the journey
+instructions was the mismatch, not the tool — 6 only holds if the reactor
+root itself (`regression`) is counted alongside its 5 declared children,
+which is what Maven's own reactor build/`mvn validate` output does (it
+treats the parent POM as a build unit). regression_list_modules is
+documented as listing "the reactor modules declared by the root parent
+pom.xml," i.e. the 5 children only — correctly excluding the parent. No
+tool bug. Journey resumed from step 3 on this basis.
+================================================================================
+================================================================================
+PART B (resumed) — steps 3-5 (real tool calls, raw responses reported
+verbatim, stopped at step 5 on status:"error" per instruction)
+================================================================================
+
+Context: master at 8f80db4, clean working tree. Continuing the live journey
+against the connected `regression-framework` MCP server.
+
+--------------------------------------------------------------------------
+3. regression_list_features (module: "regression-nextjs-commerce")
+--------------------------------------------------------------------------
+
+Raw response:
+{"data":{"featureRoot":"src/test/resources/features","features":[
+  {"language":"en","path":"src/test/resources/features/cart_management.feature","scenarioCount":1,"tags":["@cart","@ui"],"line":2,"name":"Shopping cart management"},
+  {"language":"en","path":"src/test/resources/features/catalog_search.feature","scenarioCount":1,"tags":["@catalog","@ui"],"line":2,"name":"Product catalog search"}
+],"featureRootExists":true,"module":"regression-nextjs-commerce"},"status":"ok"}
+
+status: ok. Feature count: 2.
+
+--------------------------------------------------------------------------
+4a. regression_list_scenarios (module only: "regression-nextjs-commerce")
+--------------------------------------------------------------------------
+
+Raw response:
+{"data":{"scenarios":[
+  {"path":"src/test/resources/features/cart_management.feature","type":"SCENARIO","feature":"Shopping cart management","tags":["@cart","@smoke","@ui"],"line":5,"name":"Add a configured product and manage its quantity"},
+  {"path":"src/test/resources/features/catalog_search.feature","type":"SCENARIO","feature":"Product catalog search","tags":["@catalog","@smoke","@ui"],"line":5,"name":"Search returns the expected product"}
+],"module":"regression-nextjs-commerce"},"status":"ok"}
+
+status: ok. Scenario count: 2. Chose "@cart" as the narrowing tag
+expression for 4b (present on only 1 of the 2 scenarios).
+
+--------------------------------------------------------------------------
+4b. regression_list_scenarios (module + tags: "@cart")
+--------------------------------------------------------------------------
+
+Raw response:
+{"data":{"scenarios":[
+  {"path":"src/test/resources/features/cart_management.feature","type":"SCENARIO","feature":"Shopping cart management","tags":["@cart","@smoke","@ui"],"line":5,"name":"Add a configured product and manage its quantity"}
+],"module":"regression-nextjs-commerce"},"status":"ok"}
+
+status: ok. Filtered count: 1, confirmed smaller than the unfiltered count
+of 2.
+
+--------------------------------------------------------------------------
+5. regression_start_test_run (module: "regression-nextjs-commerce",
+   environment: "dev", headless: true, timeoutSeconds: 300, tags: "@cart")
+--------------------------------------------------------------------------
+
+Raw response:
+{"status":"error","error":{"message":"Trusted Maven runtime configuration is unavailable.","code":"MAVEN_RUNTIME_UNAVAILABLE"}}
+
+status: error — STOPPED per instruction ("stop on any status:'error'").
+Request parameters matched the accepted schema and reused values already
+proven valid in steps 1-4b; this was not a client-side request mistake. The
+error indicates the connected MCP server process's trusted Maven runtime
+(e.g. REGRESSION_MAVEN_HOME or equivalent execution-launcher configuration)
+is unavailable/unconfigured on this machine. No retry, no configuration
+change, and no further tool calls (steps 6-10, all of which depend on a
+runId from a successful step 5) were made after this point. The discrepancy
+was reported to the user for a decision: (1) read-only investigation of the
+running server's Maven runtime configuration, (2) skip steps 5-10 and
+proceed directly to step 11's validator tools (no run dependency), or (3)
+other. This log entry was added at the user's explicit request, appended
+here without altering any prior content in this file.
+================================================================================
+================================================================================
+MAVEN_RUNTIME_UNAVAILABLE investigation and fix — local MCP client
+registration only (no repository source files, no .gitignore, no code
+changed)
+================================================================================
+
+Context: regression_start_test_run (Part B step 5) had just failed with
+{"status":"error","error":{"message":"Trusted Maven runtime configuration is
+unavailable.","code":"MAVEN_RUNTIME_UNAVAILABLE"}}. Discovery tools
+(overview/modules/features/scenarios) had all worked fine.
+
+--------------------------------------------------------------------------
+1. regression-mcp-server/README.md re-read (Installation + Security model)
+--------------------------------------------------------------------------
+
+Confirmed verbatim: "`REGRESSION_MAVEN_HOME` is only needed by the three
+execution tools (Stage 13) to launch Maven directly; the read-only
+inspection tools do not need it." `REGRESSION_ROOT` is the only var required
+for the server to start at all.
+
+--------------------------------------------------------------------------
+2. claude mcp get regression-framework (before fix)
+--------------------------------------------------------------------------
+
+regression-framework:
+  Scope: Local config (private to you in this project)
+  Status: Connected
+  Type: stdio
+  Command: java
+  Args: -jar D:/mytests/regression-mcp-server/target/regression-mcp-server.jar
+  Environment:
+    REGRESSION_ROOT=D:/mytests
+
+Confirmed: REGRESSION_MAVEN_HOME was absent. This matches the
+MAVEN_RUNTIME_UNAVAILABLE error exactly.
+
+--------------------------------------------------------------------------
+3. mvn -v (find the real local Maven home)
+--------------------------------------------------------------------------
+
+Apache Maven 3.9.16 (2bdd9fddda4b155ebf8000e807eb73fd829a51d5)
+Maven home: C:\apache-maven-3.9.16
+Java version: 21.0.12, vendor: Microsoft, runtime: C:\Users\George\.jdks\ms-21.0.12
+OS name: "windows 11", version: "10.0", arch: "amd64", family: "windows"
+
+Real path found (not guessed/constructed): C:\apache-maven-3.9.16
+
+--------------------------------------------------------------------------
+4. claude mcp add --help / claude mcp --help (determine update mechanism)
+--------------------------------------------------------------------------
+
+`claude mcp --help` lists only: add, add-from-claude-desktop, add-json, get,
+help, list, login, logout, remove, reset-project-choices, serve. No
+`update` subcommand exists. Confirmed the only supported path to add a
+second env var to an existing stdio entry is remove + re-add with both env
+vars set.
+
+--------------------------------------------------------------------------
+5. Fix applied — attempt 1 (mis-escaped, self-corrected before reporting
+   success)
+--------------------------------------------------------------------------
+
+  claude mcp remove regression-framework -s local
+  claude mcp add regression-framework -e REGRESSION_ROOT=D:/mytests \
+    -e REGRESSION_MAVEN_HOME=C:\apache-maven-3.9.16 -- java -jar \
+    D:/mytests/regression-mcp-server/target/regression-mcp-server.jar
+
+`claude mcp get regression-framework` afterward showed
+REGRESSION_MAVEN_HOME=C:apache-maven-3.9.16 — the backslash had been
+consumed as a POSIX escape character by the Bash tool's Git Bash shell,
+silently dropping the path separator between "C:" and
+"apache-maven-3.9.16" and producing an invalid path. Caught before
+reporting this as done; not silenced.
+
+--------------------------------------------------------------------------
+5 (continued). Fix applied — attempt 2 (corrected, forward slashes)
+--------------------------------------------------------------------------
+
+  claude mcp remove regression-framework -s local
+  claude mcp add regression-framework -e REGRESSION_ROOT=D:/mytests \
+    -e REGRESSION_MAVEN_HOME=C:/apache-maven-3.9.16 -- java -jar \
+    D:/mytests/regression-mcp-server/target/regression-mcp-server.jar
+
+claude mcp get regression-framework (after fix):
+
+regression-framework:
+  Scope: Local config (private to you in this project)
+  Status: Connected
+  Type: stdio
+  Command: java
+  Args: -jar D:/mytests/regression-mcp-server/target/regression-mcp-server.jar
+  Environment:
+    REGRESSION_ROOT=D:/mytests
+    REGRESSION_MAVEN_HOME=C:/apache-maven-3.9.16
+
+Confirmed both env vars now present with valid values.
+
+--------------------------------------------------------------------------
+6. Restart requirement
+--------------------------------------------------------------------------
+
+A fresh Claude Code session/window is required before retrying
+regression_start_test_run. This session's live MCP client connection was
+established at session start against the old registration
+(REGRESSION_ROOT only); claude mcp get reads the updated
+~/.claude.json config file, but this session's already-connected MCP
+client process does not re-read it. Per instruction,
+regression_start_test_run was NOT re-attempted in this session.
+
+--------------------------------------------------------------------------
+Scope confirmation
+--------------------------------------------------------------------------
+
+No repository source files, no .gitignore, and no code were changed. Only
+the local Claude Code MCP client configuration
+(C:\Users\George\.claude.json, project-scoped "regression-framework"
+entry) was modified, as authorized. This log entry was added at the user's
+explicit request, appended here without altering any prior content in this
+file.
+================================================================================
+================================================================================
+RESUME PART B — steps 5-11 (real tool calls, raw responses reported
+verbatim, stopped at step 11 on an unexpected result per instruction)
+================================================================================
+
+Context: a new session, confirmed via `claude mcp get regression-framework`
+that the fix from the prior entry took effect:
+
+regression-framework:
+  Scope: Local config (private to you in this project)
+  Status: Connected
+  Type: stdio
+  Command: java
+  Args: -jar D:/mytests/regression-mcp-server/target/regression-mcp-server.jar
+  Environment:
+    REGRESSION_ROOT=D:/mytests
+    REGRESSION_MAVEN_HOME=C:/apache-maven-3.9.16
+
+Both env vars present. Proceeded with steps 5-11 of the journey (steps 1-4
+had already succeeded in the prior session, recorded above).
+
+--------------------------------------------------------------------------
+5. regression_start_test_run (module: "regression-nextjs-commerce",
+   environment: "dev", headless: true, timeoutSeconds: 300, tags: "@cart")
+--------------------------------------------------------------------------
+
+Raw response:
+{"status":"ok","data":{"headless":true,"stderrBytes":0,"stdoutTruncated":false,"module":"regression-nextjs-commerce","timeoutSeconds":300,"stdoutBytes":0,"tags":"(@cart) and not @wip","state":"QUEUED","createdAt":"2026-08-18T19:16:57.371216200Z","stderrTruncated":false,"runId":"run-355f0811feca452236d06d9fa298209e","environment":"dev"}}
+
+status: ok. runId: run-355f0811feca452236d06d9fa298209e. Initial state:
+QUEUED. The server again expanded tags to "(@cart) and not @wip", matching
+the pattern already observed in step 4b's discussion.
+
+--------------------------------------------------------------------------
+6. regression_get_test_run polling (same runId)
+--------------------------------------------------------------------------
+
+Poll 1 (~0s after start):
+{"status":"ok","data":{"tags":"(@cart) and not @wip","stdoutTruncated":false,"runId":"run-355f0811feca452236d06d9fa298209e","stderrBytes":0,"timeoutSeconds":300,"headless":true,"environment":"dev","reason":"RUNNING","state":"RUNNING","stdoutBytes":0,"createdAt":"2026-08-18T19:16:57.371216200Z","startedAt":"2026-08-18T19:16:57.559671700Z","stderrTruncated":false,"module":"regression-nextjs-commerce"}}
+
+Poll 2 (~15s later, terminal):
+{"status":"ok","data":{"runId":"run-355f0811feca452236d06d9fa298209e","stderrBytes":258,"exitCode":0,"module":"regression-nextjs-commerce","state":"PASSED","environment":"dev","startedAt":"2026-08-18T19:16:57.559671700Z","stdoutTruncated":false,"headless":true,"tags":"(@cart) and not @wip","createdAt":"2026-08-18T19:16:57.371216200Z","stderrTruncated":false,"timeoutSeconds":300,"stdoutBytes":3979,"reason":"PASSED","finishedAt":"2026-08-18T19:17:21.123944500Z"}}
+
+status: ok on both polls. Terminal state reached after 2 polls: PASSED,
+exitCode 0.
+
+--------------------------------------------------------------------------
+7. regression_get_test_summary (same runId)
+--------------------------------------------------------------------------
+
+Raw response:
+{"status":"ok","data":{"tests":2,"failures":0,"suites":[{"tests":2,"failures":0,"id":":com.aqa.nextjscommerce.runners.RunCucumberTest","skipped":1,"errors":0,"duration":"13.663"}],"errors":0,"duration":"13.451","skipped":1,"runId":"run-355f0811feca452236d06d9fa298209e","detailsTruncated":true,"passed":1}}
+
+status: ok. Flagged (not treated as a stop-worthy error): tests:2,
+passed:1, skipped:1, despite step 4b having narrowed "@cart" to exactly 1
+scenario. failures:0, so this did not meet the "status:error" stop
+condition and was not treated as blocking; reported here for the record
+rather than explained away.
+
+--------------------------------------------------------------------------
+8. regression_get_failure_summary (same runId)
+--------------------------------------------------------------------------
+
+Raw response:
+{"status":"ok","data":{"runId":"run-355f0811feca452236d06d9fa298209e","failureRecords":[],"failures":0,"errors":0,"detailsTruncated":false,"skipped":1,"tests":2,"allureAvailability":"AVAILABLE"}}
+
+status: ok. failures: 0, failureRecords: empty, consistent with the PASSED
+run.
+
+--------------------------------------------------------------------------
+9. regression_get_failure_artifacts (same runId)
+--------------------------------------------------------------------------
+
+Raw response:
+{"status":"ok","data":{"artifacts":[
+  {"artifactId":"7ff831cb65d5c46ba7a57469817740cf","size":154,"mimeType":"application/json","name":"22791067-40fa-4f6a-b278-b0eb94b3f8dd-container.json","relativePath":"22791067-40fa-4f6a-b278-b0eb94b3f8dd-container.json"},
+  {"artifactId":"f9f14e351fe97e24da70523998ba5fbc","size":29,"mimeType":"application/octet-stream","name":"41d005e5-fc04-4210-9f15-b4115381c5d1-attachment","relativePath":"41d005e5-fc04-4210-9f15-b4115381c5d1-attachment"},
+  {"artifactId":"c742d00e2e42d2a62b327c56c39f002d","size":4012,"mimeType":"application/json","name":"6db8b039-e085-4b08-8dac-a181739442e2-result.json","relativePath":"6db8b039-e085-4b08-8dac-a181739442e2-result.json"},
+  {"artifactId":"5889806a5cc4a67b1481e887cc7521c9","size":437,"mimeType":"application/json","name":"78767521-6caa-4337-98ac-80c687296a6b-container.json","relativePath":"78767521-6caa-4337-98ac-80c687296a6b-container.json"},
+  {"artifactId":"ec991d71756b4febf2f1ab43e114c164","size":574,"mimeType":"application/json","name":"a5b69a01-b0e8-48e9-a472-75b539a228e2-container.json","relativePath":"a5b69a01-b0e8-48e9-a472-75b539a228e2-container.json"},
+  {"artifactId":"c2944c0adda13f7d8ca8e58309810f08","size":413,"mimeType":"application/json","name":"b7cbe330-e8af-47eb-bc77-907f1429a345-container.json","relativePath":"b7cbe330-e8af-47eb-bc77-907f1429a345-container.json"},
+  {"artifactId":"39e6a2eb7bf12113c4dd2929db188db5","size":48,"mimeType":"text/csv","name":"e3857571-5f00-4585-bc0d-1aeeb88b5285-attachment.csv","relativePath":"e3857571-5f00-4585-bc0d-1aeeb88b5285-attachment.csv"}
+],"runId":"run-355f0811feca452236d06d9fa298209e"}}
+
+status: ok. 7 Allure artifacts listed (result/container/attachment files)
+even though the run passed with 0 failures — these are general captured
+Allure artifacts for the run, not failure-only artifacts.
+
+--------------------------------------------------------------------------
+10. regression_read_failure_artifact (artifactId
+    7ff831cb65d5c46ba7a57469817740cf, the 154-byte container.json)
+--------------------------------------------------------------------------
+
+Raw response:
+{"status":"ok","data":{"name":"22791067-40fa-4f6a-b278-b0eb94b3f8dd-container.json","size":154,"artifactId":"7ff831cb65d5c46ba7a57469817740cf","mimeType":"application/json","relativePath":"22791067-40fa-4f6a-b278-b0eb94b3f8dd-container.json","content":"eyJ1dWlkIjoiMjI3OTEwNjctNDBmYS00ZjZhLWIyNzgtYjBlYjk0YjNmOGRkIiwibmFtZSI6IlJ1bkN1Y3VtYmVyVGVzdCIsImNoaWxkcmVuIjpbXSwiYmVmb3JlcyI6W10sImFmdGVycyI6W10sInN0YXJ0IjoxNzg3MDgwNjI3MTk5LCJzdG9wIjoxNzg3MDgwNjQwODcwfQ=="}}
+
+status: ok. Base64 `content` decoded locally (via `base64 -d`) to confirm
+it is sane, well-formed JSON, not truncated garbage:
+{"uuid":"22791067-40fa-4f6a-b278-b0eb94b3f8dd","name":"RunCucumberTest","children":[],"befores":[],"afters":[],"start":1787080627199,"stop":1787080640870}
+
+--------------------------------------------------------------------------
+11. Validator tools, no filters — regression_validate_module_boundaries,
+    regression_validate_framework_conventions, regression_validate_architecture
+--------------------------------------------------------------------------
+
+regression_validate_module_boundaries: status ok, 0 violations in all 5
+modules (regression-core/CORE, regression-petstore-api/API,
+regression-jhipster/API_UI, regression-nextjs-commerce/UI,
+regression-mcp-server/MCP), 0 advisoryViolations anywhere.
+
+regression_validate_framework_conventions: status ok. Violation counts:
+regression-core 0, regression-petstore-api 25 (all FC-003, generated
+OpenAPI model setters), regression-jhipster 61 (1 FC-001-PW +
+60 FC-003, generated JHipster API models plus one Playwright locator
+finding), regression-nextjs-commerce 0, regression-mcp-server 0.
+advisoryViolations: 0 in every module. No baseline was given for this
+tool's counts in the resume instructions, so these are reported without a
+match/mismatch judgment.
+
+regression_validate_architecture: status ok. Violation counts:
+regression-core 0, regression-petstore-api 0, regression-jhipster 18 (all
+ARCH-003, "assertion not allowed in page/component"), regression-nextjs-commerce
+2 (both ARCH-002, package-dependency cycle), regression-mcp-server 0.
+advisoryViolations: 0 in every module.
+
+Baseline check against the resume instructions ("ARCH-002: exactly 1
+package-cycle violation; ARCH-003: exactly 18 pre-existing assertion
+violations"):
+  - ARCH-003 (regression-jhipster): 18 violations counted — MATCHES the
+    stated baseline exactly.
+  - ARCH-002 (regression-nextjs-commerce): 2 violations returned, NOT 1.
+    Both entries carry ruleId "ARCH-002" and describe the same underlying
+    cycle (com.aqa.nextjscommerce.config -> com.aqa.nextjscommerce.driver
+    -> com.aqa.nextjscommerce.config), but are reported once per
+    participating file:
+      {"message":"Package dependency cycle: com.aqa.nextjscommerce.config -> com.aqa.nextjscommerce.driver -> com.aqa.nextjscommerce.config","line":1,"file":"regression-nextjs-commerce/src/test/java/com/aqa/nextjscommerce/config/CommerceProperty.java","ruleId":"ARCH-002","module":"regression-nextjs-commerce"}
+      {"message":"Package dependency cycle: com.aqa.nextjscommerce.config -> com.aqa.nextjscommerce.driver -> com.aqa.nextjscommerce.config","line":1,"file":"regression-nextjs-commerce/src/test/java/com/aqa/nextjscommerce/driver/BrowserType.java","ruleId":"ARCH-002","module":"regression-nextjs-commerce"}
+    This does not match the stated "exactly 1" baseline as a raw violation
+    count, though it may still represent a single logical cycle reported
+    per participating file rather than a second, distinct cycle. Per
+    instruction ("Do not fix, silence, or explain away any unexpected
+    result — report it exactly and stop for a decision"), the journey was
+    paused here and this discrepancy was reported to the user for a
+    decision. No further tool calls were made after step 11.
+
+--------------------------------------------------------------------------
+Scope confirmation
+--------------------------------------------------------------------------
+
+No repository source files, no MCP server code, and no configuration were
+changed in this entry — steps 5-11 were read/execute tool calls against
+the already-fixed, already-connected regression-framework MCP server only.
+This log entry was added at the user's explicit request, appended here
+without altering any prior content in this file.
+================================================================================
+================================================================================
+SIDE-CHECK — ARCH-002's actual asserted violation count in the real-reactor
+test (read-only, source reading only, no tool calls, no code changes)
+================================================================================
+
+Context: resuming from step 11's flagged discrepancy — the live
+regression_validate_architecture response returned 2 ARCH-002 violation
+entries for regression-nextjs-commerce's config<->driver cycle, against the
+resume instructions' stated baseline of "exactly 1 package-cycle
+violation." This side-check reads the already-accepted test source directly
+to determine whether 2 is the real, already-accepted baseline or a genuine
+behavior change.
+
+--------------------------------------------------------------------------
+1. Locating the real-reactor ARCH-002 test
+--------------------------------------------------------------------------
+
+Two Architecture test files exist:
+  regression-mcp-server/src/test/java/com/aqa/mcp/validation/ArchitectureRulesTest.java
+  regression-mcp-server/src/test/java/com/aqa/mcp/validation/ArchitectureToolTest.java
+(A third, ArchitectureToolContractTest.java, exists but contains no
+ARCH-002/cycle-related content — confirmed via grep, no match.)
+
+ArchitectureRulesTest.java is Tier-1: pure rule-level unit tests against
+synthetic in-memory sources, no filesystem I/O, no real reactor involved
+(confirmed by its own class Javadoc: "Tier 1: pure rule-level unit tests
+for ArchitectureRules... Tool/contract-level (TempDir-based, 'Tier 2')
+coverage lives in ArchitectureToolTest and ArchitectureToolContractTest,
+including the two new real-reactor-facing tests for ARCH-002 and
+ARCH-003"). Its own ARCH-002 tests are synthetic and establish the general
+emission rule: a synthetic 2-package cycle asserts
+`.hasSize(2)` (test `arch002FlagsATwoPackageCycleAndListsTheFullSequenceForEachParticipant`),
+and a synthetic 3-package cycle asserts `.hasSize(3)` — i.e. one
+`Violation` per participating package, confirmed generally, not just for
+the real reactor's specific cycle.
+
+The real-reactor ARCH-002 test itself lives in ArchitectureToolTest.java
+(NOT ArchitectureToolContractTest.java, despite the "Tool/contract-level"
+Javadoc phrasing above naming both — confirmed by direct grep + read),
+method `realReactorHasOnlyTheOneKnownAcceptedArch002PackageCycle`
+(lines 102-123), preceded by a Javadoc block (lines 91-101) recording the
+same Gate 15.5 discovery narrative already known from STAGE_15_PROGRESS.md.
+
+--------------------------------------------------------------------------
+2. Exact assertion quoted verbatim
+--------------------------------------------------------------------------
+
+    assertThat(arch002Violations).hasSize(2);
+    assertThat(arch002Violations).allSatisfy(violation -> {
+        assertThat(violation.get("module")).isEqualTo("regression-nextjs-commerce");
+        assertThat((String) violation.get("message")).contains("com.aqa.nextjscommerce.config").contains("com.aqa.nextjscommerce.driver");
+    });
+    assertThat(arch002Violations).extracting(violation -> violation.get("file")).containsExactlyInAnyOrder(
+            "regression-nextjs-commerce/src/test/java/com/aqa/nextjscommerce/config/CommerceProperty.java",
+            "regression-nextjs-commerce/src/test/java/com/aqa/nextjscommerce/driver/BrowserType.java");
+
+--------------------------------------------------------------------------
+3. Does the test assert 1 or 2 violation entries?
+--------------------------------------------------------------------------
+
+Exactly 2 — `.hasSize(2)`, one entry per participating file
+(CommerceProperty.java and BrowserType.java by name, via
+`containsExactlyInAnyOrder`). This is consistent with
+ArchitectureRulesTest.java's general synthetic-cycle finding above: one
+`Violation` per participating package/file is the rule's by-design
+emission granularity, not a real-reactor-specific quirk.
+
+--------------------------------------------------------------------------
+4. Cross-check against STAGE_15_PROGRESS.md
+--------------------------------------------------------------------------
+
+STAGE_15_PROGRESS.md's Gate 15.5 rule-description section states the
+emission rule precisely and unambiguously (lines 210-221): "One
+`Violation` is emitted per package participating in a detected cycle,
+listing the full cycle sequence." This matches the test's `.hasSize(2)`
+exactly: 1 cycle, 2 participating packages, 2 violations.
+
+Elsewhere in the same document, narrative prose describing the Gate 15.5
+discovery (lines 283-295, and again in the dated changelog at lines
+356-372) is looser: "the real-reactor ARCH-002 test now asserts that
+*exactly* this one cycle is present (both participating files by name)."
+This sentence is technically correct (it says "one cycle," not "one
+violation") but is the likely source of the resume instructions'
+"exactly 1 package-cycle violation" framing — the phrase "one cycle" was
+read as "one violation entry," which the document's own precise technical
+rule statement (line 214) and the test's own assertion (`.hasSize(2)`)
+both contradict.
+
+--------------------------------------------------------------------------
+Conclusion
+--------------------------------------------------------------------------
+
+regression_validate_architecture's live response for ARCH-002 (2
+violations, same two files, same message, same module) matches the
+already-accepted test baseline in ArchitectureToolTest.java exactly. This
+is not a behavior change and not a tool bug. The "expected 1" baseline
+given in the resume instructions was an imprecise restatement (1 cycle
+conflated with 1 violation) of STAGE_15_PROGRESS.md's own narrative prose,
+not a mismatch against the actual, already-accepted, already-passing test
+suite. No source files were modified in this side-check; only
+ArchitectureRulesTest.java, ArchitectureToolTest.java, and
+STAGE_15_PROGRESS.md were read.
+================================================================================

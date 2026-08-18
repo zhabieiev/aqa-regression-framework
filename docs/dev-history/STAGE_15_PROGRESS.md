@@ -378,3 +378,42 @@ those live in output.log / the conversation history.)_
   `regression_validate_framework_conventions`,
   `regression_validate_architecture`) are shipped, verified, and merged.
   Next: Stage 16 (final v1.0 acceptance).
+
+- 2026-08-18 — Stage 16 (final v1.0 acceptance) completed and accepted,
+  closing out v1.0. Gates 16.0-16.3 accepted: 16.0 confirmed baseline
+  (269 tests, 0 failures, 0 errors, 5 pre-existing skips; clean `mvn
+  validate` across all 6 reactor modules); 16.1 added a "Validate the full
+  reactor POMs" (`mvn validate`) step to `regression-mcp-server-security`
+  in `.github/workflows/main.yml`, running on both matrix legs; 16.2 wrote
+  the full v1.0 documentation set (`regression-mcp-server/README.md`,
+  `regression-mcp-server/docs/TOOLS.md`, a shrunk top-level README MCP
+  section); 16.3 committed and pushed all of the above directly to master
+  as `8f80db4`. After 16.3, a full manual v1.0 user journey was run against
+  the live MCP server (all 14 tools exercised end to end, including a real
+  `regression_start_test_run`/poll/summary/failure-artifact/
+  read-artifact cycle against `regression-nextjs-commerce`): no real bugs
+  found. Two apparent discrepancies surfaced during the journey were both
+  traced to imprecise baseline restatements in the journey's own resume
+  instructions, not tool defects — `regression_list_modules` correctly
+  returns the 5 reactor children, not 6, because it does not count the
+  parent POM itself as a module; and `regression_validate_architecture`'s
+  ARCH-002 response correctly returns 2 violations (one per participating
+  file, `CommerceProperty.java` and `BrowserType.java`) for the single
+  known `com.aqa.nextjscommerce.config`/`driver` cycle, matching
+  `ArchitectureToolTest`'s already-accepted
+  `realReactorHasOnlyTheOneKnownAcceptedArch002PackageCycle` test exactly
+  (one `Violation` per cycle participant is this rule's documented,
+  by-design emission granularity, not a bug). One real, unrelated fix was
+  needed along the way: the local `regression-framework` MCP client
+  registration was missing `REGRESSION_MAVEN_HOME`, causing
+  `regression_start_test_run` to fail with `MAVEN_RUNTIME_UNAVAILABLE`;
+  fixed by re-registering the client with both `REGRESSION_ROOT` and
+  `REGRESSION_MAVEN_HOME` set (local MCP client config only, no repository
+  source changed). Finally, this same closeout restructured the repository
+  root for external readers: `STAGE_15_16_KICKOFF.md`, this file, and the
+  archived Stage 15/16 session logs moved into `docs/dev-history/`, with
+  every live cross-reference in `README.md`, `regression-mcp-server/
+  README.md`, and three source-comment citations updated to the new paths;
+  references inside the archived `.log` files themselves were left
+  untouched as historical narrative. v1.0 is now complete and tagged
+  `regression-mcp-server-v1.0.0`.

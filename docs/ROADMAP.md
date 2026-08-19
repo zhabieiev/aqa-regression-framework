@@ -32,7 +32,7 @@ module/area; each module's own README carries more detail where noted.
 
 - Add a dedicated UI assertion timeout, an ID-based scenario cleanup
   registry, and pagination-aware API cleanup. This is one item drawn from a
-  larger, already-detailed list — see `regression-jhipster/README.MD`'s
+  larger, already-detailed list — see `regression-jhipster/README.md`'s
   "Next Steps and Improvements" (Priority 1 and 2) for the complete,
   code-pointer-backed breakdown; that list is not repeated here.
 

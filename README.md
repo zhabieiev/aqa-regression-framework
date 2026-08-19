@@ -121,7 +121,7 @@ for known, accepted debt.
 Each product module has its own documentation with its product-specific configuration and execution details:
 
 - `regression-petstore-api/README.md`
-- `regression-jhipster/README.MD`
+- `regression-jhipster/README.md`
 - `regression-nextjs-commerce/README.md`
 
 ## MCP inspection server

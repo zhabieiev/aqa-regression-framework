@@ -28,7 +28,7 @@ treat it as binding regardless of how you were pointed at it.
 
 ## Architecture
 
-- Preserve the established direction: `Gherkin â†’ definitions â†’ steps â†’ pages/services â†’ components/clients`.
+- Preserve the established direction: `Gherkin → definitions → steps → pages/services → components/clients`.
 - Choose JUnit for technical checks and Cucumber when Gherkin is a useful executable specification; do not force one runner model onto every module.
 - Keep Cucumber definitions thin: bind Gherkin input, convert it when necessary, and delegate. Do not place browser calls, locators, assertions, services, or business branching in definitions.
 - Keep API transport, request construction, and response deserialization in services/clients. Keep scenario and business orchestration in steps.

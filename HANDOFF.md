@@ -25,7 +25,7 @@ start of a session; update it at the end of one, per `CLAUDE.md`'s
 2026-08-19 — a two-phase documentation audit and implementation pass across
 `CLAUDE.md`, `README.md`, `docs/TECHNICAL_DEBT.md`, `docs/ROADMAP.md`,
 `regression-mcp-server/README.md`, `regression-mcp-server/docs/TOOLS.md`,
-and `regression-jhipster/README.MD`, aimed at multi-LLM/multi-agent
+and `regression-jhipster/README.md`, aimed at multi-LLM/multi-agent
 usability:
 
 - Phase A (inspect/propose only): produced a prioritized findings report,

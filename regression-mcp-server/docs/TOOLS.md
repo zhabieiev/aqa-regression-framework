@@ -160,13 +160,21 @@ rule.
 Not an exhaustive list of every error code in the server, but the ones most
 relevant to normal client use: `INVALID_ARGUMENTS` (schema-level input
 rejection), `INVALID_TIMEOUT` (timeout outside 30-1800), `INVALID_TAG_EXPRESSION`
-(malformed Cucumber tag expression), `NOT_FOUND` (missing/foreign/stale
-run or artifact, or a non-terminal run for a report/artifact tool),
-`RUN_NOT_TERMINAL` (report/artifact tool called on a still-active run),
-`REPORT_MALFORMED` / `REPORT_INDEX_CORRUPT` (published report data failed
-its own bounded/structural check), `ARTIFACT_TOO_LARGE` (artifact read
-response exceeds its 2 MiB cap), `UNSUPPORTED_MIME_TYPE` (artifact's MIME
-type is not on the allow-list), `FEATURE_FILE_TOO_LARGE` /
+(malformed Cucumber tag expression), `UNSUPPORTED_MODULE`
+(`regression_start_test_run`'s `module` is not `regression-nextjs-commerce`,
+the only module Execution v1 supports), `UNSUPPORTED_CAPABILITY`
+(`regression_start_test_run`'s `environment` or `headless` value is not
+supported by the module's execution profile), `RUN_NOT_FOUND` (a `runId`
+does not match any server-generated run — returned by
+`regression_get_test_run`, `regression_cancel_test_run`, and the four
+report/artifact tools), `RUN_NOT_TERMINAL` (report/artifact tool called on
+a still-active run), `NOT_FOUND` (report data or an artifact is
+unavailable for an otherwise valid, terminal run — for example a run that
+predates report capture, an unavailable Surefire report, or an unknown
+`artifactId`), `REPORT_MALFORMED` / `REPORT_INDEX_CORRUPT` (published
+report data failed its own bounded/structural check), `ARTIFACT_TOO_LARGE`
+(artifact read response exceeds its 2 MiB cap), `UNSUPPORTED_MIME_TYPE`
+(artifact's MIME type is not on the allow-list), `FEATURE_FILE_TOO_LARGE` /
 `SOURCE_FILE_TOO_LARGE` (a scanned file exceeds its 1 MiB cap),
 `REPOSITORY_ERROR` (a discovery tool's underlying `pom.xml`/module
 resolution failed for the current request only, not at server startup).

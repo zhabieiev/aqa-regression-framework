@@ -27,8 +27,8 @@ naming consistency, following up on the multi-LLM/multi-agent audit above:
 
 - Phase A (inspect/report only): researched whether MCP-driven test
   execution could extend beyond `regression-nextjs-commerce`, and gathered
-  the runtime-prerequisites facts the top-level README lacked. Report
-  appended to `output.log`.
+  the runtime-prerequisites facts the top-level README lacked. Findings
+  are folded into "Next step" below.
 - Phase B (implement, same day, explicitly authorized): closed the
   documentation-only gaps from that report — added a top-level `README.md`
   "## Prerequisites" section, a `regression-mcp-server` row to the modules
@@ -44,13 +44,13 @@ naming consistency, following up on the multi-LLM/multi-agent audit above:
   repository for references to the old GitHub repository name
   (`myJavaTests`) — none found; `git remote -v` already points at
   `zhabieiev/aqa-regression-framework`. Committed and pushed directly to
-  `master` (explicitly authorized). Full report appended to `output.log`.
+  `master` (explicitly authorized).
 
 ## Next step
 
 Extending MCP-driven test execution to a second module
 (`regression-petstore-api` or `regression-jhipster`) is blocked on two
-things, both identified in the Phase A report above (`output.log`):
+things:
 
 1. A user policy decision: `regression-mcp-server/README.md`'s "v1.0
    limitations" section states, as current shipped policy, that

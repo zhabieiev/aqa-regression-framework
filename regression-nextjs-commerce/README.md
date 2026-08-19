@@ -311,6 +311,8 @@ ui.mobile.device=Pixel 7
 
 ## Running tests
 
+See the top-level [`README.md`](../README.md#prerequisites) "Prerequisites" section for the browser/WebDriver and network requirements this module needs before running.
+
 Run the module and build its required dependencies from the regression repository root:
 
 ```bash

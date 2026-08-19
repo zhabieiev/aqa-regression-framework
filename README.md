@@ -25,6 +25,7 @@ Each child module inherits from the parent POM. Product modules depend on `regre
 | `regression-petstore-api` | JUnit 5 API regression tests for Petstore. It provides product API services and steps, OpenAPI-generated models, test data factories, cleanup support, and module-local Allure reporting. |
 | `regression-jhipster` | Hybrid Cucumber API and Playwright UI automation for a JHipster application. It contains product services, steps, generated models, UI pages/components, scenario lifecycle hooks, and Gherkin features. |
 | `regression-nextjs-commerce` | Test-only Selenium/Cucumber UI automation for the Next.js Commerce demo storefront. It owns Selenium pages, components, explicit waits, scenario context, driver lifecycle, and UI features. It does not add API clients or API scenarios. |
+| `regression-mcp-server` | Isolated Java 21 MCP STDIO server that exposes deterministic, closed-schema discovery, execution, reporting, and architecture-validator tools for this reactor to an AI coding agent. It is architecturally isolated from `regression-core` and every product module. |
 
 ## Technology stack
 
@@ -74,9 +75,34 @@ Petstore declares Allure dependencies and a Maven reporting plugin. Its `run-tes
 
 JHipster reads its local API/UI endpoint and browser settings from its `dev.properties`. Next.js Commerce reads its UI URL, browser, headless, timeout, window, and mobile-emulation settings from `src/test/resources/properties/dev.properties`; its Maven `mobile` profile enables mobile emulation.
 
+The `env` property (root `pom.xml`, default `dev`) selects which `<env>.properties` file each module's `properties-maven-plugin` execution loads. Override it explicitly on the command line, for example:
+
+```bash
+mvn -pl :regression-petstore-api test -Denv=dev
+```
+
+Only a `dev.properties` file exists in each module today; `-Denv=<value>` is the mechanism for selecting a different one once it exists.
+
+## Prerequisites
+
+- JDK 21 and a Maven version compatible with the parent POM.
+- Bash or Git Bash for `regression-petstore-api/run-tests.sh` (its local Allure report workflow); not required for plain `mvn test`.
+- A Chrome/Chromium browser and matching Selenium WebDriver for `regression-nextjs-commerce` (Selenium 4.46.0).
+- Playwright browser binaries for `regression-jhipster`:
+  ```bash
+  mvn -pl regression-jhipster exec:java \
+    -Dexec.mainClass=com.microsoft.playwright.CLI \
+    -Dexec.args="install chromium"
+  ```
+- Docker (or another way to run a local JHipster instance) for `regression-jhipster` — its tests target `http://localhost:8080` by default (`regression-jhipster/src/main/resources/properties/dev.properties`) and are not designed to run against a hosted instance.
+- Outbound internet access to `petstore.swagger.io` for `regression-petstore-api` (a live, shared public sandbox; see that module's README for its intermittent-5xx caveat).
+- Outbound internet access to `demo.vercel.store` for `regression-nextjs-commerce` (a public Vercel-hosted demo storefront).
+
+Running a single module (`mvn -pl :<module> -am test`) only requires that module's prerequisites above. `regression-mcp-server` itself only needs JDK 21 and Maven to build (see its own README for `REGRESSION_ROOT`/`REGRESSION_MAVEN_HOME` setup).
+
 ## Running Maven
 
-Run these commands from the repository root. Product tests may require their configured external application or target service to be available.
+Run these commands from the repository root. `regression-petstore-api` calls the live public Petstore API, `regression-jhipster` requires a JHipster app already running at `localhost:8080`, and `regression-nextjs-commerce` calls the public Next.js Commerce demo store — see "Prerequisites" above. A bare `mvn test` on a fresh checkout runs all three at once and will attempt live third-party network calls and a `localhost:8080` connection that is likely not running.
 
 Validate the reactor POMs without running tests:
 

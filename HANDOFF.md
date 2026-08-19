@@ -22,34 +22,55 @@ start of a session; update it at the end of one, per `CLAUDE.md`'s
 
 ## Most recent session
 
-2026-08-19 — a two-phase documentation audit and implementation pass across
-`CLAUDE.md`, `README.md`, `docs/TECHNICAL_DEBT.md`, `docs/ROADMAP.md`,
-`regression-mcp-server/README.md`, `regression-mcp-server/docs/TOOLS.md`,
-and `regression-jhipster/README.md`, aimed at multi-LLM/multi-agent
-usability:
+2026-08-19 (later same day) — a two-phase pass on top-level README gaps and
+naming consistency, following up on the multi-LLM/multi-agent audit above:
 
-- Phase A (inspect/propose only): produced a prioritized findings report,
+- Phase A (inspect/report only): researched whether MCP-driven test
+  execution could extend beyond `regression-nextjs-commerce`, and gathered
+  the runtime-prerequisites facts the top-level README lacked. Report
   appended to `output.log`.
-- Phase B (implement, same day, explicitly authorized): applied the
-  approved changes — a vendor-neutral MCP client configuration section, a
-  vendor-neutral opening statement in `CLAUDE.md`, six new `CLAUDE.md`
-  rules (prefer MCP tools over shell/grep, Phase A/B discipline,
-  per-change git-write authorization, stop-and-report on unavailable
-  tools, re-verify claims against source, JAR-lock pointer), a
-  reactor-wide `docs/ROADMAP.md` folding in items that previously lived
-  only in `README.md`, removal of unexplained Stage/Gate-number shorthand
-  repository-wide (including several `regression-mcp-server` source-code
-  comments), consolidation of `regression-jhipster`'s AI-agent guidance
-  into its "Extension Guidelines" section, and this file. Committed and
-  pushed directly to `master` (explicitly authorized — see the commit this
-  file was introduced in). Full report appended to `output.log`.
+- Phase B (implement, same day, explicitly authorized): closed the
+  documentation-only gaps from that report — added a top-level `README.md`
+  "## Prerequisites" section, a `regression-mcp-server` row to the modules
+  table, a specific (not generic) warning before the `mvn test` command
+  list naming which module needs what, a concrete `-Denv=dev` usage
+  example, and a one-line Prerequisites pointer in
+  `regression-nextjs-commerce/README.md` (the one module README with no
+  prerequisites callout of its own). Also normalized
+  `regression-nextjs-commerce/pom.xml` by removing its one-off `<name>`
+  element (no other module POM declares one, so the reactor summary now
+  shows `regression-nextjs-commerce` consistently instead of "Regression -
+  Next.js Commerce UI"); `artifactId` was not touched. Checked the
+  repository for references to the old GitHub repository name
+  (`myJavaTests`) — none found; `git remote -v` already points at
+  `zhabieiev/aqa-regression-framework`. Committed and pushed directly to
+  `master` (explicitly authorized). Full report appended to `output.log`.
 
 ## Next step
 
-None of the items in `docs/ROADMAP.md` are authorized or scheduled — agree
-one with the user before starting any of them. If nothing else is raised,
-the smallest, most concrete starting point is `regression-petstore-api`'s
-"Add a failure-safe fallback cleanup path for the Petstore delete
-scenario" (see `docs/ROADMAP.md`'s "regression-petstore-api" section and
+Extending MCP-driven test execution to a second module
+(`regression-petstore-api` or `regression-jhipster`) is blocked on two
+things, both identified in the Phase A report above (`output.log`):
+
+1. A user policy decision: `regression-mcp-server/README.md`'s "v1.0
+   limitations" section states, as current shipped policy, that
+   Playwright (`regression-jhipster`) and live API calls
+   (`regression-petstore-api`) are manual-only by design and "none should
+   be added without separate, explicit authorization." No implementation
+   work on either module's execution support should start without that
+   authorization first.
+2. A verified model/launch-path gap: only `regression-nextjs-commerce`'s
+   POM wires the `mcp.surefire.reportsDirectory`/
+   `mcp.allure.resultsDirectory` system properties that
+   `MavenInvocationFactory`/`ReportCapture` depend on; neither
+   `regression-petstore-api` nor `regression-jhipster` references those
+   properties today, so report capture would not work for either module
+   without additional POM or server-side work — not just a new
+   `ExecutionProfileRegistry` entry.
+
+If neither of those is being pursued next, the smallest independent
+starting point remains `regression-petstore-api`'s "Add a failure-safe
+fallback cleanup path for the Petstore delete scenario" (see
+`docs/ROADMAP.md`'s "regression-petstore-api" section and
 `regression-petstore-api/README.md`'s "Current Limitations and
 Trade-offs" for the current gap).

@@ -465,6 +465,15 @@ When adding UI coverage:
 7. Keep DOM assertions in Page Objects or Components.
 8. Confirm empty, loading, error, and duplicate-match states where relevant.
 
+When making AI-assisted changes specifically:
+
+- do not expose Steps dependencies merely to shorten a call chain — Definitions call only the public business operations Steps expose, not injected Services or `AuthService` through record accessors;
+- keep API headers explicit between Steps and Services rather than hiding them behind a shared filter;
+- include benchmark or failure-recovery evidence when changing browser lifecycle or cleanup behavior, not just the code change;
+- update this README only for stable architectural or operational changes, and update the "Current Limitations and Trade-offs" table below when a roadmap item is demonstrably completed.
+
+CLAUDE.md's repository-wide rules (thin Definitions, no static mutable state, generated-source discipline, explicit authorization before git writes, and more) apply here in full; this list only adds what is specific to this module.
+
 ## Current Limitations and Trade-offs
 
 The current implementation is a stable architectural baseline, not a claim that every production-scale concern has already been solved.
@@ -485,6 +494,8 @@ The current implementation is a stable architectural baseline, not a claim that 
 The core `DataTableConverter` is not coupled to HTML tables and does not remove the DOM limitations listed above. It converts Cucumber input into typed test data; browser table behavior remains the responsibility of UI Components based on inspected markup.
 
 ## Next Steps and Improvements
+
+See [`docs/ROADMAP.md`](../docs/ROADMAP.md) for how one item from this list (the UI-timeout/cleanup-registry/pagination item below) is reflected in the reactor-wide roadmap.
 
 ### Priority 1 — correctness and recovery
 
@@ -520,47 +531,6 @@ A roadmap item is complete only when its behavior is tested, its failure mode is
 - Add update/edit flows when they provide distinct business value.
 - Extend authorization coverage for administrator, regular-user, invalid-token, and unauthenticated cases.
 - Add contract and boundary scenarios for newly generated API models.
-
-## Guidance for AI Agents
-
-AI-assisted changes must preserve the same architectural constraints as human changes.
-
-Before editing:
-
-- read this README and the relevant source files completely;
-- inspect the current feature, runtime OpenAPI document, or real DOM;
-- identify scenario scope and ownership of every dependency;
-- distinguish current implementation from roadmap intent and do not describe planned safeguards as already available;
-- check for existing uncommitted changes and preserve unrelated work;
-- distinguish confirmed facts from assumptions.
-
-During implementation:
-
-- keep Definitions free of Services, locators, and business branching;
-- do not expose Steps dependencies merely to shorten a call chain;
-- keep API headers explicit between Steps and Services;
-- keep token, browser, and page state non-static and scenario-scoped;
-- never introduce a shared static Browser without a validated worker/thread ownership model;
-- keep a new BrowserContext and Page per scenario even if Browser reuse is introduced;
-- never edit generated OpenAPI models manually;
-- do not regenerate against an uncontrolled latest OpenAPI specification merely to hide a contract failure;
-- treat Cucumber `@After` cleanup as best effort and preserve run-level discoverability of created data;
-- do not introduce generic click, wait, or assertion wrappers without demonstrated reuse;
-- scope Component locators to their root;
-- use exact matching for entity identity and destructive operations;
-- preserve strict configuration and DataTable validation;
-- never log secrets;
-- use API setup for UI tests unless setup is the behavior under test.
-
-Before handing off:
-
-- run the narrowest relevant tests and then the affected module build;
-- verify imports, formatting, and generated-source compatibility;
-- document any unverified runtime assumption;
-- include benchmark or failure-recovery evidence for lifecycle and cleanup changes;
-- update this README only for stable architectural or operational changes;
-- update the limitations table when a roadmap item is demonstrably completed;
-- report deferred work explicitly instead of implementing speculative code.
 
 ## Architectural Invariants
 

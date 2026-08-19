@@ -34,7 +34,7 @@ public final class ControlledProcessFixture {
     }
 
     /** Writes a genuine failing Surefire suite plus a matching Allure result and screenshot attachment into the
-     * server-owned staging directories, then exits non-zero, so Gate 14.4 tools have real capture data to serve. */
+     * server-owned staging directories, then exits non-zero, so the failure-artifact tools have real capture data to serve. */
     private static void failWithArtifacts(String surefireStagingDirectory, String allureStagingDirectory) throws Exception {
         Path surefireStaging = Path.of(surefireStagingDirectory);
         Path allureStaging = Path.of(allureStagingDirectory);

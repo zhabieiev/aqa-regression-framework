@@ -17,8 +17,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * Tier 2: TempDir-based, end-to-end tool coverage -- mirrors ModuleBoundariesToolTest's and
- * FrameworkConventionsToolTest's shape. Also carries the two Gate 15.5 real-reactor-facing tests, since no prior
- * test in this suite pointed a validation tool at the real repository filesystem before this gate. The pattern
+ * FrameworkConventionsToolTest's shape. Also carries two real-reactor-facing tests, since no prior
+ * test in this suite pointed a validation tool at the real repository filesystem before these were added. The pattern
  * chosen (see {@link #realRepositoryRoot()}) is to resolve the real reactor root by walking up from the test JVM's
  * working directory until a directory is found that both contains a pom.xml and has a regression-mcp-server
  * subdirectory -- this works whether Surefire's working directory is the module's own basedir (the default when
@@ -88,9 +88,9 @@ class ArchitectureToolTest {
         assertThat(error.get("code")).isEqualTo("UNKNOWN_MODULE");
     }
 
-    /** Gate 15.5's standing instruction was to establish real-reactor cleanliness via the tool itself, not assume
-     * it -- ARCH-002 was never manually pre-verified against the real reactor in Phase A. Running it for the first
-     * time in this gate's own Phase B surfaced a genuine, previously-unknown two-package cycle in
+    /** The standing instruction for this test was to establish real-reactor cleanliness via the tool itself, not
+     * assume it -- ARCH-002 was never manually pre-verified against the real reactor in Phase A. Running it for the
+     * first time during this test's own Phase B implementation surfaced a genuine, previously-unknown two-package cycle in
      * regression-nextjs-commerce: com.aqa.nextjscommerce.config.UiSettings imports
      * com.aqa.nextjscommerce.driver.BrowserType, while com.aqa.nextjscommerce.driver's ChromeOptionsFactory,
      * DriverSession, and DriverFactory all import com.aqa.nextjscommerce.config.UiSettings. Per explicit user
@@ -122,9 +122,9 @@ class ArchitectureToolTest {
                 "regression-nextjs-commerce/src/test/java/com/aqa/nextjscommerce/driver/BrowserType.java");
     }
 
-    /** Gate 15.5's standing instruction: confirms the real reactor surfaces exactly the 18 real, pre-existing
+    /** The standing instruction for this test: confirms the real reactor surfaces exactly the 18 real, pre-existing
      * ARCH-003 violation call sites across exactly the 7 named regression-jhipster files, confirmed by direct
-     * source inspection in this gate's own Phase B work (BasePage.java, LoginPage.java, BankAccountPage.java,
+     * source inspection during this test's own Phase B work (BasePage.java, LoginPage.java, BankAccountPage.java,
      * BankAccountFormPage.java, BaseComponent.java, DataTableComponent.java, NavigationBar.java). */
     @Test
     void realReactorSurfacesTheExpectedArch003ViolationsInJhipster() {

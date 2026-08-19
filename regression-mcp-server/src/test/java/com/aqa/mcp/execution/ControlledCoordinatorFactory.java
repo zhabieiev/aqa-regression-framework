@@ -14,7 +14,7 @@ public final class ControlledCoordinatorFactory {
     }
 
     /** Produces a genuine terminal FAILED run with real, published Surefire/Allure capture data, for exercising
-     * Gate 14.4's failure-artifact tools end-to-end over real STDIO without a real Maven/browser dependency. */
+     * the failure-artifact tools end-to-end over real STDIO without a real Maven/browser dependency. */
     public static TestRunCoordinator failingCoordinatorWithArtifacts(Path root) {
         return new TestRunCoordinator(root, () -> new TestRunRequestValidator(List.of(ExecutionProfileRegistry.COMMERCE_MODULE)),
                 new ControlledProcessLauncher("FAIL_WITH_ARTIFACTS"), new TestTimeouts(), ignored -> runtime(root));

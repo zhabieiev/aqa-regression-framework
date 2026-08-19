@@ -9,7 +9,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.CountDownLatch;
 
 final class ControlledProcessLauncher implements MavenProcessLauncher {
-    private final String mode; final String token = "stage13-fixture-" + UUID.randomUUID();
+    private final String mode; final String token = "execution-fixture-" + UUID.randomUUID();
     private final CountDownLatch launchEntered = new CountDownLatch(1);
     private final CountDownLatch launchRelease;
     private volatile Process process;

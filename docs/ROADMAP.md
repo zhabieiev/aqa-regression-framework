@@ -2,8 +2,11 @@
 
 This file is a forward-looking handoff for whoever (human or AI agent)
 picks up this project next. It orients a fresh session to where things
-stand and where the concrete opportunities are, without requiring
-conversation history that no longer exists.
+stand and where the concrete opportunities are across the whole `regression`
+reactor — `regression-core` and all four product/tooling modules — without
+requiring conversation history that no longer exists. This is the single
+reactor-wide roadmap; `README.md`'s own "Further reading" section points
+here rather than keeping a separate list.
 
 For known, accepted debt — what's imperfect today and why it was left that
 way — see [`docs/TECHNICAL_DEBT.md`](TECHNICAL_DEBT.md). This file does not
@@ -15,9 +18,38 @@ deliberately deferred.
 None of the following are authorized or scheduled work — they are
 concrete, code-pointer-backed opportunities for a future task, each
 requiring its own scoping and explicit authorization before any change is
-made (per `CLAUDE.md`'s repository instructions).
+made (per `CLAUDE.md`'s repository instructions). They are grouped by
+module/area; each module's own README carries more detail where noted.
 
-### Extend test execution beyond `regression-nextjs-commerce` / `dev`
+### regression-petstore-api
+
+- Add a failure-safe fallback cleanup path for the Petstore delete scenario:
+  today the tested delete flow has no independent fallback cleanup if the
+  delete request itself fails. See `regression-petstore-api/README.md`'s
+  "Current Limitations and Trade-offs" for the full context.
+
+### regression-jhipster
+
+- Add a dedicated UI assertion timeout, an ID-based scenario cleanup
+  registry, and pagination-aware API cleanup. This is one item drawn from a
+  larger, already-detailed list — see `regression-jhipster/README.MD`'s
+  "Next Steps and Improvements" (Priority 1 and 2) for the complete,
+  code-pointer-backed breakdown; that list is not repeated here.
+
+### Reactor-wide / cross-module
+
+- Define a non-interactive CI reporting workflow and durable Allure-history/
+  artifact policy (today's Allure workflow, in `regression-petstore-api`'s
+  `run-tests.sh`, is an intentionally local, interactive workflow — see
+  `README.md`'s "Configuration and reporting").
+- Document a common module-execution convention for local and CI use.
+- Maintain an OpenAPI Generator compatibility matrix for modules that
+  generate models (`regression-jhipster`, `regression-petstore-api`).
+- Add schema and contract validation as a layer separate from DTO mapping.
+
+### regression-mcp-server
+
+#### Extend test execution beyond `regression-nextjs-commerce` / `dev`
 
 Today, `regression_start_test_run` supports exactly one module and one
 environment. `ExecutionProfileRegistry`
@@ -55,7 +87,7 @@ Adding a second module or environment means:
   profile/execution shape suitable for MCP-driven runs — this is a
   reactor-wide question, not just an `ExecutionProfileRegistry` edit.
 
-### Extract the shared validator `Tool` helper
+#### Extract the shared validator `Tool` helper
 
 `docs/TECHNICAL_DEBT.md` item 3 names the duplicated methods across
 `ModuleBoundariesTool`, `FrameworkConventionsTool`, and `ArchitectureTool`:
@@ -76,7 +108,7 @@ against each tool's existing contract tests
 (`ModuleBoundariesToolContractTest`, `FrameworkConventionsToolContractTest`,
 `ArchitectureToolContractTest`) which lock in current output shape.
 
-### Scope an ARCH rule for `definitions`-layer assertions
+#### Scope an ARCH rule for `definitions`-layer assertions
 
 `docs/TECHNICAL_DEBT.md` item 4 notes that `GeneralDefinitions.java`'s
 direct AssertJ assertions inside `@Then` methods are real CLAUDE.md debt
@@ -93,8 +125,12 @@ informational.
 
 ## Where things live
 
-`regression-mcp-server`'s module layout, for a new agent that needs to
-navigate the codebase without rediscovering it from scratch:
+**Scope: this section documents only `regression-mcp-server`'s internal
+module layout.** The other four reactor modules (`regression-core`,
+`regression-petstore-api`, `regression-jhipster`,
+`regression-nextjs-commerce`) each document their own structure in their
+own README; see `README.md`'s "Maven structure" table for the module list
+and "Further reading" for links.
 
 ```
 regression-mcp-server/
@@ -121,8 +157,8 @@ regression-mcp-server/
     ExecutionPlanningFactory.java     - assembles execution-planning
                                          collaborators for the server
 
-    execution/                        - the three Stage 13 execution tools'
-                                         supporting code: request validation
+    execution/                        - the three execution tools' supporting
+                                         code: request validation
                                          (TestRunRequestValidator,
                                          ExecutionProfile,
                                          ExecutionProfileRegistry), the
@@ -143,14 +179,13 @@ regression-mcp-server/
                                          PublishedReportIndex, ArtifactContent,
                                          PublicDiagnosticSanitizer)
 
-    validation/                       - the three Stage 15 architecture/
-                                         convention validator tools: rule
-                                         profiles and resolution
-                                         (RuleProfile, ModuleProfile,
-                                         RuleProfileResolver), AST scanning
-                                         (JavaSourceScanner, SourceUnit,
-                                         BasePackages), the shared rule/report
-                                         model (ValidationRule,
+    validation/                       - the three architecture/convention
+                                         validator tools: rule profiles and
+                                         resolution (RuleProfile,
+                                         ModuleProfile, RuleProfileResolver),
+                                         AST scanning (JavaSourceScanner,
+                                         SourceUnit, BasePackages), the shared
+                                         rule/report model (ValidationRule,
                                          EvaluationContext, Violation,
                                          ModuleValidationResult,
                                          ValidationReport), the three fixed

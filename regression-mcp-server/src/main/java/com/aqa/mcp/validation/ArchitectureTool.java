@@ -17,12 +17,12 @@ import io.modelcontextprotocol.spec.McpSchema.ToolAnnotations;
 
 /**
  * MCP tool wiring for regression_validate_architecture. Self-contained and structured exactly like
- * FrameworkConventionsTool from Gate 15.4: builds its own schema and result envelopes, and resolves
+ * FrameworkConventionsTool: builds its own schema and result envelopes, and resolves
  * moduleTypeByNameSupplier once per request inside callHandler (never at server-registration time), matching the
  * per-request-resolution behavior every other read-only tool already follows.
  *
  * The one shape difference from ModuleBoundariesTool: ARCH-004 (thin-BasePage) is an explicitly advisory/
- * non-blocking rule, exactly like FC-004 in Gate 15.4. Rather than adding a severity concept to the shared
+ * non-blocking rule, exactly like FC-004. Rather than adding a severity concept to the shared
  * Violation record, this tool partitions its own output only: violations carrying ARCH-004's rule id are reported
  * in a separate "advisoryViolations" array instead of the blocking "violations" array.
  */

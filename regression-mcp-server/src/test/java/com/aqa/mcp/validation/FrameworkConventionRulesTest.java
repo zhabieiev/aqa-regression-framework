@@ -12,7 +12,7 @@ import org.junit.jupiter.api.Test;
 
 /**
  * Tier 1: pure rule-level unit tests for FrameworkConventionRules, no filesystem I/O — mirrors
- * ModuleBoundaryRulesTest's shape from Gate 15.3. Tool/contract-level (TempDir-based, "Tier 2") coverage lives in
+ * ModuleBoundaryRulesTest's shape. Tool/contract-level (TempDir-based, "Tier 2") coverage lives in
  * FrameworkConventionsToolTest and FrameworkConventionsToolContractTest.
  */
 class FrameworkConventionRulesTest {

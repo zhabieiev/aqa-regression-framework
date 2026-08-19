@@ -45,7 +45,7 @@ final class ArchitectureRules {
 
     /** ARCH-004's advisory (non-blocking) rule id -- ArchitectureTool presents violations carrying this id in a
      * separate "advisoryViolations" bucket rather than the blocking "violations" list, reusing the exact mechanism
-     * FrameworkConventionsTool established for FC-004 in Gate 15.4. */
+     * FrameworkConventionsTool established for FC-004. */
     static final String THIN_BASE_PAGE_RULE_ID = "ARCH-004";
 
     private ArchitectureRules() {
@@ -339,9 +339,9 @@ final class ArchitectureRules {
      * ends with "BasePage" and declares more than 8 public/protected methods, excluding constructors (JavaParser
      * never returns a ConstructorDeclaration from getMethods()) and private helpers. Method-count-only threshold,
      * calibrated against both real BasePage classes (regression-jhipster's at 4, regression-nextjs-commerce's at 7
-     * -- both pass at the >8 threshold). Gate 15.1's original two-pronged design (count OR a name-vocabulary
-     * heuristic) was dropped after the vocabulary half was shown to false-positive on regression-nextjs-commerce's
-     * legitimate header()/cart()/currentUrl()/title() accessor methods. */
+     * -- both pass at the >8 threshold). The original two-pronged design (count OR a name-vocabulary heuristic) was
+     * dropped after the vocabulary half was shown to false-positive on regression-nextjs-commerce's legitimate
+     * header()/cart()/currentUrl()/title() accessor methods. */
     private static final class ThinBasePage implements ValidationRule {
         private static final int MAX_PUBLIC_OR_PROTECTED_METHODS = 8;
 

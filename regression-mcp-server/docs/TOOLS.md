@@ -47,7 +47,7 @@ tool declares):
 - Output `data`: `module`, `scenarios[]` (each: `feature`, `name`, `type`,
   `tags[]`, `path`, `line`).
 
-## Execution tools (Stage 13)
+## Execution tools
 
 ### `regression_start_test_run`
 - Purpose: starts the single allowed Commerce test run.
@@ -78,7 +78,7 @@ tool declares):
 - Input: required `runId` (string) only.
 - Output `data`: same run-snapshot shape as `regression_start_test_run`.
 
-## Report and artifact tools (Stage 14)
+## Report and artifact tools
 
 All four require a **terminal**, server-generated run and return a
 structured `NOT_FOUND` error for a missing, foreign, or non-terminal run.
@@ -123,7 +123,7 @@ structured `NOT_FOUND` error for a missing, foreign, or non-terminal run.
   capped at 2 MiB (`RegressionMcpServer.MAX_ARTIFACT_READ_RESPONSE_BYTES`,
   `ARTIFACT_TOO_LARGE` error otherwise).
 
-## Architecture-validator tools (Stage 15)
+## Architecture-validator tools
 
 All three share the same input shape (optional `module` string filter,
 optional `profile` string filter restricted to the enum `CORE, API, UI,

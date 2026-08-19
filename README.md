@@ -2,6 +2,8 @@
 
 This repository is a Java 21 Maven reactor for regression automation across API and browser-based UI systems. It separates reusable technical infrastructure from product-specific test modules so that each product can use the test runner and UI/API stack appropriate to its needs.
 
+New contributors and AI coding agents should read [`CLAUDE.md`](CLAUDE.md) (repository rules) and [`HANDOFF.md`](HANDOFF.md) (current project state and the next concrete step) first.
+
 ## Maven structure
 
 ```text
@@ -110,14 +112,9 @@ mvn test
 
 ## Roadmap
 
-Confirmed improvement areas include:
-
-- Add a failure-safe fallback cleanup path for the Petstore delete scenario.
-- Define a non-interactive CI reporting workflow and durable Allure-history/artifact policy.
-- Document a common module-execution convention for local and CI use.
-- Maintain an OpenAPI Generator compatibility matrix for modules that generate models.
-- Add schema and contract validation as a layer separate from DTO mapping.
-- In JHipster, add a dedicated UI assertion timeout, an ID-based scenario cleanup registry, and pagination-aware API cleanup.
+See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the reactor-wide roadmap,
+grouped by module, and [`docs/TECHNICAL_DEBT.md`](docs/TECHNICAL_DEBT.md)
+for known, accepted debt.
 
 ## Further reading
 
@@ -133,6 +130,6 @@ Each product module has its own documentation with its product-specific configur
 
 Test **execution** (start/get/cancel) is intentionally narrow in v1.0: only `regression-nextjs-commerce`, only the `dev` environment. Discovery and the architecture validators work across all 5 reactor modules; only running a test and diagnosing its failure is limited to nextjs-commerce today.
 
-See [`regression-mcp-server/README.md`](regression-mcp-server/README.md) for installation, IDEA/Codex client configuration, the security model, the execution lifecycle, the run store, artifact limits, JAR-lock troubleshooting, and known v1.0 limitations, and [`regression-mcp-server/docs/TOOLS.md`](regression-mcp-server/docs/TOOLS.md) for every tool's full input/output schema.
+See [`regression-mcp-server/README.md`](regression-mcp-server/README.md) for installation, MCP client configuration, the security model, the execution lifecycle, the run store, artifact limits, JAR-lock troubleshooting, and known v1.0 limitations, and [`regression-mcp-server/docs/TOOLS.md`](regression-mcp-server/docs/TOOLS.md) for every tool's full input/output schema.
 
 `regression-mcp-server` shipped as v1.0.0 (tag `regression-mcp-server-v1.0.0`). See [`docs/TECHNICAL_DEBT.md`](docs/TECHNICAL_DEBT.md) for known, accepted debt and [`docs/ROADMAP.md`](docs/ROADMAP.md) for possible next steps and a map of the module's source layout.

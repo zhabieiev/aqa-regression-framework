@@ -12,7 +12,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * Schema/contract-level test for the new tool's registration shape, mirroring ModuleBoundariesToolContractTest's
- * style (and its documented rationale) from Gate 15.3: it exercises FrameworkConventionsTool.tool(...) directly
+ * style (and its documented rationale): it exercises FrameworkConventionsTool.tool(...) directly
  * rather than the full RegressionMcpServer.createServer(...) registration, since every field this contract cares
  * about (name, input schema, output schema, annotations) is fully decided by FrameworkConventionsTool itself.
  */

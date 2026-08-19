@@ -250,7 +250,7 @@ class RegressionMcpServerStdioIntegrationTest {
         }
     }
 
-    /** Gate 14.4 completion criterion, exercised end to end over real STDIO: for a genuine failing run, get its
+    /** Exercised end to end over real STDIO: for a genuine failing run, get its
      * summary, see the failure cause, list its artifacts, read a permitted one by artifactId, and confirm a
      * foreign artifactId and a foreign runId are both rejected as structured NOT_FOUND, never an exception. */
     @Test

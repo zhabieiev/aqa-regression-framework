@@ -8,8 +8,8 @@ import com.github.javaparser.StaticJavaParser;
 import com.github.javaparser.ast.CompilationUnit;
 import org.junit.jupiter.api.Test;
 
-/** Compact-constructor invariant coverage deferred from Gate 15.2 to Gate 15.3, added here in Gate 15.4 since it
- * was not yet present as of Gate 15.3's inventory. */
+/** Compact-constructor invariant coverage, added after being identified as missing from the original test
+ * inventory. */
 class SourceUnitTest {
 
     private static final CompilationUnit UNIT = StaticJavaParser.parse("class Foo { }");

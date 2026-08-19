@@ -13,7 +13,7 @@ import io.modelcontextprotocol.spec.McpSchema.CallToolResult;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-/** Tier 2: TempDir-based, end-to-end tool coverage — mirrors ModuleBoundariesToolTest's shape from Gate 15.3. */
+/** Tier 2: TempDir-based, end-to-end tool coverage — mirrors ModuleBoundariesToolTest's shape. */
 class FrameworkConventionsToolTest {
 
     @TempDir

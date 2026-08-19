@@ -26,7 +26,7 @@ import com.github.javaparser.ast.stmt.Statement;
 
 /**
  * The fixed rule list backing regression_validate_framework_conventions, direct translations of CLAUDE.md's
- * "Selenium and UI safety" / "Architecture" sections plus the Gate 15.4 Phase A Playwright-parallel design (accepted
+ * "Selenium and UI safety" / "Architecture" sections plus the Phase A Playwright-parallel design work (accepted
  * in full). Every rule declares EnumSet.allOf(RuleProfile.class) and instead gates itself on the actual
  * imports/types found in the scanned source, never assuming applicability from RuleProfile alone, matching
  * ModuleBoundaryRules's existing pattern and the standing per-module-tech-stack principle recorded in
@@ -38,8 +38,8 @@ final class FrameworkConventionRules {
     private static final String PLAYWRIGHT_PACKAGE_PREFIX = "com.microsoft.playwright.";
 
     /** FC-002's explicit, reviewable allow-list of legitimate wait-abstraction implementation files. Confirmed by
-     * direct grep in Gate 15.4 Phase A to be exactly this one file: WaitManager.java (nextjs-commerce) contains no
-     * Thread.sleep calls itself, so it needs no entry here. */
+     * direct grep during Phase A design work to be exactly this one file: WaitManager.java (nextjs-commerce)
+     * contains no Thread.sleep calls itself, so it needs no entry here. */
     private static final Set<String> THREAD_SLEEP_ALLOW_LIST = Set.of(
             "regression-core/src/main/java/com/aqa/core/utils/WaitUtils.java");
 
@@ -48,7 +48,8 @@ final class FrameworkConventionRules {
 
     /** FC-004's advisory (non-blocking) rule id — FrameworkConventionsTool presents violations carrying this id in
      * a separate "advisoryViolations" bucket rather than the blocking "violations" list, per the explicit
-     * advisory-only status accepted in Gate 15.1 and reconfirmed in Gate 15.4 Phase A. */
+     * advisory-only status accepted during the rule's original design and reconfirmed during a later Phase A
+     * review. */
     static final String RECORDS_FOR_VALUE_OBJECTS_RULE_ID = "FC-004";
 
     private FrameworkConventionRules() {
@@ -99,7 +100,7 @@ final class FrameworkConventionRules {
     /** FC-001-PW: a Playwright `Locator` field must be `private final`, assigned only in the constructor (the
      * language enforces single-assignment for a `final` field, so a mutable field is the actual violation shape);
      * dynamic lookups expressed as private instance methods returning `Locator` are never themselves examined.
-     * Gated on any `com.microsoft.playwright.*` import. This is a Gate 15.4 Phase A design finding, not a literal
+     * Gated on any `com.microsoft.playwright.*` import. This is a Phase A design finding, not a literal
      * mirror of FC-001: Playwright Locator fields are bound to a Page/Locator instance at creation time and can
      * never legitimately be static. */
     private static final class PlaywrightLocatorFields implements ValidationRule {
@@ -170,7 +171,7 @@ final class FrameworkConventionRules {
 
     /** FC-002-PW: no Page/Locator/Frame waitForTimeout(...) calls, Playwright's own hardcoded-wait anti-pattern.
      * Gated on any `com.microsoft.playwright.*` import. Forward-looking: the real reactor has zero occurrences
-     * today, confirmed in Gate 15.4 Phase A, so this rule ships with no allow-list. */
+     * today, confirmed during Phase A design work, so this rule ships with no allow-list. */
     private static final class NoPlaywrightWaitForTimeout implements ValidationRule {
         @Override
         public String id() {
@@ -280,7 +281,7 @@ final class FrameworkConventionRules {
 
     /** FC-004 (advisory-only): flags a non-record class whose every field is private final, with exactly one
      * all-args constructor and only plain getters, as a "candidate value object not declared as a record" finding.
-     * Heuristic and lower-precision by design (Gate 15.1 decision); JavaParser models `record` declarations as a
+     * Heuristic and lower-precision by design (an original rule-design decision); JavaParser models `record` declarations as a
      * distinct node type from ClassOrInterfaceDeclaration, so an actual record is never examined and never
      * flagged. */
     private static final class RecordsForValueObjects implements ValidationRule {

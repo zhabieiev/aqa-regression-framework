@@ -17,14 +17,14 @@ import io.modelcontextprotocol.spec.McpSchema.ToolAnnotations;
 
 /**
  * MCP tool wiring for regression_validate_framework_conventions. Self-contained and structured exactly like
- * ModuleBoundariesTool from Gate 15.3: builds its own schema and result envelopes, and resolves
+ * ModuleBoundariesTool: builds its own schema and result envelopes, and resolves
  * moduleTypeByNameSupplier once per request inside callHandler (never at server-registration time), matching the
  * per-request-resolution behavior every other read-only tool already follows.
  *
  * The one shape difference from ModuleBoundariesTool: FC-004 (records-for-value-objects) is an explicitly
- * advisory/non-blocking rule (accepted in Gate 15.1, reconfirmed in Gate 15.4). Rather than adding a severity
- * concept to the shared Violation record used by MOD-001..004 and ModuleBoundariesTool (out of this gate's
- * authorized scope), this tool partitions its own output only: violations carrying FC-004's rule id are reported in
+ * advisory/non-blocking rule (accepted during the rule's original design, reconfirmed later). Rather than adding a
+ * severity concept to the shared Violation record used by MOD-001..004 and ModuleBoundariesTool (out of this
+ * tool's authorized scope), this tool partitions its own output only: violations carrying FC-004's rule id are reported in
  * a separate "advisoryViolations" array instead of the blocking "violations" array.
  */
 public final class FrameworkConventionsTool {

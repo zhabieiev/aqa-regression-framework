@@ -172,3 +172,5 @@ Do not introduce Gherkin, Cucumber glue, fixed shared test data, sleeps, manuall
 - DataFaker values are not deterministically seeded.
 - Allure Trend history is local and must be persisted separately in CI.
 - Authentication is outside the current module scope.
+
+See [`docs/ROADMAP.md`](../docs/ROADMAP.md) for the reactor-wide roadmap, including a fallback-cleanup item for the delete flow above.

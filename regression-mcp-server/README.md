@@ -34,7 +34,7 @@ an existing directory that directly contains the reactor's root `pom.xml`;
 the server refuses to start otherwise, with a distinct error for each of
 "does not exist," "cannot be resolved," "is not a directory," and "does not
 contain the root pom.xml" (`RepositoryRootResolver`). `REGRESSION_MAVEN_HOME`
-is only needed by the three execution tools (Stage 13) to launch Maven
+is only needed by the three execution tools to launch Maven
 directly; the read-only inspection tools do not need it.
 
 To confirm the server started correctly: standard output is reserved
@@ -44,16 +44,18 @@ failure for `REGRESSION_ROOT`) are written to standard error instead. A
 successful start produces no stdout output until the connected client
 sends its first request.
 
-## IDEA / Codex configuration
+## MCP client configuration
 
-Both IDEA's and Codex's MCP client configuration are machine-local files
-that are not checked into this repository (see `.gitignore`'s `/.ai/mcp/mcp.json`
-and `/.codex/config.toml` entries) — you create them yourself, pointed at
-your own local build of the jar. The shapes below are worked examples, not
-a description of any file that already exists in this repository.
+MCP client configuration is a machine-local file that is not checked into
+this repository (see `.gitignore`'s `/.ai/mcp/mcp.json` and
+`/.codex/config.toml` entries) — you create it yourself, pointed at your own
+local build of the jar. Most MCP clients configure a server using one of two
+generic shapes: a JSON `mcpServers` object, or a TOML `mcp_servers.<name>`
+table. The worked examples below illustrate each shape; they are not a
+description of any file that already exists in this repository.
 
-**IDEA** (or any MCP client using the same JSON `mcpServers` shape, e.g. a
-project-local `.ai/mcp/mcp.json`):
+**JSON `mcpServers` shape** (used by IDEA, Claude Code, and most other MCP
+clients, e.g. a project-local `.ai/mcp/mcp.json`):
 
 ```json
 {
@@ -72,8 +74,8 @@ project-local `.ai/mcp/mcp.json`):
 }
 ```
 
-**Codex CLI** (a `mcp_servers.<name>` TOML table in your own
-`.codex/config.toml`):
+**TOML `mcp_servers.<name>` shape** (used by Codex CLI and other clients
+that read a TOML config, e.g. your own `.codex/config.toml`):
 
 ```toml
 [mcp_servers.regression-framework]
@@ -98,7 +100,7 @@ under the same `env` table if you intend to use the execution tools.
 - **Transport**: standard output is reserved exclusively for MCP JSON-RPC.
   All diagnostics go to standard error. No tool writes anything else to
   stdout.
-- **No shell, no arbitrary command**: the three Stage 13 execution tools
+- **No shell, no arbitrary command**: the three execution tools
   (`regression_start_test_run`, `regression_get_test_run`,
   `regression_cancel_test_run`) are the only tools that launch a process,
   and they launch Maven only through a direct, trusted Java/Classworlds
@@ -210,7 +212,7 @@ build step — from overwriting or deleting that same file. If you rebuild
 still has the previous build of `regression-mcp-server.jar` running, the
 build's packaging step can fail because Windows won't let it replace the
 locked file. This is standard Windows file-locking behavior, not specific
-to this project, and it does not occur on Linux (Gate 16.1's CI job runs
+to this project, and it does not occur on Linux (the CI security job runs
 this same build cleanly on both `ubuntu-latest` and `windows-latest`
 precisely because Linux does not hold this kind of lock).
 
@@ -241,7 +243,7 @@ the failure.
   module debt, not a validator bug, and its real-reactor test specifically
   asserts that exactly this one cycle exists and no other
   (`../docs/TECHNICAL_DEBT.md`).
-- The three Stage 15 validator tools (`ModuleBoundariesTool`,
+- The three validator tools (`ModuleBoundariesTool`,
   `FrameworkConventionsTool`, `ArchitectureTool`) share roughly 120-140
   duplicated lines of schema/envelope/evaluation-loop code each. This is
   known internal debt (see `../docs/TECHNICAL_DEBT.md`), does not affect

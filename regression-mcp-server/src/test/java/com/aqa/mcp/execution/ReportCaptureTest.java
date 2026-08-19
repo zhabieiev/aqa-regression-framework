@@ -150,7 +150,7 @@ class ReportCaptureTest {
     }
 
     @Test
-    void stage13RecordsRemainReadableAndAreNotUpgradedWhenTheirStatusChanges() throws Exception {
+    void executionRecordsRemainReadableAndAreNotUpgradedWhenTheirStatusChanges() throws Exception {
         RunStore store = new RunStore(root); RunSnapshot snapshot = snapshot();
         Path run = root.resolve(".regression-mcp/runs").resolve(snapshot.runId()); Files.createDirectories(run);
         String old = "{\"schemaVersion\":2,\"snapshot\":{\"runId\":\"" + snapshot.runId() + "\",\"module\":\"regression-nextjs-commerce\",\"environment\":\"dev\",\"headless\":true,\"tags\":\"not @wip\",\"timeoutSeconds\":30,\"state\":\"QUEUED\",\"createdAt\":\"2026-01-01T00:00:00Z\",\"startedAt\":null,\"finishedAt\":null,\"exitCode\":null,\"reason\":\"QUEUED\",\"stdoutBytes\":0,\"stderrBytes\":0,\"stdoutTruncated\":false,\"stderrTruncated\":false},\"ownedProcesses\":[],\"stdoutObservedBytes\":0,\"stdoutDroppedBytes\":0,\"stderrObservedBytes\":0,\"stderrDroppedBytes\":0}";

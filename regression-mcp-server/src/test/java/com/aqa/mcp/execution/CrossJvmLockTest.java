@@ -19,7 +19,7 @@ class CrossJvmLockTest {
     @Test
     void separateJvmOwnsLockUntilItExitsAndCreatesNoSecondRunDirectory() throws Exception {
         Files.writeString(root.resolve("pom.xml"), "<project/>");
-        String token = "stage13-lock-" + UUID.randomUUID();
+        String token = "execution-lock-" + UUID.randomUUID();
         Process holder = new ProcessBuilder(javaExecutable(), "-cp", System.getProperty("surefire.test.class.path", System.getProperty("java.class.path")),
                 RunStoreLockHolderFixture.class.getName(), root.toString(), token).start();
         try {

@@ -195,7 +195,7 @@ class ArchitectureToolTest {
         return Map.of("regression-jhipster", "API_UI");
     }
 
-    /** Matches the real reactor's module -> profile grounding recorded in docs/dev-history/STAGE_15_PROGRESS.md. */
+    /** Matches the real reactor's module -> profile grounding recorded in docs/TECHNICAL_DEBT.md. */
     private Map<String, String> realModuleTypeByName() {
         return Map.of("regression-core", "CORE", "regression-petstore-api", "API", "regression-jhipster", "API_UI",
                 "regression-nextjs-commerce", "UI", "regression-mcp-server", "MCP");

@@ -23,8 +23,8 @@ import com.github.javaparser.ast.expr.MethodCallExpr;
 import com.github.javaparser.ast.expr.NameExpr;
 
 /**
- * The fixed rule list backing regression_validate_architecture, direct translations of the Gate 15.5 Phase A design
- * (ACCEPTED, recorded in docs/dev-history/STAGE_15_PROGRESS.md's "Gate 15.5 -- Phase A design" section). Every rule declares
+ * The fixed rule list backing regression_validate_architecture. Known limitations of these rules are recorded in
+ * docs/TECHNICAL_DEBT.md. Every rule declares
  * EnumSet.allOf(RuleProfile.class) and gates itself on the class's own package-last-segment layer and on the actual
  * imports/types found in the scanned source, matching ModuleBoundaryRules's and FrameworkConventionRules's existing
  * pattern rather than assuming applicability from RuleProfile alone.

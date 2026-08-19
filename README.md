@@ -135,4 +135,4 @@ Test **execution** (start/get/cancel) is intentionally narrow in v1.0: only `reg
 
 See [`regression-mcp-server/README.md`](regression-mcp-server/README.md) for installation, IDEA/Codex client configuration, the security model, the execution lifecycle, the run store, artifact limits, JAR-lock troubleshooting, and known v1.0 limitations, and [`regression-mcp-server/docs/TOOLS.md`](regression-mcp-server/docs/TOOLS.md) for every tool's full input/output schema.
 
-Stages 14, 15, and 16 are complete — `regression-mcp-server` shipped as v1.0.0 (tag `regression-mcp-server-v1.0.0`). See [`docs/dev-history/STAGE_15_16_KICKOFF.md`](docs/dev-history/STAGE_15_16_KICKOFF.md) for the original Stage 15/16 scope and [`docs/dev-history/STAGE_15_PROGRESS.md`](docs/dev-history/STAGE_15_PROGRESS.md) for the as-built development record.
+`regression-mcp-server` shipped as v1.0.0 (tag `regression-mcp-server-v1.0.0`). See [`docs/TECHNICAL_DEBT.md`](docs/TECHNICAL_DEBT.md) for known, accepted debt and [`docs/ROADMAP.md`](docs/ROADMAP.md) for possible next steps and a map of the module's source layout.

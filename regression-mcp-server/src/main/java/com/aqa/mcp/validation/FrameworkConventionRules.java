@@ -30,7 +30,7 @@ import com.github.javaparser.ast.stmt.Statement;
  * in full). Every rule declares EnumSet.allOf(RuleProfile.class) and instead gates itself on the actual
  * imports/types found in the scanned source, never assuming applicability from RuleProfile alone, matching
  * ModuleBoundaryRules's existing pattern and the standing per-module-tech-stack principle recorded in
- * docs/dev-history/STAGE_15_PROGRESS.md.
+ * docs/TECHNICAL_DEBT.md.
  */
 final class FrameworkConventionRules {
 

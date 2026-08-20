@@ -225,10 +225,11 @@ the failure.
 
 ## v1.0 limitations
 
-- Execution v1 is intentionally narrow: only `regression-nextjs-commerce`,
-  only the `dev` environment, a required Boolean `headless`, a 30-1800
-  second timeout, and an optional 1024-character Cucumber tag expression.
-  No other module, environment, or execution shape is supported yet.
+- Execution v1 supports `regression-nextjs-commerce` and
+  `regression-jhipster`, only the `dev` environment, a required Boolean
+  `headless`, a 30-1800 second timeout, and an optional 1024-character
+  Cucumber tag expression. No other module, environment, or execution
+  shape is supported yet.
 - Only one run may be active at a time — there is no queueing beyond the
   single active slot.
 - The architecture validator's `ARCH-001` rule (definitions-layer
@@ -251,6 +252,14 @@ the failure.
   transparency.
 - External UI/API smoke tests (Playwright in `regression-jhipster`,
   Selenium in `regression-nextjs-commerce`, live API calls in
-  `regression-petstore-api`) are manual-only by design in v1.0. No CI job
-  or MCP tool triggers them automatically, and none should be added without
-  separate, explicit authorization.
+  `regression-petstore-api`) remain manual-only for
+  `regression-petstore-api`. `regression-nextjs-commerce` and
+  `regression-jhipster` are MCP-executable via
+  `regression_start_test_run` as of 2026-08-20; no CI job
+  triggers any of them automatically, and `regression-petstore-api`
+  should not be added to MCP execution without separate, explicit
+  authorization. `regression-jhipster` execution against its live
+  externally-owned application at `localhost:8080` requires that
+  application to already be running and reachable; the server performs
+  no automatic health check or startup of it (see the health-check
+  design decision recorded for this profile).

@@ -1,4 +1,4 @@
-package com.aqa.nextjscommerce.runners;
+package com.aqa.jhipster.runners;
 
 import org.junit.platform.suite.api.ConfigurationParameter;
 import org.junit.platform.suite.api.IncludeEngines;
@@ -11,7 +11,7 @@ import static io.cucumber.junit.platform.engine.Constants.PLUGIN_PROPERTY_NAME;
 @Suite
 @IncludeEngines("cucumber")
 @SelectClasspathResource("features")
-@ConfigurationParameter(key = GLUE_PROPERTY_NAME, value = "com.aqa.nextjscommerce,com.aqa.core.definitions")
+@ConfigurationParameter(key = GLUE_PROPERTY_NAME, value = "com.aqa.jhipster,com.aqa.core.definitions")
 @ConfigurationParameter(
         key = PLUGIN_PROPERTY_NAME,
         value = "pretty,summary,io.qameta.allure.cucumber7jvm.AllureCucumber7Jvm")

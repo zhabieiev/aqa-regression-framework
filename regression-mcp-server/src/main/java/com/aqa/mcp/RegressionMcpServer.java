@@ -103,7 +103,7 @@ public final class RegressionMcpServer {
 
     static SyncToolSpecification startTestRunTool(TestRunCoordinator coordinator) {
         return SyncToolSpecification.builder().tool(Tool.builder(START_TEST_RUN_TOOL_NAME, startInputSchema())
-                .description("Starts the single allowed Commerce test run.").annotations(executionAnnotations(false, true, false, true)).outputSchema(runOutputSchema()).build())
+                .description("Starts an allowed test run (regression-nextjs-commerce or regression-jhipster).").annotations(executionAnnotations(false, true, false, true)).outputSchema(runOutputSchema()).build())
                 .callHandler((exchange, request) -> { try { return successResult(Map.of("status", "ok", "data", runOutput(coordinator.start(startRequest(request.arguments()), System.getenv())))); }
                     catch (ExecutionPlanningException e) { return errorResult(e.code(), e.getMessage()); } }).build();
     }

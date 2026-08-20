@@ -6,9 +6,14 @@ import java.util.Map;
 public final class ExecutionProfileRegistry {
 
     public static final String COMMERCE_MODULE = "regression-nextjs-commerce";
+    public static final String JHIPSTER_MODULE = "regression-jhipster";
     private static final ExecutionProfile COMMERCE = new ExecutionProfile(COMMERCE_MODULE,
             "regression-nextjs-commerce/pom.xml", List.of("dev"), true);
-    private static final Map<String, ExecutionProfile> PROFILES = Map.of(COMMERCE_MODULE, COMMERCE);
+    private static final ExecutionProfile JHIPSTER = new ExecutionProfile(JHIPSTER_MODULE,
+            "regression-jhipster/pom.xml", List.of("dev"), true);
+    private static final Map<String, ExecutionProfile> PROFILES = Map.of(
+            COMMERCE_MODULE, COMMERCE,
+            JHIPSTER_MODULE, JHIPSTER);
 
     private ExecutionProfileRegistry() {
     }

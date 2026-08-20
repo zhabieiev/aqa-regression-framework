@@ -20,9 +20,10 @@ class TestRunRequestValidatorTest {
     private final TestRunRequestValidator validator = new TestRunRequestValidator(DECLARED_MODULES);
 
     @Test
-    void exposesOnlyTheCommerceExecutionProfile() {
-        assertThat(ExecutionProfileRegistry.profiles()).containsExactly(new ExecutionProfile(
-                "regression-nextjs-commerce", "regression-nextjs-commerce/pom.xml", List.of("dev"), true));
+    void exposesTheCommerceAndJhipsterExecutionProfiles() {
+        assertThat(ExecutionProfileRegistry.profiles()).containsExactlyInAnyOrder(
+                new ExecutionProfile("regression-nextjs-commerce", "regression-nextjs-commerce/pom.xml", List.of("dev"), true),
+                new ExecutionProfile("regression-jhipster", "regression-jhipster/pom.xml", List.of("dev"), true));
         assertThatThrownBy(() -> ExecutionProfileRegistry.profiles().add(null))
                 .isInstanceOf(UnsupportedOperationException.class);
         assertThatThrownBy(() -> ExecutionProfileRegistry.profiles().getFirst().environments().add("qa"))
@@ -30,8 +31,19 @@ class TestRunRequestValidatorTest {
     }
 
     @Test
+    void requireProfileSucceedsForJhipsterWithCorrectFields() {
+        ExecutionProfile profile = ExecutionProfileRegistry.requireProfile("regression-jhipster", DECLARED_MODULES);
+
+        assertThat(profile).isEqualTo(new ExecutionProfile(
+                "regression-jhipster", "regression-jhipster/pom.xml", List.of("dev"), true));
+        assertThat(profile.modulePomPath()).isEqualTo("regression-jhipster/pom.xml");
+        assertThat(profile.environments()).containsExactly("dev");
+        assertThat(profile.supportsHeadless()).isTrue();
+    }
+
+    @Test
     void rejectsUnknownAndNonExecutableDeclaredModules() {
-        for (String module : List.of("unknown", "regression-core", "regression-mcp-server", "regression-jhipster",
+        for (String module : List.of("unknown", "regression-core", "regression-mcp-server",
                 "regression-petstore-api")) {
             assertCode("UNSUPPORTED_MODULE", () -> validator.validate(request(module, null, "dev", true, 30)));
         }

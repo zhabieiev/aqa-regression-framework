@@ -17,7 +17,7 @@
         <mcp.surefire.reportsDirectory>${project.build.directory}/surefire-reports</mcp.surefire.reportsDirectory>
         <mcp.allure.resultsDirectory>${project.build.directory}/allure-results</mcp.allure.resultsDirectory>
         <allure.version>2.35.3</allure.version>
-        <ui.headless>false</ui.headless>
+        <ui.headless>true</ui.headless>
     </properties>
 
     <dependencyManagement>

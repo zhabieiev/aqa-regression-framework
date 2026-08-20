@@ -14,7 +14,23 @@
 
     <properties>
         <models.jhipster.api.skip.generate>${models.skip.generate}</models.jhipster.api.skip.generate>
+        <mcp.surefire.reportsDirectory>${project.build.directory}/surefire-reports</mcp.surefire.reportsDirectory>
+        <mcp.allure.resultsDirectory>${project.build.directory}/allure-results</mcp.allure.resultsDirectory>
+        <allure.version>2.35.3</allure.version>
+        <ui.headless>false</ui.headless>
     </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>io.qameta.allure</groupId>
+                <artifactId>allure-bom</artifactId>
+                <version>${allure.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 
     <dependencies>
         <dependency>
@@ -63,6 +79,18 @@
             <artifactId>cucumber-picocontainer</artifactId>
             <scope>test</scope>
         </dependency>
+
+        <dependency>
+            <groupId>io.qameta.allure</groupId>
+            <artifactId>allure-cucumber7-jvm</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>io.qameta.allure</groupId>
+            <artifactId>allure-junit-platform</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
@@ -108,6 +136,19 @@
                         </configuration>
                     </execution>
                 </executions>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <reportsDirectory>${mcp.surefire.reportsDirectory}</reportsDirectory>
+                    <systemPropertyVariables>
+                        <env>${env}</env>
+                        <ui.headless>${ui.headless}</ui.headless>
+                        <allure.results.directory>${mcp.allure.resultsDirectory}</allure.results.directory>
+                    </systemPropertyVariables>
+                </configuration>
             </plugin>
         </plugins>
     </build>

@@ -114,7 +114,6 @@
                         <ui.mobile.enabled>${ui.mobile.enabled}</ui.mobile.enabled>
                         <ui.mobile.device>${ui.mobile.device}</ui.mobile.device>
                         <allure.results.directory>${mcp.allure.resultsDirectory}</allure.results.directory>
-                        <fixture.expected.allure.resultsDirectory>${mcp.allure.resultsDirectory}</fixture.expected.allure.resultsDirectory>
                     </systemPropertyVariables>
                 </configuration>
             </plugin>

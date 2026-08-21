@@ -151,6 +151,58 @@ same file (see the "regression-petstore-api" section above); and the
 tags semantics being resolved, either by mapping tags to `-Dgroups` for
 non-Cucumber profiles or by rejecting tags for them outright.
 
+### Decision: regression-jhipster is not run in CI
+
+**Current state.** `regression-nextjs-commerce` runs in CI as of PR #18
+(`.github/workflows/commerce-regression.yml`); `regression-jhipster` does
+not.
+
+**Decision.** `regression-jhipster` will not be added to CI for now. This
+is a recorded decision, not pending work.
+
+**Reasons:**
+- Its suite requires a live application at `localhost:8080`, and no
+  compose file, Dockerfile, or image reference exists anywhere in this
+  repository — the app under test is raised by a project outside this
+  repository, so a CI runner has no way to produce one.
+- Building the upstream `jhipster-sample-app` from source on every run was
+  considered and rejected: it is an Angular + webpack + Spring Boot build,
+  orders of magnitude slower than the test suites it would support, and
+  pinning CI to a third-party moving branch would turn unrelated upstream
+  changes into red PRs here.
+
+**Note as a fact, not a task:** the module is otherwise CI-ready — its
+build does not need the app running, because
+`models.jhipster.api.skip.generate` defaults to `true` and the generated
+sources are already committed under
+`regression-jhipster/src/main/java/com/aqa/jhipster/api/models/generated`.
+
+**Conditions for revisiting**, so a future reader knows what would flip
+the answer: an image of the application under test published to a
+registry this repository can pull from (a private GHCR package is
+sufficient and avoids redistribution questions), pinned by tag or digest,
+and verified to match the committed generated models in
+`regression-jhipster/src/main/java/com/aqa/jhipster/api/models/generated`.
+
+### Decision: regression-petstore-api is not run in CI
+
+**Decision.** `regression-petstore-api` will not be added to CI. This is
+a recorded decision, not pending work.
+
+**Reasons:** the same first reason that already governs this module's
+MCP-registration decision (see "MCP execution scope —
+regression-petstore-api will not be registered" above) applies here with
+more force: its tests hit a shared third-party public sandbox, and the
+module documents that its delete flow has no independent fallback cleanup
+if the delete request fails. An automatic, unattended CI trigger — on
+every push or pull request — is exactly the mode that leaves orphaned
+data on a system nobody here owns. See that record for the full
+reasoning; it is not repeated here.
+
+**Conditions for revisiting**: the same as that record's — the module
+targeting an owned Petstore instance instead of the public sandbox, and
+the delete-failure fallback cleanup being implemented.
+
 ## Where things live
 
 **Scope: this section documents only `regression-mcp-server`'s internal

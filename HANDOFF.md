@@ -96,49 +96,14 @@ authoritative wiring detail — consult `ExecutionProfileRegistry` and each
 module's own POM directly rather than trusting a hardcoded module list
 here, since a further module may be registered later.
 
-Extending MCP-driven test execution to a third module
-(`regression-petstore-api`) remains blocked on three things. This session
-(2026-08-21, documentation-only, branch `docs/roadmap-reconciliation`)
-recorded the decision to leave all three unresolved and make no
-`regression-petstore-api` execution changes now — it stays manual-only,
-exactly as already-shipped policy states — while correcting
-`docs/ROADMAP.md`'s "Extend test execution" section, which had not been
-updated for `regression-jhipster`'s registration and still described
-`ExecutionProfileRegistry` as single-entry:
+`regression-petstore-api` will not be registered as a third MCP
+`ExecutionProfile`. This is a recorded decision, not pending work — see
+`docs/ROADMAP.md`'s "MCP execution scope — regression-petstore-api will
+not be registered" section for the full reasoning and the conditions that
+would revisit it.
 
-1. A user policy decision: `regression-mcp-server/README.md`'s "v1.0
-   limitations" section states, as current shipped policy, that live API
-   calls (`regression-petstore-api`) are manual-only by design and
-   "should not be added to MCP execution without separate, explicit
-   authorization." No implementation work on `regression-petstore-api`'s
-   execution support should start without that authorization first.
-2. A verified model/launch-path gap: `regression-petstore-api`'s POM does
-   not wire the `mcp.surefire.reportsDirectory`/`mcp.allure.resultsDirectory`
-   system properties (verified by direct grep of every module POM;
-   re-checked 2026-08-21, still true — only `regression-jhipster` and
-   `regression-nextjs-commerce` wire them today), so report capture would
-   not work for it without additional POM or server-side work — not just a
-   new `ExecutionProfileRegistry` entry. Confirmed live this session by
-   running `mvn -pl regression-petstore-api -am test -Denv=dev`: it passes
-   (5 tests, 0 failures) but writes Surefire/Allure output to the module's
-   own default `target/surefire-reports`/`target/allure-results`, not to
-   `ReportCapture`'s per-run staging directories.
-3. A newly identified design gap, found while re-verifying item 2 above:
-   `TestRunRequestValidator.validateHeadless`
-   (`regression-mcp-server/src/main/java/com/aqa/mcp/execution/TestRunRequestValidator.java`)
-   requires a non-null `headless` boolean on every request and rejects the
-   request outright whenever `profile.supportsHeadless()` is false.
-   `regression-petstore-api` has no browser and no `ui.headless` property at
-   all, so a third profile is not a same-shaped addition the way
-   `regression-jhipster` was: either it needs `supportsHeadless = true` as a
-   semantically meaningless placeholder, or the validator/tool schema needs
-   a genuinely new shape for a module where headless does not apply. See
-   `docs/ROADMAP.md`'s "Extend test execution to a third module" section for
-   the full detail on all three points.
-
-If none of those is being pursued next, the smallest independent
-starting point remains `regression-petstore-api`'s "Add a failure-safe
-fallback cleanup path for the Petstore delete scenario" (see
-`docs/ROADMAP.md`'s "regression-petstore-api" section and
+The smallest independent starting point remains `regression-petstore-api`'s
+"Add a failure-safe fallback cleanup path for the Petstore delete
+scenario" (see `docs/ROADMAP.md`'s "regression-petstore-api" section and
 `regression-petstore-api/README.md`'s "Current Limitations and
 Trade-offs" for the current gap).

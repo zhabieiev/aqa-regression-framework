@@ -30,4 +30,4 @@ Desktop.ini
 /.regression-mcp/
 
 # Local review-session working log (not a deliverable)
-/output.log
+/output*.log

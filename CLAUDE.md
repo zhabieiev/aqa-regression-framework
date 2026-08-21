@@ -59,7 +59,7 @@ treat it as binding regardless of how you were pointed at it.
 - Report only files actually changed and the verification result. State any runtime prerequisite or unverified external assumption explicitly.
 - Distinguish current implementation from roadmap intent in any documentation you write or update; do not describe planned or proposed safeguards as already available.
 - Update `HANDOFF.md` at the end of a working session so the next session (any agent, any vendor) can resume without conversation history.
-- `output.log` is a local, gitignored working log, not repository content. Never cite it as the location of findings in `HANDOFF.md`, `CLAUDE.md`, or any other committed documentation — a fresh clone will not have it. Put substantive findings directly in the committed doc instead.
+- `output.log` at the repository root is the single local, gitignored working log. Agents append their reports to it; it is not repository content. It is cleared periodically by the user, so it is not an archive and nothing should depend on its history. It must never be cited as the location of findings in `HANDOFF.md`, `CLAUDE.md`, or any other committed document, because a fresh clone will not have it — substantive findings go directly into the committed document.
 
 ## Regression MCP server
 

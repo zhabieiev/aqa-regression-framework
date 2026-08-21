@@ -47,6 +47,59 @@ start of a session; update it at the end of one, per `CLAUDE.md`'s
 
 ## Most recent session
 
+2026-08-21 — four merged PRs, CI and cleanup:
+
+PR #16 (`134a569`, branch `docs/petstore-decision-record`): the corrective
+pass described in the entry below this one.
+
+PR #17 (`a35d04d`, branch `docs/log-convention-and-cleanup`): `9d14a28`
+switched `.gitignore` from an exact `output.log` filename to an
+`output*.log` pattern; `c2e0630` documented `output.log` as the
+gitignored working-log convention in `CLAUDE.md`, naming it robustly
+against that pattern change; `af6ccf7` moved the MCP execution-scope
+decision record out of the regular roadmap flow into its own new
+"## Decisions" section in `docs/ROADMAP.md`; `73d00ef` recorded that
+corrective pass in this file.
+
+PR #18 (`f010553`, branch `ci/commerce-regression`): added
+`.github/workflows/commerce-regression.yml`, `regression-nextjs-commerce`'s
+first CI coverage — path-filtered on the module plus `regression-core`
+and the root POM, no browser-provisioning step needed
+(`DriverFactory` constructs `ChromeDriver` directly), a reachability
+pre-flight against the public demo store distinguishing a third-party
+outage from a test failure, and `if: always()` artifact upload. Also
+added a reactor-wide Surefire `forkedProcessTimeoutInSeconds` of 900 to
+the root `pom.xml` (root cause: an unexplained 5+ minute `@ui` hang,
+see below), verified via `mvn help:effective-pom` against all five
+product/tooling modules rather than inferred from a passing run, plus
+`timeout-minutes` and a `cancel-in-progress` concurrency group on both
+jobs in the existing `main.yml` workflow.
+
+PR #19 (`76c7fd0`, branch `chore/remove-allure-fixture`): removed
+`regression-nextjs-commerce`'s `attachment.feature`,
+`AllureAttachmentFixtureSuite.java`, and `AllureAttachmentFixtureSteps.java`,
+plus the `fixture.expected.allure.resultsDirectory` Surefire property that
+existed solely to feed the deleted step class. An inspection pass first
+proved the fixture dead: its class name never matched Surefire's default
+test-discovery patterns, so no invocation anywhere in the repository ever
+ran it — confirmed by a plain `mvn test` showing no trace of it alongside
+an explicit `-Dtest=` run showing it passing cleanly when forced.
+
+This pass (branch `docs/ci-decisions-and-handoff`): recorded two CI
+decisions in `docs/ROADMAP.md`'s "## Decisions" section —
+`regression-jhipster` and `regression-petstore-api` will not be added to
+CI for now, both for reasons specific to each module (no way to raise
+jhipster's app-under-test on a CI runner; petstore-api's shared
+third-party sandbox with no delete-failure fallback). Recorded the
+unreproduced `@ui` hang mentioned under PR #18 above in
+`docs/TECHNICAL_DEBT.md` as item 5, including a same-day bounded
+five-run reproduction probe that did not reproduce it. Removed
+`continue-on-error: true` from `build-and-test`'s Maven step in
+`main.yml` after confirming `regression-core` genuinely passes both in
+the latest CI run's step-level conclusion and in a local
+`mvn clean verify` — that job can now actually fail when
+`regression-core` breaks.
+
 2026-08-21 — corrective pass on branch `docs/petstore-decision-record`,
 merged as PR #16 (`134a569`): turned the prior same-day pass's "Extend test
 execution" rewrite into an explicit decision record. `57ccc07` rewrote
@@ -115,6 +168,15 @@ here, since a further module may be registered later.
 `docs/ROADMAP.md`'s "MCP execution scope — regression-petstore-api will
 not be registered" section for the full reasoning and the conditions that
 would revisit it.
+
+As of PR #18, `regression-nextjs-commerce` also runs in CI
+(`.github/workflows/commerce-regression.yml`), alongside a reactor-wide
+Surefire fork timeout and a now-meaningful `build-and-test` job (its
+`continue-on-error` was removed this session). `regression-jhipster` and
+`regression-petstore-api` will not be added to CI; see
+`docs/ROADMAP.md`'s "Decision: regression-jhipster is not run in CI" and
+"Decision: regression-petstore-api is not run in CI" sections for the
+reasoning and the conditions that would revisit either.
 
 The smallest independent starting point remains `regression-petstore-api`'s
 "Add a failure-safe fallback cleanup path for the Petstore delete

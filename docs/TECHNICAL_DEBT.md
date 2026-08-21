@@ -106,3 +106,34 @@ Validator's design work but never turned into a scoped rule, since a
 ARCH-001..004's pages/components-focused scope.
 
 **Status**: present, unfixed, not covered by any current validator rule.
+
+## 5. Unreproduced `@ui` hang in `regression-jhipster` (2026-08-21)
+
+**What**: on 2026-08-21 a `regression-jhipster` `@ui`-tagged Cucumber run
+hung for over five minutes with zero output and no exception, then passed
+on an identical immediate retry. Root cause unidentified — no exception,
+no partial output, and no known trigger to reproduce on demand.
+
+**Location**: `regression-jhipster/src/test/java/com/aqa/jhipster/runners/RunCucumberTest.java`
+(the `@ui`-tagged suite); mitigated reactor-wide by
+`forkedProcessTimeoutInSeconds` in the root `pom.xml`'s Surefire
+`pluginManagement` configuration.
+
+**Why accepted**: a bounded reproduction probe was run the same day — five
+consecutive `mvn -pl regression-jhipster -am test -Dcucumber.filter.tags="@ui" -Denv=dev`
+runs against the live app (confirmed reachable via `curl`, HTTP 200,
+immediately before the probe). All five passed cleanly with no hang: 27s,
+23s, 31s, 25s, and 26s wall clock, each producing 5 Scenarios (5 passed),
+24 Steps (24 passed), BUILD SUCCESS. An intermittent failure that does not
+reproduce on demand does not justify open-ended investigation beyond a
+bounded probe. The reactor-wide Surefire `forkedProcessTimeoutInSeconds`
+of 900 (root `pom.xml`) converts any future hang into a diagnosable
+failure after 15 minutes rather than an open-ended stall, which was judged
+sufficient mitigation for now.
+
+**Status**: present, unreproduced, mitigated by the 900-second Surefire
+fork timeout. If it recurs: before killing anything, capture Surefire's
+timeout output (the forked-process-timeout error and any partial log) and
+a thread dump of the forked JVM (e.g. `jstack` against the forked
+Surefire process, found via its process tree) — that diagnostic evidence
+is exactly what this item currently lacks.

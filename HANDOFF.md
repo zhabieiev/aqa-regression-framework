@@ -47,6 +47,20 @@ start of a session; update it at the end of one, per `CLAUDE.md`'s
 
 ## Most recent session
 
+2026-08-21 — corrective pass on branch `docs/petstore-decision-record`,
+merged as PR #16 (`134a569`): turned the prior same-day pass's "Extend test
+execution" rewrite into an explicit decision record. `57ccc07` rewrote
+`docs/ROADMAP.md`'s regression-mcp-server section into "MCP execution scope
+— regression-petstore-api will not be registered," stating plainly that the
+module will not become a third `ExecutionProfile` and recording why (shared
+public sandbox with no delete-fallback cleanup, an unresolved
+`supportsHeadless` semantics gap, `MavenInvocationFactory` silently ignoring
+any tags an MCP client supplied, and low payoff against the module's
+existing plain-Maven execution), plus the conditions that would revisit it.
+`5ca2b7b` then replaced this file's "blocked on three things" framing in
+"Next step" below with a short pointer to that decision record, instead of
+duplicating the reasoning here. No source, POM, or test file was touched.
+
 2026-08-21 — documentation-only pass on branch `docs/roadmap-reconciliation`:
 reconciled `docs/ROADMAP.md` against current master after the prior session's
 `regression-jhipster` registration work. `docs/ROADMAP.md`'s "Extend test

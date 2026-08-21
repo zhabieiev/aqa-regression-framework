@@ -42,50 +42,62 @@ module/area; each module's own README carries more detail where noted.
   artifact policy (today's Allure workflow, in `regression-petstore-api`'s
   `run-tests.sh`, is an intentionally local, interactive workflow — see
   `README.md`'s "Configuration and reporting").
-- Document a common module-execution convention for local and CI use.
+- Document a common module-execution convention for local and CI use
+  (local execution is already documented in root `README.md`'s "Running
+  Maven" section; no CI convention exists yet — `.github/workflows/main.yml`
+  only runs `regression-core` and `regression-mcp-server` jobs today).
 - Maintain an OpenAPI Generator compatibility matrix for modules that
   generate models (`regression-jhipster`, `regression-petstore-api`).
 - Add schema and contract validation as a layer separate from DTO mapping.
 
 ### regression-mcp-server
 
-#### Extend test execution beyond `regression-nextjs-commerce` / `dev`
+#### Extend test execution to a third module (`regression-petstore-api`)
 
-Today, `regression_start_test_run` supports exactly one module and one
-environment. `ExecutionProfileRegistry`
+Today, `regression_start_test_run` supports two modules —
+`regression-nextjs-commerce` and `regression-jhipster` — both against the
+`dev` environment only. `ExecutionProfileRegistry`
 (`regression-mcp-server/src/main/java/com/aqa/mcp/execution/ExecutionProfileRegistry.java`)
-hardcodes a single-entry `PROFILES` map:
+holds a two-entry `PROFILES` map (`COMMERCE`, `JHIPSTER`), both with
+`environments = List.of("dev")` and `supportsHeadless = true`. The only
+product module not yet registered is `regression-petstore-api`.
 
-```java
-private static final ExecutionProfile COMMERCE = new ExecutionProfile(COMMERCE_MODULE,
-        "regression-nextjs-commerce/pom.xml", List.of("dev"), true);
-private static final Map<String, ExecutionProfile> PROFILES = Map.of(COMMERCE_MODULE, COMMERCE);
-```
-
-Adding a second module or environment means:
-- Adding another `ExecutionProfile` entry to `PROFILES` (module name,
-  module POM path, allowed `environments` list, `supportsHeadless` flag).
-- `TestRunRequestValidator`
+Adding it means:
+- Adding an `ExecutionProfile` entry to `PROFILES` (module name, module
+  POM path, allowed `environments` list, `supportsHeadless` flag).
+- Resolving a real design question `TestRunRequestValidator`
   (`regression-mcp-server/src/main/java/com/aqa/mcp/execution/TestRunRequestValidator.java`)
-  already delegates module/environment gating entirely to
-  `ExecutionProfileRegistry.requireProfile(...)`, so it needs no change for
-  a same-shaped new profile — only for a genuinely new validation rule
-  (e.g. a module needing a different headless/timeout policy shape).
-- `RegressionMcpServer.java`'s `regression_start_test_run` tool wiring
-  passes the declared reactor module list into the validator already
-  (`declaredModules`), so a new module just needs to exist as a real
-  reactor module and get an `ExecutionProfile` entry — no separate
-  allowlist to update there.
-- `TestRunCoordinator` and the Maven process-launch path
-  (`DirectMavenProcessLauncher`, `MavenInvocationFactory`) currently only
-  have `regression-nextjs-commerce`'s Selenium/`dev` shape exercised
-  end-to-end; a new module's Maven invocation (system properties, profile
-  activation, etc.) needs to be verified explicitly, not assumed to work
-  from the `regression-nextjs-commerce` case alone.
-- Before authorizing, check whether other product modules
-  (`regression-petstore-api`, `regression-jhipster`) even have a Maven
-  profile/execution shape suitable for MCP-driven runs — this is a
-  reactor-wide question, not just an `ExecutionProfileRegistry` edit.
+  does not yet answer: `validateHeadless` requires a non-null `headless`
+  boolean on every request and rejects the request outright if
+  `profile.supportsHeadless()` is false. `regression-petstore-api` has no
+  browser and no `ui.headless` property, so either it needs
+  `supportsHeadless = true` as a semantically meaningless placeholder (the
+  value would be passed via `-Dui.headless=...` and silently ignored by
+  the module), or `TestRunRequestValidator`/the tool's input schema needs
+  a genuinely new shape for a module where headless does not apply. This
+  is not a same-shaped-profile addition, so `TestRunRequestValidator`
+  cannot be assumed unchanged the way it was for JHipster.
+- `RegressionMcpServer.java`'s tool wiring already passes the full
+  declared reactor module list into the validator
+  (`ExecutionPlanningFactory.java`'s `ModuleList.forRoot(...)`), so no
+  separate allowlist update is needed there — this held for JHipster's
+  registration and needs no further verification.
+- `MavenInvocationFactory`/`DirectMavenProcessLauncher` have now been
+  exercised end-to-end for two Cucumber+browser shapes (Commerce/Selenium,
+  JHipster/Playwright) but never for a plain-JUnit 5, non-Cucumber,
+  non-browser shape. `regression-petstore-api`'s POM does not wire the
+  `mcp.surefire.reportsDirectory`/`mcp.allure.resultsDirectory` system
+  properties `MavenInvocationFactory` sets on every invocation
+  (verified absent by direct grep of its POM), so `ReportCapture` would
+  find its per-run staging directories empty even if the tests themselves
+  passed — this needs explicit POM wiring, not just an
+  `ExecutionProfileRegistry` entry, before report capture would work.
+- Before authorizing implementation: `regression-mcp-server/README.md`'s
+  "v1.0 limitations" section states, as current shipped policy, that
+  live API calls in `regression-petstore-api` are manual-only by design
+  and "should not be added to MCP execution without separate, explicit
+  authorization." No implementation should start without that
+  authorization, independent of the technical gap above.
 
 #### Extract the shared validator `Tool` helper
 

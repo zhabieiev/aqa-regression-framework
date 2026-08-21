@@ -47,64 +47,40 @@ start of a session; update it at the end of one, per `CLAUDE.md`'s
 
 ## Most recent session
 
-2026-08-20 to 2026-08-21 — closed `regression-jhipster`'s MCP-execution gap
-end to end, then corrected the documentation drift that work exposed.
-Commit range: `6dc8700..e0eed32` (`6dc8700` is the last commit of the
-previously-documented 2026-08-19 README-gaps session above it; everything
-from `6049a89` onward is this arc):
+2026-08-21 — documentation-only pass on branch `docs/roadmap-reconciliation`:
+reconciled `docs/ROADMAP.md` against current master after the prior session's
+`regression-jhipster` registration work. `docs/ROADMAP.md`'s "Extend test
+execution" section still described `ExecutionProfileRegistry` as a
+single-entry `PROFILES` map containing only Commerce — stale since commit
+`9529e1a` registered `regression-jhipster` as a second entry. Rewrote that
+section to reflect the current two-entry registry, to name
+`regression-petstore-api` as the only remaining unregistered module, and to
+record the specific gaps a third profile would need to resolve: a
+`TestRunRequestValidator.validateHeadless` design question for a module with
+no browser (verified live: it rejects any request when
+`profile.supportsHeadless()` is false, and `regression-petstore-api` has no
+`ui.headless` concept at all), and the module's POM not wiring
+`mcp.surefire.reportsDirectory`/`mcp.allure.resultsDirectory` (confirmed by
+actually running `mvn -pl regression-petstore-api -am test -Denv=dev` — it
+passes, 5/5, but writes its Surefire/Allure output to the module's own
+default `target/` paths, not to `ReportCapture`'s per-run staging
+directories). No `regression-petstore-api` MCP-execution decision changed as
+part of this pass — it remains manual-only, exactly as
+`regression-mcp-server/README.md`'s "v1.0 limitations" already stated; this
+session only made the roadmap accurately reflect why. No source, POM, or test
+file was touched; see "Next step" below for the current, corrected picture.
 
-- Added `regression-jhipster`'s Maven-discoverable Cucumber suite runner
-  and POM wiring, which had never existed (`6049a89`), then registered
-  `regression-jhipster` as a second `ExecutionProfileRegistry` entry
-  alongside `regression-nextjs-commerce` (`9529e1a`).
-- Diagnosed and fixed a glue-path defect: `regression-jhipster`'s Cucumber
-  glue list omitted `com.aqa.core.definitions`, the package holding the
-  shared `GeneralDefinitions`/`StepArgumentConverters` step and converter
-  classes feature files rely on for assertions and `@{...}`/`${...}`
-  placeholder resolution. Missing it made 16 `@api` scenarios fail or come
-  back undefined (`657f849`). The same latent gap was found and closed
-  pre-emptively in `regression-nextjs-commerce` before it caused any real
-  failure there — that module's own feature files never happened to
-  exercise the missing package (`d8a40e7`).
-- Untangled headless configuration for both UI-driving modules:
-  `regression-jhipster`'s `pom.xml` originally forced `ui.headless=false`
-  via Surefire `systemPropertyVariables`, which always pre-empted its own
-  `dev.properties` value regardless of what that file said — a first pass
-  made `true` the forced default instead (`2ed13ad`), then a follow-up
-  pass removed the pom property entirely (`ef88a51`). `dev.properties` is
-  now the single source of truth for headless mode in both
-  `regression-jhipster` and `regression-nextjs-commerce`, with
-  `-Dui.headless=<bool>` still working as a command-line override in
-  either module via Maven Surefire's own default system-property
-  forwarding to the forked test JVM — no per-module
-  `systemPropertyVariables` entry required.
-- Audited the shipped documentation (`docs/TOOLS.md`, both `README.md`
-  files) against the code and fixed what had drifted: claims that
-  `regression_start_test_run` only accepted `regression-nextjs-commerce`
-  (stale the moment jhipster was registered), a report/artifact error-code
-  note that collapsed three distinct codes (`RUN_NOT_FOUND`,
-  `RUN_NOT_TERMINAL`, `NOT_FOUND`) into one incorrect blanket claim, and a
-  security-model claim that overstated which of the three execution tools
-  actually launch a process (`3c7ec68`).
-- Corrected two client-facing strings an MCP client reads directly: the
-  server-level `INSTRUCTIONS` text (previously claimed the server exposed
-  "only deterministic inspection tools," despite three execution tools
-  with real side effects) and `regression_get_test_run`/
-  `regression_cancel_test_run`'s previously-shared, indistinguishable
-  description (`f1159db`) — then added test coverage for both, since
-  nothing had asserted on either string before (`ad6b6a8`).
-- Merged as PR #12 (`eddcfe0`: the runner, registration, glue fix, and
-  headless-default work) and PR #13 (`e0eed32`: the documentation audit,
-  the client-facing string fixes, and the pom-property removal).
-
-What this means for a newcomer: `regression-jhipster` is now a fully
-working second MCP-executable module, on equal footing with
-`regression-nextjs-commerce` — both are registered, both pass their full
-Cucumber suites, both default to headless with a working `-D` override,
-and the shipped documentation no longer singles out Commerce as the only
-executable module. See "Next step" below for what's still gated (only
-`regression-petstore-api` now) and "Current state" above for today's
-freshly re-verified numbers.
+The 2026-08-20 to 2026-08-21 session before this one closed
+`regression-jhipster`'s MCP-execution gap end to end (commit range
+`6dc8700..e0eed32`, merged as PR #12 `eddcfe0` and PR #13 `e0eed32`): added
+its Maven-discoverable Cucumber suite runner and POM wiring (`6049a89`),
+registered it as a second `ExecutionProfileRegistry` entry (`9529e1a`), fixed
+a Cucumber glue-path defect that was failing 16 `@api` scenarios (`657f849`),
+untangled headless configuration for both UI-driving modules (`2ed13ad`,
+`ef88a51`), and audited `docs/TOOLS.md`/both `README.md` files plus two
+client-facing MCP strings against the resulting code (`3c7ec68`, `f1159db`,
+`ad6b6a8`). `regression-jhipster` is now a fully working second
+MCP-executable module, on equal footing with `regression-nextjs-commerce`.
 
 ## Next step
 
@@ -121,7 +97,14 @@ module's own POM directly rather than trusting a hardcoded module list
 here, since a further module may be registered later.
 
 Extending MCP-driven test execution to a third module
-(`regression-petstore-api`) remains blocked on two things:
+(`regression-petstore-api`) remains blocked on three things. This session
+(2026-08-21, documentation-only, branch `docs/roadmap-reconciliation`)
+recorded the decision to leave all three unresolved and make no
+`regression-petstore-api` execution changes now — it stays manual-only,
+exactly as already-shipped policy states — while correcting
+`docs/ROADMAP.md`'s "Extend test execution" section, which had not been
+updated for `regression-jhipster`'s registration and still described
+`ExecutionProfileRegistry` as single-entry:
 
 1. A user policy decision: `regression-mcp-server/README.md`'s "v1.0
    limitations" section states, as current shipped policy, that live API
@@ -135,9 +118,25 @@ Extending MCP-driven test execution to a third module
    re-checked 2026-08-21, still true — only `regression-jhipster` and
    `regression-nextjs-commerce` wire them today), so report capture would
    not work for it without additional POM or server-side work — not just a
-   new `ExecutionProfileRegistry` entry.
+   new `ExecutionProfileRegistry` entry. Confirmed live this session by
+   running `mvn -pl regression-petstore-api -am test -Denv=dev`: it passes
+   (5 tests, 0 failures) but writes Surefire/Allure output to the module's
+   own default `target/surefire-reports`/`target/allure-results`, not to
+   `ReportCapture`'s per-run staging directories.
+3. A newly identified design gap, found while re-verifying item 2 above:
+   `TestRunRequestValidator.validateHeadless`
+   (`regression-mcp-server/src/main/java/com/aqa/mcp/execution/TestRunRequestValidator.java`)
+   requires a non-null `headless` boolean on every request and rejects the
+   request outright whenever `profile.supportsHeadless()` is false.
+   `regression-petstore-api` has no browser and no `ui.headless` property at
+   all, so a third profile is not a same-shaped addition the way
+   `regression-jhipster` was: either it needs `supportsHeadless = true` as a
+   semantically meaningless placeholder, or the validator/tool schema needs
+   a genuinely new shape for a module where headless does not apply. See
+   `docs/ROADMAP.md`'s "Extend test execution to a third module" section for
+   the full detail on all three points.
 
-If neither of those is being pursued next, the smallest independent
+If none of those is being pursued next, the smallest independent
 starting point remains `regression-petstore-api`'s "Add a failure-safe
 fallback cleanup path for the Petstore delete scenario" (see
 `docs/ROADMAP.md`'s "regression-petstore-api" section and

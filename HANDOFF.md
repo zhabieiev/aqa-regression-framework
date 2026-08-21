@@ -48,24 +48,33 @@ naming consistency, following up on the multi-LLM/multi-agent audit above:
 
 ## Next step
 
-Extending MCP-driven test execution to a second module
-(`regression-petstore-api` or `regression-jhipster`) is blocked on two
-things:
+`regression-jhipster` is now MCP-executable, as the second module
+alongside `regression-nextjs-commerce`: it has an `ExecutionProfileRegistry`
+entry, its POM wires the `mcp.surefire.reportsDirectory`/
+`mcp.allure.resultsDirectory` system properties `MavenInvocationFactory`/
+`ReportCapture` depend on, its Cucumber glue path and headless
+configuration were fixed and simplified, and `@api`/`@ui`/`@hybrid` all
+pass against a live app. See `regression-mcp-server/docs/TOOLS.md` and
+`regression-mcp-server/README.md`'s "v1.0 limitations" for current,
+authoritative wiring detail — consult `ExecutionProfileRegistry` and each
+module's own POM directly rather than trusting a hardcoded module list
+here, since a further module may be registered later.
+
+Extending MCP-driven test execution to a third module
+(`regression-petstore-api`) remains blocked on two things:
 
 1. A user policy decision: `regression-mcp-server/README.md`'s "v1.0
-   limitations" section states, as current shipped policy, that
-   Playwright (`regression-jhipster`) and live API calls
-   (`regression-petstore-api`) are manual-only by design and "none should
-   be added without separate, explicit authorization." No implementation
-   work on either module's execution support should start without that
-   authorization first.
-2. A verified model/launch-path gap: only `regression-nextjs-commerce`'s
-   POM wires the `mcp.surefire.reportsDirectory`/
-   `mcp.allure.resultsDirectory` system properties that
-   `MavenInvocationFactory`/`ReportCapture` depend on; neither
-   `regression-petstore-api` nor `regression-jhipster` references those
-   properties today, so report capture would not work for either module
-   without additional POM or server-side work — not just a new
+   limitations" section states, as current shipped policy, that live API
+   calls (`regression-petstore-api`) are manual-only by design and
+   "should not be added to MCP execution without separate, explicit
+   authorization." No implementation work on `regression-petstore-api`'s
+   execution support should start without that authorization first.
+2. A verified model/launch-path gap: `regression-petstore-api`'s POM does
+   not wire the `mcp.surefire.reportsDirectory`/`mcp.allure.resultsDirectory`
+   system properties (confirmed by direct grep of every module POM this
+   session — only `regression-jhipster` and `regression-nextjs-commerce`
+   wire them today), so report capture would not work for it without
+   additional POM or server-side work — not just a new
    `ExecutionProfileRegistry` entry.
 
 If neither of those is being pursued next, the smallest independent

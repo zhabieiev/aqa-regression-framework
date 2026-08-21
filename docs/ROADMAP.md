@@ -52,52 +52,66 @@ module/area; each module's own README carries more detail where noted.
 
 ### regression-mcp-server
 
-#### Extend test execution to a third module (`regression-petstore-api`)
+#### MCP execution scope — regression-petstore-api will not be registered
 
-Today, `regression_start_test_run` supports two modules —
+**Current state.** `regression_start_test_run` supports two modules —
 `regression-nextjs-commerce` and `regression-jhipster` — both against the
 `dev` environment only. `ExecutionProfileRegistry`
 (`regression-mcp-server/src/main/java/com/aqa/mcp/execution/ExecutionProfileRegistry.java`)
 holds a two-entry `PROFILES` map (`COMMERCE`, `JHIPSTER`), both with
-`environments = List.of("dev")` and `supportsHeadless = true`. The only
-product module not yet registered is `regression-petstore-api`.
+`environments = List.of("dev")` and `supportsHeadless = true`.
+`regression-petstore-api` is the only product module not registered.
 
-Adding it means:
-- Adding an `ExecutionProfile` entry to `PROFILES` (module name, module
-  POM path, allowed `environments` list, `supportsHeadless` flag).
-- Resolving a real design question `TestRunRequestValidator`
-  (`regression-mcp-server/src/main/java/com/aqa/mcp/execution/TestRunRequestValidator.java`)
-  does not yet answer: `validateHeadless` requires a non-null `headless`
-  boolean on every request and rejects the request outright if
-  `profile.supportsHeadless()` is false. `regression-petstore-api` has no
-  browser and no `ui.headless` property, so either it needs
-  `supportsHeadless = true` as a semantically meaningless placeholder (the
-  value would be passed via `-Dui.headless=...` and silently ignored by
-  the module), or `TestRunRequestValidator`/the tool's input schema needs
-  a genuinely new shape for a module where headless does not apply. This
-  is not a same-shaped-profile addition, so `TestRunRequestValidator`
-  cannot be assumed unchanged the way it was for JHipster.
-- `RegressionMcpServer.java`'s tool wiring already passes the full
-  declared reactor module list into the validator
-  (`ExecutionPlanningFactory.java`'s `ModuleList.forRoot(...)`), so no
-  separate allowlist update is needed there — this held for JHipster's
-  registration and needs no further verification.
-- `MavenInvocationFactory`/`DirectMavenProcessLauncher` have now been
-  exercised end-to-end for two Cucumber+browser shapes (Commerce/Selenium,
-  JHipster/Playwright) but never for a plain-JUnit 5, non-Cucumber,
-  non-browser shape. `regression-petstore-api`'s POM does not wire the
-  `mcp.surefire.reportsDirectory`/`mcp.allure.resultsDirectory` system
-  properties `MavenInvocationFactory` sets on every invocation
-  (verified absent by direct grep of its POM), so `ReportCapture` would
-  find its per-run staging directories empty even if the tests themselves
-  passed — this needs explicit POM wiring, not just an
-  `ExecutionProfileRegistry` entry, before report capture would work.
-- Before authorizing implementation: `regression-mcp-server/README.md`'s
-  "v1.0 limitations" section states, as current shipped policy, that
-  live API calls in `regression-petstore-api` are manual-only by design
-  and "should not be added to MCP execution without separate, explicit
-  authorization." No implementation should start without that
-  authorization, independent of the technical gap above.
+**Decision.** `regression-petstore-api` will not be registered as a third
+`ExecutionProfile`. This is a recorded decision, not pending work. It
+supersedes the earlier framing of "extend execution beyond
+`regression-nextjs-commerce`" as an open task.
+
+**Reasons:**
+- Its tests run against a shared third-party public sandbox
+  (https://petstore.swagger.io/v2), and the module's own documented
+  limitation is that the delete flow has no independent fallback cleanup
+  if the delete request fails. An MCP-triggered, unattended run is
+  exactly the mode in which orphaned data would be left on a system
+  nobody here owns. `regression-jhipster` targets a locally owned
+  application; `regression-nextjs-commerce` targets a public demo
+  storefront without that cleanup gap.
+- Registration would force two unresolved design decisions in shared code
+  for the sake of one module:
+  (i) `supportsHeadless` has no meaningful value for a module with no
+  browser, and its real semantics are worse than "not applicable" —
+  `TestRunRequestValidator` rejects every request for a profile whose
+  `supportsHeadless` is false, so the flag would have to be set `true`
+  for a module that has no headless concept at all;
+  (ii) `MavenInvocationFactory` appends `-Dcucumber.filter.tags` on every
+  invocation, so a tags value supplied by an MCP client would be silently
+  ignored and the full suite would run while the client believed it had
+  filtered. The module does support filtering, but through JUnit tags via
+  `-Dgroups`, a mechanism the MCP tool has no concept of.
+- Low payoff. The module already runs correctly under plain Maven (5
+  tests, 0 failures, 0 errors, 0 skipped as of 2026-08-21), needs no
+  runner class because Surefire auto-discovers plain JUnit 5, and
+  registration would add only a remote trigger.
+- `regression-mcp-server/README.md`'s v1.0 limitations section already
+  records this module as manual-only pending separate explicit
+  authorization.
+
+**Remaining mechanical gap**, recorded as a fact rather than a task: the
+module's POM declares neither `mcp.surefire.reportsDirectory` nor
+`mcp.allure.resultsDirectory`, so its Surefire XML and Allure JSON land in
+its own `target/` directories rather than the per-run staging paths
+`ReportCapture` reads. This is mechanical and already solved twice —
+`regression-jhipster/pom.xml` lines 17-18 (properties) and 144/147
+(usage), and `regression-nextjs-commerce/pom.xml` lines 21-22 (properties)
+and 111/116-117 (usage). It is not the reason for the decision.
+
+**Conditions for revisiting**, so a future reader knows what would flip
+the answer: the module targeting an owned Petstore instance instead of
+the public sandbox; the delete-failure fallback cleanup being
+implemented, which is already tracked as its own item elsewhere in this
+same file (see the "regression-petstore-api" section above); and the
+tags semantics being resolved, either by mapping tags to `-Dgroups` for
+non-Cucumber profiles or by rejecting tags for them outright.
 
 #### Extract the shared validator `Tool` helper
 

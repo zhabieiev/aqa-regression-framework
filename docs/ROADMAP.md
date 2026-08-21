@@ -52,7 +52,45 @@ module/area; each module's own README carries more detail where noted.
 
 ### regression-mcp-server
 
-#### MCP execution scope — regression-petstore-api will not be registered
+#### Extract the shared validator `Tool` helper
+
+`docs/TECHNICAL_DEBT.md` item 3 names the duplicated methods across
+`ModuleBoundariesTool`, `FrameworkConventionsTool`, and `ArchitectureTool`:
+`evaluate`, `parseRequest`, `reportOutput`, `moduleResultOutput`,
+`violationOutput`, `inputSchema`, `violationSchema`, `moduleResultSchema`,
+`outputSchema`, `readOnlyAnnotations`, `successResult`, `errorResult`,
+`serialize`. A future refactor could extract a shared
+`ValidationToolSupport`-style helper (static methods or a small
+package-private class in `com.aqa.mcp.validation`) that each `Tool` class
+calls into, leaving only the per-tool rule set and tool name/description
+in each `Tool` class itself. Scope carefully: the three classes' `evaluate`
+methods differ in which `ValidationRule` list they evaluate against, and
+their `outputSchema`/`violationSchema` differ slightly in field sets
+(e.g. `FrameworkConventionsTool` and `ArchitectureTool` both support an
+`advisoryViolations` bucket that `ModuleBoundariesTool` does not) — a
+faithful extraction needs to preserve those differences exactly, verified
+against each tool's existing contract tests
+(`ModuleBoundariesToolContractTest`, `FrameworkConventionsToolContractTest`,
+`ArchitectureToolContractTest`) which lock in current output shape.
+
+#### Scope an ARCH rule for `definitions`-layer assertions
+
+`docs/TECHNICAL_DEBT.md` item 4 notes that `GeneralDefinitions.java`'s
+direct AssertJ assertions inside `@Then` methods are real CLAUDE.md debt
+with no current validator rule covering it. A future ARCH-005 (or similar)
+rule in `ArchitectureRules.java` could flag assertion calls
+(`assertThat`/`Assertions.assert*`, matched the same way ARCH-003 already
+matches them via each file's own `ImportDeclaration`s) inside classes whose
+package's last segment is `definitions`. This would need its own Phase A
+design pass: unlike ARCH-003's `pages`/`components` scope, a
+`definitions`-layer assertion rule needs to decide whether *any* assertion
+in a `definitions` class is a violation, or only ones not delegated from a
+`steps`-layer call — that distinction was never designed, only noted as
+informational.
+
+## Decisions
+
+### MCP execution scope — regression-petstore-api will not be registered
 
 **Current state.** `regression_start_test_run` supports two modules —
 `regression-nextjs-commerce` and `regression-jhipster` — both against the
@@ -112,42 +150,6 @@ implemented, which is already tracked as its own item elsewhere in this
 same file (see the "regression-petstore-api" section above); and the
 tags semantics being resolved, either by mapping tags to `-Dgroups` for
 non-Cucumber profiles or by rejecting tags for them outright.
-
-#### Extract the shared validator `Tool` helper
-
-`docs/TECHNICAL_DEBT.md` item 3 names the duplicated methods across
-`ModuleBoundariesTool`, `FrameworkConventionsTool`, and `ArchitectureTool`:
-`evaluate`, `parseRequest`, `reportOutput`, `moduleResultOutput`,
-`violationOutput`, `inputSchema`, `violationSchema`, `moduleResultSchema`,
-`outputSchema`, `readOnlyAnnotations`, `successResult`, `errorResult`,
-`serialize`. A future refactor could extract a shared
-`ValidationToolSupport`-style helper (static methods or a small
-package-private class in `com.aqa.mcp.validation`) that each `Tool` class
-calls into, leaving only the per-tool rule set and tool name/description
-in each `Tool` class itself. Scope carefully: the three classes' `evaluate`
-methods differ in which `ValidationRule` list they evaluate against, and
-their `outputSchema`/`violationSchema` differ slightly in field sets
-(e.g. `FrameworkConventionsTool` and `ArchitectureTool` both support an
-`advisoryViolations` bucket that `ModuleBoundariesTool` does not) — a
-faithful extraction needs to preserve those differences exactly, verified
-against each tool's existing contract tests
-(`ModuleBoundariesToolContractTest`, `FrameworkConventionsToolContractTest`,
-`ArchitectureToolContractTest`) which lock in current output shape.
-
-#### Scope an ARCH rule for `definitions`-layer assertions
-
-`docs/TECHNICAL_DEBT.md` item 4 notes that `GeneralDefinitions.java`'s
-direct AssertJ assertions inside `@Then` methods are real CLAUDE.md debt
-with no current validator rule covering it. A future ARCH-005 (or similar)
-rule in `ArchitectureRules.java` could flag assertion calls
-(`assertThat`/`Assertions.assert*`, matched the same way ARCH-003 already
-matches them via each file's own `ImportDeclaration`s) inside classes whose
-package's last segment is `definitions`. This would need its own Phase A
-design pass: unlike ARCH-003's `pages`/`components` scope, a
-`definitions`-layer assertion rule needs to decide whether *any* assertion
-in a `definitions` class is a violation, or only ones not delegated from a
-`steps`-layer call — that distinction was never designed, only noted as
-informational.
 
 ## Where things live
 

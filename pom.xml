@@ -251,6 +251,7 @@
                     <artifactId>maven-surefire-plugin</artifactId>
                     <version>${maven.surefire.plugin}</version>
                     <configuration>
+                        <forkedProcessTimeoutInSeconds>900</forkedProcessTimeoutInSeconds>
                         <systemPropertyVariables>
                             <env>${env}</env>
                         </systemPropertyVariables>

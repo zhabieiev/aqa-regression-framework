@@ -100,14 +100,18 @@ under the same `env` table if you intend to use the execution tools.
 - **Transport**: standard output is reserved exclusively for MCP JSON-RPC.
   All diagnostics go to standard error. No tool writes anything else to
   stdout.
-- **No shell, no arbitrary command**: the three execution tools
-  (`regression_start_test_run`, `regression_get_test_run`,
-  `regression_cancel_test_run`) are the only tools that launch a process,
-  and they launch Maven only through a direct, trusted Java/Classworlds
-  invocation — never `mvn.cmd`, never a shell, and never with client-
-  supplied command, path, or argument input. (Maven's own Surefire step may
-  itself spawn a downstream Windows `cmd.exe`; that is Maven/Surefire's
-  behavior, not something the server constructs.)
+- **No shell, no arbitrary command**: `regression_start_test_run` is the
+  only tool that launches a process, and it launches Maven only through a
+  direct, trusted Java/Classworlds invocation — never `mvn.cmd`, never a
+  shell, and never with client-supplied command, path, or argument input.
+  (Maven's own Surefire step may itself spawn a downstream Windows
+  `cmd.exe`; that is Maven/Surefire's behavior, not something the server
+  constructs.) Its two siblings in the execution-tool group,
+  `regression_get_test_run` and `regression_cancel_test_run`, never launch
+  a process themselves: `get` is a pure in-memory/on-disk state read
+  (`TestRunCoordinator.get()`), and `cancel` only terminates a process the
+  server already tracks, through the same identity-safe cleanup path
+  described below.
 - **Closed-world tool schemas**: every tool declares a closed input schema
   (`additionalProperties: false`) and a closed, structured `status`
   envelope output (`{"status":"ok","data":{...}}` or
@@ -147,9 +151,11 @@ QUEUED -> RUNNING -> PASSED | FAILED | TIMED_OUT | ERROR
 
 Only one run may be active at a time; `regression_start_test_run` rejects a
 new request while a run is still `QUEUED` or `RUNNING`. Execution v1 is
-intentionally narrow: `module` must be `regression-nextjs-commerce`,
-`environment` must be `dev`, `headless` is a required boolean, and
-`timeoutSeconds` must be between `30` and `1800` inclusive
+intentionally narrow: `module` must match a profile registered in
+`ExecutionProfileRegistry` (currently `regression-nextjs-commerce` or
+`regression-jhipster`), `environment` must be one of that profile's declared
+environments (currently `dev` for both), `headless` is a required boolean,
+and `timeoutSeconds` must be between `30` and `1800` inclusive
 (`TestRunRequestValidator.MIN_TIMEOUT_SECONDS` /
 `MAX_TIMEOUT_SECONDS`). An optional `tags` Cucumber tag expression (at most
 1024 characters) is accepted; the server always ANDs in `not @wip`, so a

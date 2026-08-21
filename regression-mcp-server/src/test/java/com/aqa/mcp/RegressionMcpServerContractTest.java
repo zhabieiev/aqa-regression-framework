@@ -89,6 +89,21 @@ class RegressionMcpServerContractTest {
     }
 
     @Test
+    void givesGetAndCancelTestRunToolsDistinctNonBlankDescriptions() {
+        TestRunCoordinator coordinator = new TestRunCoordinator(validRoot().path(), () -> { throw new AssertionError("Description contract must not validate a run."); });
+        try {
+            String getDescription = RegressionMcpServer.getTestRunTool(coordinator).tool().description();
+            String cancelDescription = RegressionMcpServer.cancelTestRunTool(coordinator).tool().description();
+
+            assertThat(getDescription).isNotBlank();
+            assertThat(cancelDescription).isNotBlank();
+            assertThat(getDescription).isNotEqualTo(cancelDescription);
+            assertThat(getDescription).as("get tool's description should convey state retrieval").containsIgnoringCase("state");
+            assertThat(cancelDescription).as("cancel tool's description should convey cancellation").containsIgnoringCase("cancel");
+        } finally { coordinator.close(); }
+    }
+
+    @Test
     void exposesTheClosedReadOnlySurefireSummaryContract() {
         TestRunCoordinator coordinator = new TestRunCoordinator(validRoot().path(), () -> { throw new AssertionError("Summary contract must not validate a run."); });
         try {

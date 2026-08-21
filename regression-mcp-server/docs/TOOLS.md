@@ -50,15 +50,22 @@ tool declares):
 ## Execution tools
 
 ### `regression_start_test_run`
-- Purpose: starts the single allowed Commerce test run.
+- Purpose: starts an allowed test run for one of the modules registered in
+  `ExecutionProfileRegistry` — currently `regression-nextjs-commerce` and
+  `regression-jhipster`, both with environment list `["dev"]` and
+  `supportsHeadless = true`. The registry is the authority on which
+  modules and environments are supported; consult it directly rather than
+  hardcoding this list elsewhere, since a third profile may be registered
+  later.
 - Read-only: no (execution/destructive/non-idempotent/not open-world per
   its `ToolAnnotations`).
 - Input, all required except `tags`: `module` (string), `environment`
   (string), `headless` (boolean), `timeoutSeconds` (integer). Optional:
   `tags` (string, `maxLength: 1024`). `additionalProperties: false`.
-  Execution v1 accepts only `module = regression-nextjs-commerce`,
-  `environment = dev`, and `timeoutSeconds` between 30 and 1800 inclusive
-  (enforced by `TestRunRequestValidator`, not by the JSON Schema itself).
+  `module` and `environment` must match a registered
+  `ExecutionProfile`, and `timeoutSeconds` must be between 30 and 1800
+  inclusive (enforced by `TestRunRequestValidator`, not by the JSON Schema
+  itself).
 - Output `data` (run snapshot): `runId`, `module`, `environment`,
   `headless`, `tags`, `timeoutSeconds`, `state`, `createdAt` (all
   required), plus `startedAt`, `finishedAt`, `exitCode`, `reason` when
@@ -80,8 +87,11 @@ tool declares):
 
 ## Report and artifact tools
 
-All four require a **terminal**, server-generated run and return a
-structured `NOT_FOUND` error for a missing, foreign, or non-terminal run.
+All four require a **terminal**, server-generated run: a missing or foreign
+`runId` returns `RUN_NOT_FOUND`, a run that is not yet terminal returns
+`RUN_NOT_TERMINAL`, and report/artifact data unavailable on an otherwise-valid
+terminal run returns `NOT_FOUND` (see "Common error codes" below for the
+precise distinction between the three).
 
 ### `regression_get_test_summary`
 - Purpose: returns the published, authoritative Surefire summary for a
@@ -161,8 +171,9 @@ Not an exhaustive list of every error code in the server, but the ones most
 relevant to normal client use: `INVALID_ARGUMENTS` (schema-level input
 rejection), `INVALID_TIMEOUT` (timeout outside 30-1800), `INVALID_TAG_EXPRESSION`
 (malformed Cucumber tag expression), `UNSUPPORTED_MODULE`
-(`regression_start_test_run`'s `module` is not `regression-nextjs-commerce`,
-the only module Execution v1 supports), `UNSUPPORTED_CAPABILITY`
+(`regression_start_test_run`'s `module` does not match a profile
+registered in `ExecutionProfileRegistry` — currently
+`regression-nextjs-commerce` or `regression-jhipster`), `UNSUPPORTED_CAPABILITY`
 (`regression_start_test_run`'s `environment` or `headless` value is not
 supported by the module's execution profile), `RUN_NOT_FOUND` (a `runId`
 does not match any server-generated run — returned by

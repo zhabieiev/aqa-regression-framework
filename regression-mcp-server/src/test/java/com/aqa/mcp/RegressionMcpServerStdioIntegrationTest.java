@@ -111,6 +111,38 @@ class RegressionMcpServerStdioIntegrationTest {
     }
 
     @Test
+    void advertisesInstructionsNamingAllThreeExecutionToolsWithoutClaimingExclusiveReadOnly() throws Exception {
+        Process process = startServer(createValidRoot());
+        try {
+            ExecutorService readerExecutor = Executors.newSingleThreadExecutor();
+            try (BufferedReader stdout = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8));
+                    BufferedWriter stdin = new BufferedWriter(new OutputStreamWriter(process.getOutputStream(), StandardCharsets.UTF_8))) {
+                JsonNode initialize = request(stdin, stdout, readerExecutor, 1, "initialize", Map.of(
+                        "protocolVersion", "2025-06-18", "capabilities", Map.of(),
+                        "clientInfo", Map.of("name", "stdio-integration-test", "version", "1.0.0")));
+                String instructions = initialize.path("result").path("instructions").asText();
+
+                assertThat(instructions).isNotBlank();
+                assertThat(instructions).contains(RegressionMcpServer.START_TEST_RUN_TOOL_NAME);
+                assertThat(instructions).contains(RegressionMcpServer.GET_TEST_RUN_TOOL_NAME);
+                assertThat(instructions).contains(RegressionMcpServer.CANCEL_TEST_RUN_TOOL_NAME);
+                assertThat(instructions).as("must not claim the server is exclusively read-only")
+                        .doesNotContainIgnoringCase("only deterministic inspection tools");
+
+                stdin.write(JSON.writeValueAsString(Map.of("jsonrpc", "2.0", "method", "notifications/initialized", "params", Map.of())));
+                stdin.newLine();
+                stdin.flush();
+            }
+            finally {
+                readerExecutor.shutdownNow();
+            }
+        }
+        finally {
+            terminateProcess(process);
+        }
+    }
+
+    @Test
     void returnsStructuredPomErrorsWithoutExposingFixturePathsAndRemainsUsable() throws Exception {
         Process process = startServer(createRootWithMalformedPom());
         try {

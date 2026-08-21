@@ -52,8 +52,11 @@ public final class RegressionMcpServer {
     static final String VALIDATE_FRAMEWORK_CONVENTIONS_TOOL_NAME = FrameworkConventionsTool.TOOL_NAME;
     static final String VALIDATE_ARCHITECTURE_TOOL_NAME = ArchitectureTool.TOOL_NAME;
     private static final String INSTRUCTIONS =
-            "This is a local, read-only framework inspection server. It exposes only deterministic inspection "
-                    + "tools for the repository configured by REGRESSION_ROOT.";
+            "This is a local framework inspection server for the repository configured by REGRESSION_ROOT. "
+                    + "Most tools are deterministic and read-only. Three explicitly authorized execution tools "
+                    + "(regression_start_test_run, regression_get_test_run, regression_cancel_test_run) start, "
+                    + "observe, and cancel test runs for allow-listed modules; they are the only tools with side "
+                    + "effects.";
 
     private RegressionMcpServer() {
     }
@@ -108,7 +111,9 @@ public final class RegressionMcpServer {
                     catch (ExecutionPlanningException e) { return errorResult(e.code(), e.getMessage()); } }).build();
     }
 
-    static SyncToolSpecification getTestRunTool(TestRunCoordinator coordinator) { return runActionTool(GET_TEST_RUN_TOOL_NAME, coordinator, true); }
+    static SyncToolSpecification getTestRunTool(TestRunCoordinator coordinator) {
+        return runActionTool(GET_TEST_RUN_TOOL_NAME, coordinator, true, "Returns the current state of a server-generated test run.");
+    }
     static SyncToolSpecification testSummaryTool(TestRunCoordinator coordinator) {
         return SyncToolSpecification.builder().tool(Tool.builder(GET_TEST_SUMMARY_TOOL_NAME, runIdInputSchema())
                 .description("Returns the published authoritative Surefire summary for a terminal server-generated run.")
@@ -144,9 +149,11 @@ public final class RegressionMcpServer {
                     } catch (ExecutionPlanningException exception) { return errorResult(exception.code(), exception.getMessage()); }
                 }).build();
     }
-    static SyncToolSpecification cancelTestRunTool(TestRunCoordinator coordinator) { return runActionTool(CANCEL_TEST_RUN_TOOL_NAME, coordinator, false); }
-    private static SyncToolSpecification runActionTool(String name, TestRunCoordinator coordinator, boolean get) {
-        return SyncToolSpecification.builder().tool(Tool.builder(name, runIdInputSchema()).description("Returns or cancels a server-generated test run.")
+    static SyncToolSpecification cancelTestRunTool(TestRunCoordinator coordinator) {
+        return runActionTool(CANCEL_TEST_RUN_TOOL_NAME, coordinator, false, "Cancels an active server-generated test run.");
+    }
+    private static SyncToolSpecification runActionTool(String name, TestRunCoordinator coordinator, boolean get, String description) {
+        return SyncToolSpecification.builder().tool(Tool.builder(name, runIdInputSchema()).description(description)
                 .annotations(get ? executionAnnotations(true, false, true, false) : executionAnnotations(false, true, true, false)).outputSchema(runOutputSchema()).build()).callHandler((exchange, request) -> { try {
                     String id = runId(request.arguments()); RunSnapshot snapshot = get ? coordinator.get(id) : coordinator.cancel(id);
                     return successResult(Map.of("status", "ok", "data", runOutput(snapshot))); } catch (ExecutionPlanningException e) { return errorResult(e.code(), e.getMessage()); } }).build();

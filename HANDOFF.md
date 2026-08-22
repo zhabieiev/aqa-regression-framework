@@ -29,23 +29,66 @@ start of a session; update it at the end of one, per `CLAUDE.md`'s
   running.
 - All 14 `regression-mcp-server` MCP tools (4 discovery, 3 execution, 4
   report/artifact, 3 architecture-validator) are implemented and documented
-  in `regression-mcp-server/docs/TOOLS.md`.
+  in `regression-mcp-server/docs/TOOLS.md`. A real, verbatim client session
+  against `regression-nextjs-commerce` was recorded 2026-08-22 and published
+  as `regression-mcp-server/docs/SESSION_DEMO.md`.
+- `regression-nextjs-commerce` runs in CI on every push and pull request to
+  `master` that touches it (`.github/workflows/commerce-regression.yml`),
+  including a reachability pre-flight against the public demo store and
+  `if: always()` artifact upload of Surefire/Allure output.
+- `main.yml`'s `build-and-test` job's Maven step no longer runs with
+  `continue-on-error: true` — it is now a real gate that fails the job when
+  `regression-core` breaks.
+- `regression-nextjs-commerce`'s dead Allure attachment fixture
+  (`attachment.feature`, `AllureAttachmentFixtureSuite`,
+  `AllureAttachmentFixtureSteps`, and the Surefire property that existed
+  solely to feed it) was removed; it never actually ran under any real
+  invocation.
 - Known, accepted debt: see [`docs/TECHNICAL_DEBT.md`](docs/TECHNICAL_DEBT.md)
-  (4 items, verified individually against that file rather than assumed:
-  1 in `regression-nextjs-commerce`, 2 in `regression-mcp-server`, and 1 in
-  `regression-core` — not all four are `regression-mcp-server`/
-  `regression-nextjs-commerce` as an earlier version of this line claimed).
-- Known gap, not yet logged in `docs/TECHNICAL_DEBT.md`: `regression-jhipster`'s
-  Playwright trace `.zip` files (`UiHooks.java`, written via a raw
-  filesystem call to `target/playwright/traces/`) are not captured by
-  `ReportCapture`'s Allure/Surefire wiring (`ReportCapture.capture()` only
-  reads `layout.surefireStaging()`/`layout.allureStaging()`) — an
-  MCP-driven run's published artifacts never include a trace file, even
-  when a UI scenario fails and one was written.
+  (8 items, verified individually against that file rather than assumed:
+  1 in `regression-nextjs-commerce`, 4 in `regression-mcp-server`, 1 in
+  `regression-core`, and 2 in `regression-jhipster`).
+- `regression-jhipster`'s Playwright trace-capture gap (traces written to
+  `target/playwright/traces/` are never surfaced through the MCP server) is
+  now logged as item 6 in `docs/TECHNICAL_DEBT.md`, rather than only noted
+  here as an earlier version of this file did.
 - Forward-looking roadmap: see [`docs/ROADMAP.md`](docs/ROADMAP.md)
   (reactor-wide, grouped by module).
 
 ## Most recent session
+
+2026-08-22 — MCP session demo published, current state and technical debt
+reconciled:
+
+Recorded a real MCP client session against `regression-nextjs-commerce`
+(`initialize` → deliberately invalid `start` call → real `start` → poll to
+terminal `PASSED` → `regression_get_test_summary`/
+`regression_get_failure_summary`/`regression_get_failure_artifacts`) and
+published the full, verbatim recording as
+`regression-mcp-server/docs/SESSION_DEMO.md`, plus a short abridged excerpt
+in `regression-mcp-server/README.md`'s new "Worked example" section and a
+one-sentence pointer from the root `README.md`. This is also the first
+place the module's actual end-to-end run duration was measured and recorded
+anywhere in the repository: 22.6 seconds, from the server's own
+`finishedAt` − `startedAt` timestamps. Logged three new
+`docs/TECHNICAL_DEBT.md` items from characteristics observed directly in
+that recording: item 6 (`regression-jhipster`'s Playwright traces are
+written only on scenario failure and are never captured by `ReportCapture`;
+two independent barriers — the MIME allow-list and the Allure-only artifact
+listing — would block serving one through the MCP server even if a third
+staging root existed), item 7 (`regression_get_test_run`'s
+`stdoutBytes`/`stderrBytes` are hardcoded to zero for the entire `RUNNING`
+state and only populate at terminal persistence, so they carry no live
+progress signal; `reason` also duplicated `state` at every observation in
+the same recording), and item 8 (`regression_get_test_summary`'s
+`detailsTruncated` flag is true for essentially any real run regardless of
+whether anything was truncated, and means something different from the
+same-named field on `regression_get_failure_summary`, which was observed
+directly in the same recording). Folded `regression-nextjs-commerce`'s CI
+coverage, `build-and-test`'s now-real Maven gate, and the removed dead
+Allure fixture into `## Current state` above, since that section had not
+been updated for them despite each already being recorded under the PR
+#18/#19 entries below.
 
 2026-08-21 — four merged PRs, CI and cleanup:
 

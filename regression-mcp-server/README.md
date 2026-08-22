@@ -169,6 +169,42 @@ recovery path used for cancellation/timeout resolves it — this is a
 deliberate refusal to guess, not a bug if you see a `start` call rejected
 after a server restart.
 
+## Worked example: a full execution session
+
+The section above describes the execution lifecycle in the abstract; this is
+what it looks like in practice. A real, verbatim MCP client session was
+captured on 2026-08-22 against `regression-nextjs-commerce`, from
+`initialize` through a passing terminal run and its report. The full
+recording lives in [`docs/SESSION_DEMO.md`](docs/SESSION_DEMO.md), including
+a list of known response-shape characteristics observed in it (for example,
+`stdoutBytes`/`stderrBytes` staying at zero until the run is terminal).
+
+Below is an abridged excerpt — **not the full session**; see the linked
+document for the complete, unedited recording:
+
+```json
+{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"regression_start_test_run","arguments":{"module":"regression-nextjs-commerce","environment":"dev","headless":true,"timeoutSeconds":900}}}
+```
+```json
+{"jsonrpc":"2.0","id":4,"result":{"content":[{"type":"text","text":"{\"data\":{\"environment\":\"dev\",\"runId\":\"run-53bbecaa59492926f34b2dfd0ec1ada8\",\"stderrTruncated\":false,\"createdAt\":\"2026-08-22T09:29:52.308395500Z\",\"state\":\"QUEUED\",\"tags\":\"not @wip\",\"stdoutBytes\":0,\"timeoutSeconds\":900,\"module\":\"regression-nextjs-commerce\",\"stdoutTruncated\":false,\"stderrBytes\":0,\"headless\":true},\"status\":\"ok\"}"}],"isError":false,"structuredContent":{"data":{"environment":"dev","runId":"run-53bbecaa59492926f34b2dfd0ec1ada8","stderrTruncated":false,"createdAt":"2026-08-22T09:29:52.308395500Z","state":"QUEUED","tags":"not @wip","stdoutBytes":0,"timeoutSeconds":900,"module":"regression-nextjs-commerce","stdoutTruncated":false,"stderrBytes":0,"headless":true},"status":"ok"}}}
+```
+```json
+{"jsonrpc":"2.0","id":5,"result":{"content":[{"type":"text","text":"{\"data\":{\"runId\":\"run-53bbecaa59492926f34b2dfd0ec1ada8\",\"stdoutTruncated\":false,\"tags\":\"not @wip\",\"module\":\"regression-nextjs-commerce\",\"stderrTruncated\":false,\"startedAt\":\"2026-08-22T09:29:52.482044700Z\",\"createdAt\":\"2026-08-22T09:29:52.308395500Z\",\"stdoutBytes\":0,\"state\":\"RUNNING\",\"reason\":\"RUNNING\",\"environment\":\"dev\",\"headless\":true,\"timeoutSeconds\":900,\"stderrBytes\":0},\"status\":\"ok\"}"}],"isError":false,"structuredContent":{"data":{"runId":"run-53bbecaa59492926f34b2dfd0ec1ada8","stdoutTruncated":false,"tags":"not @wip","module":"regression-nextjs-commerce","stderrTruncated":false,"startedAt":"2026-08-22T09:29:52.482044700Z","createdAt":"2026-08-22T09:29:52.308395500Z","stdoutBytes":0,"state":"RUNNING","reason":"RUNNING","environment":"dev","headless":true,"timeoutSeconds":900,"stderrBytes":0},"status":"ok"}}}
+```
+```json
+{"jsonrpc":"2.0","id":12,"result":{"content":[{"type":"text","text":"{\"data\":{\"exitCode\":0,\"stderrBytes\":518,\"runId\":\"run-53bbecaa59492926f34b2dfd0ec1ada8\",\"finishedAt\":\"2026-08-22T09:30:15.094616100Z\",\"reason\":\"PASSED\",\"stdoutBytes\":4781,\"timeoutSeconds\":900,\"stderrTruncated\":false,\"createdAt\":\"2026-08-22T09:29:52.308395500Z\",\"tags\":\"not @wip\",\"headless\":true,\"stdoutTruncated\":false,\"startedAt\":\"2026-08-22T09:29:52.482044700Z\",\"environment\":\"dev\",\"state\":\"PASSED\",\"module\":\"regression-nextjs-commerce\"},\"status\":\"ok\"}"}],"isError":false,"structuredContent":{"data":{"exitCode":0,"stderrBytes":518,"runId":"run-53bbecaa59492926f34b2dfd0ec1ada8","finishedAt":"2026-08-22T09:30:15.094616100Z","reason":"PASSED","stdoutBytes":4781,"timeoutSeconds":900,"stderrTruncated":false,"createdAt":"2026-08-22T09:29:52.308395500Z","tags":"not @wip","headless":true,"stdoutTruncated":false,"startedAt":"2026-08-22T09:29:52.482044700Z","environment":"dev","state":"PASSED","module":"regression-nextjs-commerce"},"status":"ok"}}}
+```
+```json
+{"jsonrpc":"2.0","id":13,"result":{"content":[{"type":"text","text":"{\"data\":{\"failures\":0,\"tests\":2,\"passed\":2,\"detailsTruncated\":true,\"runId\":\"run-53bbecaa59492926f34b2dfd0ec1ada8\",\"skipped\":0,\"duration\":\"15.266\",\"errors\":0,\"suites\":[{\"duration\":\"15.437\",\"errors\":0,\"skipped\":0,\"id\":\":com.aqa.nextjscommerce.runners.RunCucumberTest\",\"failures\":0,\"tests\":2}]},\"status\":\"ok\"}"}],"isError":false,"structuredContent":{"data":{"failures":0,"tests":2,"passed":2,"detailsTruncated":true,"runId":"run-53bbecaa59492926f34b2dfd0ec1ada8","skipped":0,"duration":"15.266","errors":0,"suites":[{"duration":"15.437","errors":0,"skipped":0,"id":":com.aqa.nextjscommerce.runners.RunCucumberTest","failures":0,"tests":2}]},"status":"ok"}}}
+```
+
+(Abridged: the `initialize`/`tools/list` handshake, the deliberately invalid
+`start` call, six further identical-shaped `RUNNING` polls, and the
+`regression_get_failure_summary`/`regression_get_failure_artifacts` calls
+are all omitted above — see `docs/SESSION_DEMO.md` for all of them, in full,
+plus the list of known response-shape characteristics this recording
+surfaces.)
+
 ## Run store
 
 Execution runs are stored under `.regression-mcp/runs/<runId>/` inside the

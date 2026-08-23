@@ -37,6 +37,7 @@ jobs:
       # Must stay AFTER the primary checkout: that step cleans the workspace
       # and would delete this directory if the two were reordered.
       - name: Checkout gh-pages
+        id: gh-pages-checkout
         if: github.event_name == 'push' && github.ref == 'refs/heads/master'
         uses: actions/checkout@v5
         with:
@@ -84,7 +85,7 @@ jobs:
       # replace it with a partial one, taking the accumulated history with it.
       - name: Restore Allure history from gh-pages
         id: allure-history
-        if: ${{ !cancelled() && (steps.commerce-tests.outcome == 'success' || steps.commerce-tests.outcome == 'failure') && github.event_name == 'push' && github.ref == 'refs/heads/master' }}
+        if: ${{ !cancelled() && steps.gh-pages-checkout.outcome == 'success' && (steps.commerce-tests.outcome == 'success' || steps.commerce-tests.outcome == 'failure') && github.event_name == 'push' && github.ref == 'refs/heads/master' }}
         run: |
           if [ -d gh-pages/commerce/history ]; then
             mkdir -p regression-nextjs-commerce/target/allure-results/history

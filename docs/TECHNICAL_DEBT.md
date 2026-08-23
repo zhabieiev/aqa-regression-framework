@@ -348,3 +348,44 @@ properties rather than being collapsed into one shared "Allure version" —
 they name independently versioned artifacts that do not track each other,
 and treating them as one would silently reintroduce the exact failure mode
 this item documents.
+
+## 10. Allure history accumulation on `gh-pages` has no automated check (2026-08-23)
+
+**What**: nothing in `.github/workflows/commerce-regression.yml` or
+elsewhere verifies that `regression-nextjs-commerce`'s Allure trend history
+actually keeps accumulating across publishes. If the restore path ever
+breaks — the `gh-pages/commerce/history` directory gets renamed, the
+report's `reportDirectory` changes, or the `gh-pages` branch's layout is
+restructured — the Restore step's own `if [ -d gh-pages/commerce/history ];
+then ... else ... fi` guard simply falls through to its `else` branch,
+`allure:report` still succeeds, the report still generates and publishes,
+and the whole job still goes green. The trend silently resets to a single
+data point, with no error, warning, or log line anywhere distinguishing
+that outcome from a genuine first publish. This is not hypothetical: the
+plugin logs nothing about history success or failure either way — the only
+related log lines (`[INFO] Try to finding out allure X.Y.Z` and `[INFO]
+Generate Allure report (report) with version X.Y.Z`) are identical in
+shape regardless of whether any history was restored beforehand, confirmed
+directly while verifying this same publishing setup (2026-08-23).
+
+**Location**:
+- `.github/workflows/commerce-regression.yml` (the `Restore Allure history
+  from gh-pages`, `Generate Allure report`, and `Publish Allure report to
+  gh-pages` steps)
+
+**Why accepted**: detecting this automatically would require the workflow
+itself to compare pre- and post-generation trend point counts — for
+example, reading `history-trend.json`'s array length before restoring and
+again after generating, and failing the job if the count did not grow by
+exactly one — real, non-trivial complexity to add to a CI workflow for a
+failure mode that is recoverable rather than destructive: no test result,
+report content, or job outcome is made incorrect by a silently reset trend,
+only the multi-run trend graph's continuity is lost. Given that, and that
+the module's actual test correctness is unaffected either way, adding that
+comparison logic was judged not worth the complexity for now.
+
+**Status**: present, unfixed, not scheduled. Detection today is manual:
+count the data points in `commerce/history/history-trend.json` on the
+`gh-pages` branch, or open the published report's Trends tab, and confirm
+the count grows between successive publishes — exactly the check performed
+manually to verify this same publishing setup (2026-08-23).

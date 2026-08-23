@@ -73,6 +73,8 @@ The parent POM exposes the `env` property to Maven test execution, defaulting to
 
 Petstore declares Allure dependencies and a Maven reporting plugin. Its `run-tests.sh` script manages local Allure metadata, report generation, history, and an interactive local report server. The script is intentionally a local workflow; it is not described here as a CI reporting solution.
 
+Next.js Commerce's Allure report is published to GitHub Pages on every push to `master`: see the [latest commerce Allure report](https://zhabieiev.github.io/aqa-regression-framework/commerce/), which reflects the most recent `master` run and accumulates its pass/fail trend across runs.
+
 JHipster reads its local API/UI endpoint and browser settings from its `dev.properties`. Next.js Commerce reads its UI URL, browser, headless, timeout, window, and mobile-emulation settings from `src/test/resources/properties/dev.properties`; its Maven `mobile` profile enables mobile emulation.
 
 The `env` property (root `pom.xml`, default `dev`) selects which `<env>.properties` file each module's `properties-maven-plugin` execution loads. Override it explicitly on the command line, for example:

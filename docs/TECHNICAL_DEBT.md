@@ -294,3 +294,57 @@ field's meaning, not a quiet edit, and needs its own explicit decision
 before any change is made.
 
 **Status**: present, unfixed, no fix scheduled.
+
+## 9. Allure plugin/report versions are declared per module instead of centralized (2026-08-23)
+
+**What**: `allure.version`, `allure.maven.plugin`, and `allure.report.version`
+are each declared as independent `<properties>` inside every module that
+uses Allure, rather than being defined once in the root `pom.xml` and
+inherited. `regression-petstore-api/pom.xml` declares all three, and
+`regression-nextjs-commerce/pom.xml` now declares the same three properties
+of its own, for its Allure report-publishing setup. The root `pom.xml`
+manages no Allure property, dependency, or plugin at all. As of this change
+the two modules happen to agree on every value — `allure.version` 2.35.3,
+`allure.maven.plugin` 3.0.2, `allure.report.version` 2.39.0 — so there is no
+divergence today, but nothing stops that agreement from drifting the next
+time either module's Allure wiring is touched in isolation, since each
+module's properties are edited independently with no shared source of truth.
+
+Centralizing this is not as simple as hoisting three properties into the
+root POM, though. `allure-bom` (the Java test-adapter library, versioned by
+`allure.version`) and `allure-commandline` (the standalone report-renderer
+distribution that `allure-maven`'s `report` goal downloads, versioned by
+`allure.report.version`) are independently published artifacts whose
+version sets do not coincide. This was verified directly while wiring up
+commerce's report generation (2026-08-23): `allure.version` 2.35.3 is a
+real, published `allure-bom` release, but `io.qameta.allure:allure-commandline:2.35.3`
+does not exist on Maven Central — pointing `allure.report.version` at it
+makes `mvn allure:report` fail outright with a dependency-resolution error,
+even though the module builds and tests normally, since nothing about
+`allure.version` or the adapters is affected. `allure.report.version` had
+to be set to `2.39.0` (the value petstore already used successfully)
+instead, specifically because it is a real `allure-commandline` release,
+with no assumption that it needs to track `allure.version` numerically.
+
+**Location**:
+- `pom.xml` (root — no Allure properties or dependency/plugin management
+  present)
+- `regression-petstore-api/pom.xml` (`allure.version`, `allure.maven.plugin`,
+  `allure.report.version` properties, and its `allure-maven` plugin block)
+- `regression-nextjs-commerce/pom.xml` (same three properties, and its
+  `allure-maven` plugin block, added by this change)
+
+**Why accepted**: each module's Allure wiring was added independently as
+that module was built, and consolidating the three properties into the root
+POM's `dependencyManagement`/`pluginManagement` was judged a separate,
+cross-module change with its own risk — a shared version bump would affect
+every module's test adapters or report generation at once — rather than
+something to bundle into commerce's report-publishing work. Centralizing
+was out of scope for the change that introduced this item.
+
+**Status**: present, unfixed, not scheduled. If centralized in the future,
+`allure.version` and `allure.report.version` must remain two separate
+properties rather than being collapsed into one shared "Allure version" —
+they name independently versioned artifacts that do not track each other,
+and treating them as one would silently reintroduce the exact failure mode
+this item documents.

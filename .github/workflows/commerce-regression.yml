@@ -16,6 +16,9 @@ on:
       - "pom.xml"
       - ".github/workflows/commerce-regression.yml"
 
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -24,10 +27,22 @@ jobs:
   commerce-regression:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
+
+      # Must stay AFTER the primary checkout: that step cleans the workspace
+      # and would delete this directory if the two were reordered.
+      - name: Checkout gh-pages
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        uses: actions/checkout@v5
+        with:
+          ref: gh-pages
+          path: gh-pages
+          fetch-depth: 0
 
       - name: Set up JDK 21
         uses: actions/setup-java@v5
@@ -45,6 +60,7 @@ jobs:
           fi
 
       - name: Run Commerce regression tests with Maven
+        id: commerce-tests
         run: mvn -pl regression-nextjs-commerce -am test -Denv=dev
 
       - name: Upload Test Reports
@@ -56,3 +72,50 @@ jobs:
             regression-nextjs-commerce/target/surefire-reports/
             regression-nextjs-commerce/target/allure-results/
           retention-days: 5
+
+      # The three steps below run whether the suite passed or failed - a report
+      # of a failing run is the most useful one. They are skipped if the test
+      # step never ran (unreachable target site) or if the run was cancelled.
+      # The ${{ }} wrapper and !cancelled() are both required: an if: with no
+      # status function gets an implicit success() ANDed in, which would skip
+      # these steps on exactly the red runs they exist for. Because of that same
+      # rule, each step must gate on its PREDECESSOR's outcome explicitly:
+      # publishing after a failed generation would rm -rf the live report and
+      # replace it with a partial one, taking the accumulated history with it.
+      - name: Restore Allure history from gh-pages
+        id: allure-history
+        if: ${{ !cancelled() && (steps.commerce-tests.outcome == 'success' || steps.commerce-tests.outcome == 'failure') && github.event_name == 'push' && github.ref == 'refs/heads/master' }}
+        run: |
+          if [ -d gh-pages/commerce/history ]; then
+            mkdir -p regression-nextjs-commerce/target/allure-results/history
+            cp -r gh-pages/commerce/history/. regression-nextjs-commerce/target/allure-results/history/
+            echo "Restored Allure history from gh-pages/commerce/history."
+          else
+            echo "No gh-pages/commerce/history found (first publish) - starting a fresh trend."
+          fi
+
+      - name: Generate Allure report
+        id: allure-report
+        if: ${{ !cancelled() && steps.allure-history.outcome == 'success' && github.event_name == 'push' && github.ref == 'refs/heads/master' }}
+        run: mvn -pl regression-nextjs-commerce allure:report
+
+      - name: Publish Allure report to gh-pages
+        if: ${{ !cancelled() && steps.allure-report.outcome == 'success' && github.event_name == 'push' && github.ref == 'refs/heads/master' }}
+        run: |
+          if [ ! -f regression-nextjs-commerce/target/site/allure-maven-plugin/index.html ]; then
+            echo "::error::Generated report has no index.html - refusing to publish, so the live report and its history are left intact."
+            exit 1
+          fi
+          rm -rf gh-pages/commerce
+          mkdir -p gh-pages/commerce
+          cp -r regression-nextjs-commerce/target/site/allure-maven-plugin/. gh-pages/commerce/
+          cd gh-pages
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add commerce
+          if git diff --cached --quiet; then
+            echo "Report is byte-identical to the published one - nothing to publish."
+          else
+            git commit -m "Publish commerce Allure report for ${{ github.sha }}"
+            git push origin gh-pages
+          fi

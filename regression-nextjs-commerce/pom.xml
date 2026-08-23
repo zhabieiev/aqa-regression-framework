@@ -16,6 +16,8 @@
     <properties>
         <selenium.version>4.46.0</selenium.version>
         <allure.version>2.35.3</allure.version>
+        <allure.maven.plugin>3.0.2</allure.maven.plugin>
+        <allure.report.version>2.39.0</allure.report.version>
         <ui.mobile.enabled>false</ui.mobile.enabled>
         <ui.mobile.device>Pixel 7</ui.mobile.device>
         <mcp.surefire.reportsDirectory>${project.build.directory}/surefire-reports</mcp.surefire.reportsDirectory>
@@ -115,6 +117,19 @@
                         <ui.mobile.device>${ui.mobile.device}</ui.mobile.device>
                         <allure.results.directory>${mcp.allure.resultsDirectory}</allure.results.directory>
                     </systemPropertyVariables>
+                </configuration>
+            </plugin>
+
+            <plugin>
+                <groupId>io.qameta.allure</groupId>
+                <artifactId>allure-maven</artifactId>
+                <version>${allure.maven.plugin}</version>
+                <configuration>
+                    <reportVersion>${allure.report.version}</reportVersion>
+                    <installDirectory>${project.basedir}/.allure</installDirectory>
+                    <resultsDirectory>${mcp.allure.resultsDirectory}</resultsDirectory>
+                    <reportDirectory>${project.build.directory}/site/allure-maven-plugin</reportDirectory>
+                    <historyEnabled>false</historyEnabled>
                 </configuration>
             </plugin>
         </plugins>

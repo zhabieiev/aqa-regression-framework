@@ -38,10 +38,20 @@ module/area; each module's own README carries more detail where noted.
 
 ### Reactor-wide / cross-module
 
-- Define a non-interactive CI reporting workflow and durable Allure-history/
-  artifact policy (today's Allure workflow, in `regression-petstore-api`'s
-  `run-tests.sh`, is an intentionally local, interactive workflow — see
-  `README.md`'s "Configuration and reporting").
+- **Done for `regression-nextjs-commerce`** (PRs #23, #24): a non-interactive
+  CI reporting workflow now exists — `.github/workflows/commerce-regression.yml`
+  generates the module's Allure report and publishes it to the `/commerce/`
+  subdirectory of the `gh-pages` branch on every push to `master`, restoring
+  and republishing trend history so it accumulates across runs instead of
+  resetting each time. Verified live at
+  `https://zhabieiev.github.io/aqa-regression-framework/commerce/` and
+  confirmed accumulating by two real CI publishes — see `HANDOFF.md`'s
+  2026-08-23 session entry for the full trail. `regression-petstore-api`'s
+  `run-tests.sh` remains an intentionally local, interactive workflow,
+  unaffected by this — see `README.md`'s "Configuration and reporting". A
+  durable retention/pruning policy for the accumulating `gh-pages` history
+  itself was not part of this work and remains open if the branch's size
+  becomes a concern.
 - Document a common module-execution convention for local and CI use
   (local execution is already documented in root `README.md`'s "Running
   Maven" section; no CI convention exists yet — `.github/workflows/main.yml`

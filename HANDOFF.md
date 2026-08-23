@@ -36,6 +36,30 @@ start of a session; update it at the end of one, per `CLAUDE.md`'s
   `master` that touches it (`.github/workflows/commerce-regression.yml`),
   including a reachability pre-flight against the public demo store and
   `if: always()` artifact upload of Surefire/Allure output.
+- `regression-nextjs-commerce`'s Allure report is published to GitHub Pages
+  on every push to `master` that touches the module (the same workflow's
+  Restore/Generate/Publish steps), landing in the `/commerce/` subdirectory
+  of the `gh-pages` branch via explicit `git` commands, no third-party
+  publishing action. Live at
+  https://zhabieiev.github.io/aqa-regression-framework/commerce/. Allure
+  trend history is restored from `gh-pages` before each generation and
+  republished with the report, so the trend accumulates across runs instead
+  of resetting each time — proven in CI, not only locally, by a second real
+  publish (`history-trend.json` went from 1 to 2 data points, with two
+  genuinely distinct CI runs' data merged, not one run duplicated). See the
+  2026-08-23 session entry below for the full verification trail.
+- Commerce's `allure-maven` plugin uses `reportVersion` 2.39.0, not
+  `allure.version`'s 2.35.3: `allure-bom` (the test adapters) and
+  `allure-commandline` (the report renderer the plugin downloads) are
+  independently published artifacts whose version sets do not coincide, and
+  `allure-commandline:2.35.3` does not exist on Maven Central at all. Do not
+  set `allure.report.version` to whatever `allure.version` happens to be —
+  see `docs/TECHNICAL_DEBT.md` item 9.
+- No dedicated Allure-distribution cache exists in CI for commerce, and none
+  is currently justified: `actions/setup-java`'s existing `cache: maven`
+  already caches `~/.m2/repository`, where the distribution installs, so
+  only the first run after any `pom.xml` change pays the cold cost (9.2s
+  Maven-reported for install+generate; 3.9s once the cache is warm).
 - `main.yml`'s `build-and-test` job's Maven step no longer runs with
   `continue-on-error: true` — it is now a real gate that fails the job when
   `regression-core` breaks.
@@ -45,9 +69,11 @@ start of a session; update it at the end of one, per `CLAUDE.md`'s
   solely to feed it) was removed; it never actually ran under any real
   invocation.
 - Known, accepted debt: see [`docs/TECHNICAL_DEBT.md`](docs/TECHNICAL_DEBT.md)
-  (8 items, verified individually against that file rather than assumed:
-  1 in `regression-nextjs-commerce`, 4 in `regression-mcp-server`, 1 in
-  `regression-core`, and 2 in `regression-jhipster`).
+  (10 items, verified individually against that file rather than assumed:
+  2 in `regression-nextjs-commerce`, 4 in `regression-mcp-server`, 1 in
+  `regression-core`, 2 in `regression-jhipster`, and 1 spanning
+  `regression-petstore-api` and `regression-nextjs-commerce`'s shared Allure
+  version-property duplication).
 - `regression-jhipster`'s Playwright trace-capture gap (traces written to
   `target/playwright/traces/` are never surfaced through the MCP server) is
   now logged as item 6 in `docs/TECHNICAL_DEBT.md`, rather than only noted
@@ -56,6 +82,68 @@ start of a session; update it at the end of one, per `CLAUDE.md`'s
   (reactor-wide, grouped by module).
 
 ## Most recent session
+
+2026-08-23 — Allure report publishing for `regression-nextjs-commerce`
+implemented, merged, and verified live in CI across PR #23, PR #24, and this
+pass:
+
+PR #23 (merge commit `cd8e6af`, branch `ci/commerce-allure-gh-pages`): wired
+`allure-maven` 3.0.2 into `regression-nextjs-commerce/pom.xml` with no
+`<executions>` block (so `mvn test` is unaffected — the `report` goal is
+on-demand only) and `reportVersion` 2.39.0. That value was not the first
+one tried: `reportVersion` 2.35.3, matching `allure.version`, was tested
+locally first and fails outright, because `allure-commandline:2.35.3` does
+not exist on Maven Central at all — 2.39.0 (petstore's already-working
+value) was used instead once that was confirmed. Extended
+`.github/workflows/commerce-regression.yml` to check out `gh-pages`,
+restore any prior trend history into `target/allure-results/history/`,
+generate the report, and publish it to `gh-pages`'s `/commerce/`
+subdirectory via explicit `git` commands (no third-party publishing
+action), gated to push-to-master only. The same commit was amended before
+merging to fix a gating gap in its own first draft: Publish was gated on
+the test step's outcome rather than on Generate's, so a failed report
+generation could have `rm -rf`'d the live report; each step now gates on
+its immediate predecessor's outcome instead. The merge triggered the first
+real publish: 79 files, both Pages URLs returned HTTP 200, the page body
+carried `allureVersion: 2.39.0`, and root `index.html`/`.nojekyll` blob
+hashes were confirmed byte-identical before and after.
+
+PR #24 (merge commit `e752705`, branch `ci/commerce-allure-gate-checkout`):
+closed a second gating gap — Restore ran even if the preceding `gh-pages`
+checkout step itself had failed, since Restore's `if:` used `!cancelled()`
+rather than an implicit `success()`, so a failed checkout would silently
+fall through to Restore's "no history found, first publish" branch and
+reset the trend with no error anywhere in the run. Added
+`steps.gh-pages-checkout.outcome == 'success'` to Restore's condition.
+Merging this PR — the workflow file is itself inside the trigger's `paths`
+filter — produced the second publish needed to prove the history mechanism
+in real CI, not only locally: `history-trend.json` went from 1 to 2 data
+points, and `history.json`'s two test-case keys each gained a second
+`items` entry with genuinely different `uid`/`duration` values (two
+distinct CI runs' data merged, not one run duplicated). That second publish
+changed only 26 files, versus 79 for the first, confirming the report's
+static assets are byte-identical between runs at a pinned `reportVersion`.
+Root files were re-confirmed byte-identical again afterward.
+
+This pass (branch `docs/allure-publishing-handoff`): folded the above into
+`## Current state` above, marked `docs/ROADMAP.md`'s matching "non-interactive
+CI reporting workflow" roadmap item as done for `regression-nextjs-commerce`,
+added a link to the live report from `README.md`, and logged
+`docs/TECHNICAL_DEBT.md` item 10 (nothing currently verifies that history
+accumulation keeps working going forward — a broken restore path would still
+leave generation and publish green, silently resetting the trend).
+
+**Not yet proven, recorded here rather than quietly assumed**: publishing on
+a genuinely RED test run has never happened — the gating in PR #23/#24 is
+designed and reasoned for it, but no failing `commerce-regression` run has
+occurred since this was built; when one does, confirm the report still
+publishes and the job still goes red. The Publish step's `index.html`
+existence guard has never actually fired. A concurrent-push race on
+`gh-pages` (two `master` pushes landing close together, given the
+workflow's `cancel-in-progress` concurrency group) is an accepted,
+unexercised risk. A manual re-run of a publishing job (e.g. the Actions UI's
+"re-run failed jobs") would add a duplicate trend data point, since
+generation is not idempotent with respect to the trend file.
 
 2026-08-22 — MCP session demo published, current state and technical debt
 reconciled:

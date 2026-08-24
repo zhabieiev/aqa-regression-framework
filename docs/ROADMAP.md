@@ -64,7 +64,7 @@ module/area; each module's own README carries more detail where noted.
 
 #### Extract the shared validator `Tool` helper
 
-`docs/TECHNICAL_DEBT.md` item 3 names the duplicated methods across
+`docs/TECHNICAL_DEBT.md` item B3 names the duplicated methods across
 `ModuleBoundariesTool`, `FrameworkConventionsTool`, and `ArchitectureTool`:
 `evaluate`, `parseRequest`, `reportOutput`, `moduleResultOutput`,
 `violationOutput`, `inputSchema`, `violationSchema`, `moduleResultSchema`,
@@ -85,7 +85,7 @@ against each tool's existing contract tests
 
 #### Scope an ARCH rule for `definitions`-layer assertions
 
-`docs/TECHNICAL_DEBT.md` item 4 notes that `GeneralDefinitions.java`'s
+`docs/TECHNICAL_DEBT.md` item B6 notes that `GeneralDefinitions.java`'s
 direct AssertJ assertions inside `@Then` methods are real CLAUDE.md debt
 with no current validator rule covering it. A future ARCH-005 (or similar)
 rule in `ArchitectureRules.java` could flag assertion calls

@@ -54,7 +54,7 @@ start of a session; update it at the end of one, per `CLAUDE.md`'s
   independently published artifacts whose version sets do not coincide, and
   `allure-commandline:2.35.3` does not exist on Maven Central at all. Do not
   set `allure.report.version` to whatever `allure.version` happens to be —
-  see `docs/TECHNICAL_DEBT.md` item 9.
+  see `docs/TECHNICAL_DEBT.md` item B2.
 - No dedicated Allure-distribution cache exists in CI for commerce, and none
   is currently justified: `actions/setup-java`'s existing `cache: maven`
   already caches `~/.m2/repository`, where the distribution installs, so
@@ -76,7 +76,7 @@ start of a session; update it at the end of one, per `CLAUDE.md`'s
   version-property duplication).
 - `regression-jhipster`'s Playwright trace-capture gap (traces written to
   `target/playwright/traces/` are never surfaced through the MCP server) is
-  now logged as item 6 in `docs/TECHNICAL_DEBT.md`, rather than only noted
+  now logged as item C2 in `docs/TECHNICAL_DEBT.md`, rather than only noted
   here as an earlier version of this file did.
 - Forward-looking roadmap: see [`docs/ROADMAP.md`](docs/ROADMAP.md)
   (reactor-wide, grouped by module).
@@ -129,7 +129,7 @@ This pass (branch `docs/allure-publishing-handoff`): folded the above into
 `## Current state` above, marked `docs/ROADMAP.md`'s matching "non-interactive
 CI reporting workflow" roadmap item as done for `regression-nextjs-commerce`,
 added a link to the live report from `README.md`, and logged
-`docs/TECHNICAL_DEBT.md` item 10 (nothing currently verifies that history
+`docs/TECHNICAL_DEBT.md` item C3 (nothing currently verifies that history
 accumulation keeps working going forward — a broken restore path would still
 leave generation and publish green, silently resetting the trend).
 
@@ -143,7 +143,9 @@ existence guard has never actually fired. A concurrent-push race on
 workflow's `cancel-in-progress` concurrency group) is an accepted,
 unexercised risk. A manual re-run of a publishing job (e.g. the Actions UI's
 "re-run failed jobs") would add a duplicate trend data point, since
-generation is not idempotent with respect to the trend file.
+generation is not idempotent with respect to the trend file. These four
+assumptions are also tracked as item D3 in `docs/TECHNICAL_DEBT.md`; this
+file remains the narrative source for them.
 
 2026-08-22 — MCP session demo published, current state and technical debt
 reconciled:
@@ -160,15 +162,15 @@ place the module's actual end-to-end run duration was measured and recorded
 anywhere in the repository: 22.6 seconds, from the server's own
 `finishedAt` − `startedAt` timestamps. Logged three new
 `docs/TECHNICAL_DEBT.md` items from characteristics observed directly in
-that recording: item 6 (`regression-jhipster`'s Playwright traces are
+that recording: item C2 (`regression-jhipster`'s Playwright traces are
 written only on scenario failure and are never captured by `ReportCapture`;
 two independent barriers — the MIME allow-list and the Allure-only artifact
 listing — would block serving one through the MCP server even if a third
-staging root existed), item 7 (`regression_get_test_run`'s
+staging root existed), item B4 (`regression_get_test_run`'s
 `stdoutBytes`/`stderrBytes` are hardcoded to zero for the entire `RUNNING`
 state and only populate at terminal persistence, so they carry no live
 progress signal; `reason` also duplicated `state` at every observation in
-the same recording), and item 8 (`regression_get_test_summary`'s
+the same recording), and item A1 (`regression_get_test_summary`'s
 `detailsTruncated` flag is true for essentially any real run regardless of
 whether anything was truncated, and means something different from the
 same-named field on `regression_get_failure_summary`, which was observed
@@ -223,7 +225,7 @@ CI for now, both for reasons specific to each module (no way to raise
 jhipster's app-under-test on a CI runner; petstore-api's shared
 third-party sandbox with no delete-failure fallback). Recorded the
 unreproduced `@ui` hang mentioned under PR #18 above in
-`docs/TECHNICAL_DEBT.md` as item 5, including a same-day bounded
+`docs/TECHNICAL_DEBT.md` as item D1, including a same-day bounded
 five-run reproduction probe that did not reproduce it. Removed
 `continue-on-error: true` from `build-and-test`'s Maven step in
 `main.yml` after confirming `regression-core` genuinely passes both in

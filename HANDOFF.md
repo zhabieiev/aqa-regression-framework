@@ -105,8 +105,9 @@ in the file. Eight items are new: A2 (a Cucumber tag expression matching
 nothing is reported as `PASSED`), B5 (commerce scenarios are coupled to
 literal third-party site content), B7 (`master` has no branch protection),
 C4 (`target/allure-results` accumulates across local runs with nothing to
-reset it), D2, D3 (relocated from this file's own "Not yet proven" section
-below, which now cross-references it), D4 (an MCP-driven run does not
+reset it), D2, D3 (mirrors this file's own "Not yet proven" section below,
+which is intact and remains the narrative source; the two
+cross-reference each other), D4 (an MCP-driven run does not
 rebuild `regression-core`), and D5 (no retention policy for the `gh-pages`
 branch's growing history). Ten inbound cross-references to old item
 numbers — across this file, `docs/ROADMAP.md`, and

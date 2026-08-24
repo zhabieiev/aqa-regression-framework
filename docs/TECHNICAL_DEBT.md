@@ -24,7 +24,10 @@ what action they call for:
 Each item's identifier is its section letter plus a number (A1, A2, B1,
 B2, ...), assigned in the order items appear in this file. New items are
 appended within their section; existing identifiers are never reused, even
-after the item they named is deleted. When an item is fixed, it is deleted
+after the item they named is deleted. Because a deleted identifier is
+never reused, anything outside this file that cites an item by identifier
+must be made self-contained when that item is fixed, rather than left
+pointing at a gap. When an item is fixed, it is deleted
 from this file rather than marked done — this file has no stage/gate
 numbers and no dated narrative of past fixes. Because new items are
 appended within their section and identifiers are never reused, position
@@ -105,9 +108,22 @@ OR condition) verbatim as part of a real session transcript, and already
 carries an annotation (added 2026-08-23) beside that value pointing at
 this item and stating it reflects pre-fix behaviour rather than a genuine
 truncation. Fixing this field's computation does not require adding that
-annotation — it already exists — but does require updating its wording so
-it correctly describes pre-fix behaviour in the past tense, as part of any
-fix, not as a follow-up.
+annotation — it already exists — but does require rewriting it: the
+annotation currently identifies the behaviour by pointing at this item's
+identifier, and this file's own rule is that a fixed item is deleted and
+its identifier never reused, so once A1 itself is gone, an annotation that
+still points at "item A1" points at nothing. The fix must make the
+annotation self-contained — describing the pre-fix behaviour on its own
+terms, in the past tense, rather than by reference to an item that will no
+longer exist — as part of any fix, not as a follow-up.
+
+**Why this is tolerable for now**: no known consumer of
+`regression_get_test_summary` currently acts on `detailsTruncated` — the
+only observed reader is the session transcript cited above, a human-facing
+record, not an automated one. The error also runs in the safer direction:
+the field over-reports truncation rather than hiding it, so a client that
+takes it at face value is led to fetch more detail than it needs, never to
+miss detail that was actually cut off.
 
 **Location**: `regression-mcp-server/src/main/java/com/aqa/mcp/RegressionMcpServer.java`
 (`summaryOutput`, `failureSummaryOutput`, lines 327 and 335 as of
@@ -148,6 +164,17 @@ would reveal the mistake (`Skipped: 2` in the Surefire summary) is
 available only through a different tool
 (`regression_get_test_summary`/`regression_get_failure_summary`), not from
 the terminal state itself.
+
+**Why this is tolerable for now, and only barely**: this reason is weaker
+than A1's, not merely shorter, and should be read as such. The only
+clients currently driving these MCP tools are operated interactively by
+this repository's own maintainer, who would notice a suspiciously fast run
+reporting zero scenarios; no automated consumer exists today that reads a
+`PASSED` verdict and acts on it unattended. That justification expires the
+moment any unattended or third-party client starts using these tools — and
+its comparative weakness, next to items with a solidly stated reason, is
+itself an argument for scheduling this ahead of them, not evidence that it
+can wait indefinitely.
 
 **Location**: `regression-mcp-server/src/main/java/com/aqa/mcp/execution/TestRunCoordinator.java`
 (`run`, line 158 as of 2026-08-23); root `pom.xml`;
@@ -460,7 +487,10 @@ regardless of MIME type.
 - `regression-mcp-server/src/main/java/com/aqa/mcp/execution/RunCaptureLayout.java`
   (lines 7-8 as of 2026-08-23)
 - `regression-mcp-server/src/main/java/com/aqa/mcp/execution/RunStore.java`
-  (lines 33-34, 248-250, 287-291, 301-316 as of 2026-08-23; `RunStore.layout`,
+  (`ALLOWED_ARTIFACT_MIME_TYPES`, lines 33-34 as of 2026-08-23; the
+  allow-list enforcement point, lines 248-250 as of 2026-08-23;
+  `RunStore.toArtifact`, lines 287-291 as of 2026-08-23;
+  `RunStore.mimeTypeOf`, lines 301-316 as of 2026-08-23; `RunStore.layout`,
   line 322 as of 2026-08-23)
 
 **Decision**: extending `ReportCapture` with a third staging root

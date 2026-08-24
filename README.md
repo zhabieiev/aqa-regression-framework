@@ -142,7 +142,7 @@ mvn test
 
 See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the reactor-wide roadmap,
 grouped by module, and [`docs/TECHNICAL_DEBT.md`](docs/TECHNICAL_DEBT.md)
-for known, accepted debt.
+for known debt and open questions.
 
 ## Further reading
 
@@ -160,4 +160,4 @@ Test **execution** (start/get/cancel) is intentionally narrow in v1.0: only the 
 
 See [`regression-mcp-server/README.md`](regression-mcp-server/README.md) for installation, MCP client configuration, the security model, the execution lifecycle, the run store, artifact limits, JAR-lock troubleshooting, and known v1.0 limitations, and [`regression-mcp-server/docs/TOOLS.md`](regression-mcp-server/docs/TOOLS.md) for every tool's full input/output schema. For a real, verbatim client session — `initialize` through a passing `regression-nextjs-commerce` run and its report — see [`regression-mcp-server/docs/SESSION_DEMO.md`](regression-mcp-server/docs/SESSION_DEMO.md).
 
-`regression-mcp-server` shipped as v1.0.0 (tag `regression-mcp-server-v1.0.0`). See [`docs/TECHNICAL_DEBT.md`](docs/TECHNICAL_DEBT.md) for known, accepted debt and [`docs/ROADMAP.md`](docs/ROADMAP.md) for possible next steps and a map of the module's source layout.
+`regression-mcp-server` shipped as v1.0.0 (tag `regression-mcp-server-v1.0.0`). See [`docs/TECHNICAL_DEBT.md`](docs/TECHNICAL_DEBT.md) for known debt and open questions and [`docs/ROADMAP.md`](docs/ROADMAP.md) for possible next steps and a map of the module's source layout.

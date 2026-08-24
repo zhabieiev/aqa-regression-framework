@@ -145,6 +145,12 @@ summary for the now-terminal run.
 {"jsonrpc":"2.0","id":13,"result":{"content":[{"type":"text","text":"{\"data\":{\"failures\":0,\"tests\":2,\"passed\":2,\"detailsTruncated\":true,\"runId\":\"run-53bbecaa59492926f34b2dfd0ec1ada8\",\"skipped\":0,\"duration\":\"15.266\",\"errors\":0,\"suites\":[{\"duration\":\"15.437\",\"errors\":0,\"skipped\":0,\"id\":\":com.aqa.nextjscommerce.runners.RunCucumberTest\",\"failures\":0,\"tests\":2}]},\"status\":\"ok\"}"}],"isError":false,"structuredContent":{"data":{"failures":0,"tests":2,"passed":2,"detailsTruncated":true,"runId":"run-53bbecaa59492926f34b2dfd0ec1ada8","skipped":0,"duration":"15.266","errors":0,"suites":[{"duration":"15.437","errors":0,"skipped":0,"id":":com.aqa.nextjscommerce.runners.RunCucumberTest","failures":0,"tests":2}]},"status":"ok"}}}
 ```
 
+> **Annotation, added 2026-08-23:** the `"detailsTruncated":true` value
+> recorded above reflects the behaviour described in
+> `docs/TECHNICAL_DEBT.md` item A1, not a genuine truncation of this run's
+> data (this run had 0 failures and 0 errors). This transcript records the
+> run exactly as it happened at the time and is not corrected here.
+
 **9. `regression_get_failure_summary`** — bounded, authoritative Surefire
 failures plus optional Allure enrichment. This run has zero failures, so
 `failureRecords` is empty.
@@ -219,7 +225,7 @@ as something they discovered:
   regardless of whether anything failed — while the failure-summary's flag
   reflects `summary.detailsTruncated()` directly, which tracks a suite/
   testcase count bound and a failure-detail byte bound, neither of which was
-  hit here. See `docs/TECHNICAL_DEBT.md` item 8 for the full detail.
+  hit here. See `docs/TECHNICAL_DEBT.md` item A1 for the full detail.
 - **The effective tag filter excluded nothing from this run.** Every
   response above shows `"tags":"not @wip"` even though the client sent no
   `tags` argument: the server always appends a `not @wip` filter server-side

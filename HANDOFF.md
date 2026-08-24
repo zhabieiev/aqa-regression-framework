@@ -54,7 +54,7 @@ start of a session; update it at the end of one, per `CLAUDE.md`'s
   independently published artifacts whose version sets do not coincide, and
   `allure-commandline:2.35.3` does not exist on Maven Central at all. Do not
   set `allure.report.version` to whatever `allure.version` happens to be —
-  see `docs/TECHNICAL_DEBT.md` item 9.
+  see `docs/TECHNICAL_DEBT.md` item B2.
 - No dedicated Allure-distribution cache exists in CI for commerce, and none
   is currently justified: `actions/setup-java`'s existing `cache: maven`
   already caches `~/.m2/repository`, where the distribution installs, so
@@ -68,20 +68,61 @@ start of a session; update it at the end of one, per `CLAUDE.md`'s
   `AllureAttachmentFixtureSteps`, and the Surefire property that existed
   solely to feed it) was removed; it never actually ran under any real
   invocation.
-- Known, accepted debt: see [`docs/TECHNICAL_DEBT.md`](docs/TECHNICAL_DEBT.md)
-  (10 items, verified individually against that file rather than assumed:
-  2 in `regression-nextjs-commerce`, 4 in `regression-mcp-server`, 1 in
-  `regression-core`, 2 in `regression-jhipster`, and 1 spanning
-  `regression-petstore-api` and `regression-nextjs-commerce`'s shared Allure
-  version-property duplication).
+- Known debt and open questions: see [`docs/TECHNICAL_DEBT.md`](docs/TECHNICAL_DEBT.md)
+  (18 items as of this restructuring, grouped into four sections by the
+  action each calls for — A. Defects: fix, or accept with a stated reason;
+  B. Debt: schedule; C. Accepted characteristics: no action, each with a
+  stated review trigger; D. Open questions: closed by observation, not
+  work). Items are identified as a section letter plus number (e.g. `B3`),
+  not a flat list; position within a section carries no priority meaning —
+  priority is read from each item's Cost field. Per-module limitations are
+  maintained with their own modules' READMEs, not duplicated in that file.
 - `regression-jhipster`'s Playwright trace-capture gap (traces written to
   `target/playwright/traces/` are never surfaced through the MCP server) is
-  now logged as item 6 in `docs/TECHNICAL_DEBT.md`, rather than only noted
+  now logged as item C2 in `docs/TECHNICAL_DEBT.md`, rather than only noted
   here as an earlier version of this file did.
 - Forward-looking roadmap: see [`docs/ROADMAP.md`](docs/ROADMAP.md)
   (reactor-wide, grouped by module).
 
 ## Most recent session
+
+2026-08-24 — `docs/TECHNICAL_DEBT.md` restructured into four action-typed
+sections, branch `docs/technical-debt-restructure`, PR #26 (open, not
+merged as of this entry):
+
+An inspection pass first verified all ten pre-existing
+`docs/TECHNICAL_DEBT.md` items individually against the current tree —
+every cited path, line number, and quoted line of code confirmed accurate,
+with zero drift found. The file was then restructured from a flat numbered
+list into four sections grouped by the action each item calls for — A.
+Defects (fix, or accept with a stated reason), B. Debt (schedule), C.
+Accepted characteristics (no action, each with a stated review trigger),
+D. Open questions and unproven assumptions (closed by observation, not
+work) — with items identified as a section letter plus number (e.g. `B3`)
+rather than a flat number, and a Cost estimate (in agent passes) added to
+every item so priority is read from that field rather than from position
+in the file. Eight items are new: A2 (a Cucumber tag expression matching
+nothing is reported as `PASSED`), B5 (commerce scenarios are coupled to
+literal third-party site content), B7 (`master` has no branch protection),
+C4 (`target/allure-results` accumulates across local runs with nothing to
+reset it), D2, D3 (mirrors this file's own "Not yet proven" section below,
+which is intact and remains the narrative source; the two
+cross-reference each other), D4 (an MCP-driven run does not
+rebuild `regression-core`), and D5 (no retention policy for the `gh-pages`
+branch's growing history). Ten inbound cross-references to old item
+numbers — across this file, `docs/ROADMAP.md`, and
+`regression-mcp-server/docs/SESSION_DEMO.md` — were updated to the new
+identifiers.
+
+Item D2 replaces an earlier belief, held briefly during this same arc, that
+`RegressionMcpServerStdioIntegrationTest` was the notable intermittent-flake
+risk worth documenting. Checking actual `gh run` history disproved that
+belief: of 101 visible CI runs, exactly 2 failed, both on 2026-08-17, and
+that specific test passed cleanly in both of them (`Tests run: 7,
+Failures: 0`) — the two real failures were in `FailureArtifactStoreTest`
+and `TestRunCoordinatorTest`, unrelated tests. D2 now documents those two
+actual failures directly, with the STDIO test's timeout configuration
+recorded only as unrelated context, not as a claim about either failure.
 
 2026-08-23 — Allure report publishing for `regression-nextjs-commerce`
 implemented, merged, and verified live in CI across PR #23, PR #24, and this
@@ -129,7 +170,7 @@ This pass (branch `docs/allure-publishing-handoff`): folded the above into
 `## Current state` above, marked `docs/ROADMAP.md`'s matching "non-interactive
 CI reporting workflow" roadmap item as done for `regression-nextjs-commerce`,
 added a link to the live report from `README.md`, and logged
-`docs/TECHNICAL_DEBT.md` item 10 (nothing currently verifies that history
+`docs/TECHNICAL_DEBT.md` item C3 (nothing currently verifies that history
 accumulation keeps working going forward — a broken restore path would still
 leave generation and publish green, silently resetting the trend).
 
@@ -143,7 +184,9 @@ existence guard has never actually fired. A concurrent-push race on
 workflow's `cancel-in-progress` concurrency group) is an accepted,
 unexercised risk. A manual re-run of a publishing job (e.g. the Actions UI's
 "re-run failed jobs") would add a duplicate trend data point, since
-generation is not idempotent with respect to the trend file.
+generation is not idempotent with respect to the trend file. These four
+assumptions are also tracked as item D3 in `docs/TECHNICAL_DEBT.md`; this
+file remains the narrative source for them.
 
 2026-08-22 — MCP session demo published, current state and technical debt
 reconciled:
@@ -160,15 +203,15 @@ place the module's actual end-to-end run duration was measured and recorded
 anywhere in the repository: 22.6 seconds, from the server's own
 `finishedAt` − `startedAt` timestamps. Logged three new
 `docs/TECHNICAL_DEBT.md` items from characteristics observed directly in
-that recording: item 6 (`regression-jhipster`'s Playwright traces are
+that recording: item C2 (`regression-jhipster`'s Playwright traces are
 written only on scenario failure and are never captured by `ReportCapture`;
 two independent barriers — the MIME allow-list and the Allure-only artifact
 listing — would block serving one through the MCP server even if a third
-staging root existed), item 7 (`regression_get_test_run`'s
+staging root existed), item B4 (`regression_get_test_run`'s
 `stdoutBytes`/`stderrBytes` are hardcoded to zero for the entire `RUNNING`
 state and only populate at terminal persistence, so they carry no live
 progress signal; `reason` also duplicated `state` at every observation in
-the same recording), and item 8 (`regression_get_test_summary`'s
+the same recording), and item A1 (`regression_get_test_summary`'s
 `detailsTruncated` flag is true for essentially any real run regardless of
 whether anything was truncated, and means something different from the
 same-named field on `regression_get_failure_summary`, which was observed
@@ -223,7 +266,7 @@ CI for now, both for reasons specific to each module (no way to raise
 jhipster's app-under-test on a CI runner; petstore-api's shared
 third-party sandbox with no delete-failure fallback). Recorded the
 unreproduced `@ui` hang mentioned under PR #18 above in
-`docs/TECHNICAL_DEBT.md` as item 5, including a same-day bounded
+`docs/TECHNICAL_DEBT.md` as item D1, including a same-day bounded
 five-run reproduction probe that did not reproduce it. Removed
 `continue-on-error: true` from `build-and-test`'s Maven step in
 `main.yml` after confirming `regression-core` genuinely passes both in
@@ -314,3 +357,7 @@ The smallest independent starting point remains `regression-petstore-api`'s
 scenario" (see `docs/ROADMAP.md`'s "regression-petstore-api" section and
 `regression-petstore-api/README.md`'s "Current Limitations and
 Trade-offs" for the current gap).
+
+`docs/TECHNICAL_DEBT.md` now carries a Cost estimate per item; among items
+with a filled-in estimate, the cheapest with a verifiable effect are B1
+and B7 — neither is asserted here to be scheduled.

@@ -51,7 +51,7 @@ module/area; each module's own README carries more detail where noted.
   unaffected by this — see `README.md`'s "Configuration and reporting". A
   durable retention/pruning policy for the accumulating `gh-pages` history
   itself was not part of this work and remains open if the branch's size
-  becomes a concern.
+  becomes a concern — tracked as `docs/TECHNICAL_DEBT.md` item D5.
 - Document a common module-execution convention for local and CI use
   (local execution is already documented in root `README.md`'s "Running
   Maven" section; no CI convention exists yet — `.github/workflows/main.yml`
@@ -64,7 +64,7 @@ module/area; each module's own README carries more detail where noted.
 
 #### Extract the shared validator `Tool` helper
 
-`docs/TECHNICAL_DEBT.md` item 3 names the duplicated methods across
+`docs/TECHNICAL_DEBT.md` item B3 names the duplicated methods across
 `ModuleBoundariesTool`, `FrameworkConventionsTool`, and `ArchitectureTool`:
 `evaluate`, `parseRequest`, `reportOutput`, `moduleResultOutput`,
 `violationOutput`, `inputSchema`, `violationSchema`, `moduleResultSchema`,
@@ -85,7 +85,7 @@ against each tool's existing contract tests
 
 #### Scope an ARCH rule for `definitions`-layer assertions
 
-`docs/TECHNICAL_DEBT.md` item 4 notes that `GeneralDefinitions.java`'s
+`docs/TECHNICAL_DEBT.md` item B6 notes that `GeneralDefinitions.java`'s
 direct AssertJ assertions inside `@Then` methods are real CLAUDE.md debt
 with no current validator rule covering it. A future ARCH-005 (or similar)
 rule in `ArchitectureRules.java` could flag assertion calls
@@ -148,10 +148,12 @@ supersedes the earlier framing of "extend execution beyond
 module's POM declares neither `mcp.surefire.reportsDirectory` nor
 `mcp.allure.resultsDirectory`, so its Surefire XML and Allure JSON land in
 its own `target/` directories rather than the per-run staging paths
-`ReportCapture` reads. This is mechanical and already solved twice —
-`regression-jhipster/pom.xml` lines 17-18 (properties) and 144/147
-(usage), and `regression-nextjs-commerce/pom.xml` lines 21-22 (properties)
-and 111/116-117 (usage). It is not the reason for the decision.
+`ReportCapture` reads. This is mechanical and already solved twice — both
+properties, plus their Surefire `reportsDirectory` and Allure
+`allure.results.directory` usage elements, in `regression-jhipster/pom.xml`
+(lines 17-18 and 144/147 as of 2026-08-24) and
+`regression-nextjs-commerce/pom.xml` (lines 23-24 and 113/118 as of
+2026-08-24). It is not the reason for the decision.
 
 **Conditions for revisiting**, so a future reader knows what would flip
 the answer: the module targeting an owned Petstore instance instead of

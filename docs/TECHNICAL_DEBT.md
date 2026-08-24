@@ -687,10 +687,9 @@ line 150 as of 2026-08-23);
 
 Module: regression-nextjs-commerce | Cost: n/a
 
-Relocated from `HANDOFF.md`'s "Not yet proven" section; reproduced here
-faithfully. `HANDOFF.md` remains the narrative source for this item — a
-pointer from `HANDOFF.md` to this entry will be added in a later pass;
-this rewrite does not edit `HANDOFF.md`.
+This item and `HANDOFF.md`'s "Not yet proven" section cover the same four
+assumptions; `HANDOFF.md` remains the narrative source, and the two
+cross-reference each other.
 
 **What**: as of 2026-08-23, `HANDOFF.md`'s "Not yet proven" section states
 that "publishing on a genuinely RED test run has never happened." That one

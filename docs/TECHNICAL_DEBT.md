@@ -34,13 +34,13 @@ and the section's action verb, not from the order items appear in.
 **Citation rule**: every item identifies its location by file path plus
 the name of the class, method, field, property, or workflow step involved.
 Line numbers are given only as a secondary aid, and are marked "as of
-2026-08-23" wherever given, because they rot: as of this rewrite,
-`docs/ROADMAP.md` cites `regression-nextjs-commerce/pom.xml` lines 21-22
+2026-08-23" wherever given, because they rot: as of 2026-08-23,
+`docs/ROADMAP.md` cited `regression-nextjs-commerce/pom.xml` lines 21-22
 and 111/116-117 for its `mcp.surefire.reportsDirectory` /
-`mcp.allure.resultsDirectory` wiring, but that wiring is now at lines 23-24
-and 113/118 in the same file — a line-number citation goes stale the
-moment an unrelated edit shifts the file, while a named property or method
-does not.
+`mcp.allure.resultsDirectory` wiring, while that wiring was actually at
+lines 23-24 and 113/118 in the same file at that time — a line-number
+citation goes stale the moment an unrelated edit shifts the file, while a
+named property or method does not.
 
 Every item's metadata line also carries a **Cost** estimate: the number of
 agent passes — discrete working sessions carried out under an instruction
@@ -101,10 +101,13 @@ else entirely for that one tool.
 
 **Consequence of fixing this**: `regression-mcp-server/docs/SESSION_DEMO.md`
 records the current, misleading value (`"detailsTruncated":true` from that
-OR condition) verbatim as part of a real session transcript. Fixing this
-field's computation invalidates that transcript — it must be corrected or
-explicitly annotated as showing the pre-fix behaviour, as part of any fix,
-not as a follow-up.
+OR condition) verbatim as part of a real session transcript, and already
+carries an annotation (added 2026-08-23) beside that value pointing at
+this item and stating it reflects pre-fix behaviour rather than a genuine
+truncation. Fixing this field's computation does not require adding that
+annotation — it already exists — but does require updating its wording so
+it correctly describes pre-fix behaviour in the past tense, as part of any
+fix, not as a follow-up.
 
 **Location**: `regression-mcp-server/src/main/java/com/aqa/mcp/RegressionMcpServer.java`
 (`summaryOutput`, `failureSummaryOutput`, lines 327 and 335 as of
@@ -457,7 +460,8 @@ regardless of MIME type.
 - `regression-mcp-server/src/main/java/com/aqa/mcp/execution/RunCaptureLayout.java`
   (lines 7-8 as of 2026-08-23)
 - `regression-mcp-server/src/main/java/com/aqa/mcp/execution/RunStore.java`
-  (lines 33-34, 248-250, 287-291, 301-316, 322-332 as of 2026-08-23)
+  (lines 33-34, 248-250, 287-291, 301-316 as of 2026-08-23; `RunStore.layout`,
+  line 322 as of 2026-08-23)
 
 **Decision**: extending `ReportCapture` with a third staging root
 (mirroring the existing Surefire-required/Allure-optional pattern) was

@@ -103,6 +103,30 @@ class RegressionMcpServerContractTest {
         } finally { coordinator.close(); }
     }
 
+    /** A run cancelled before it ever produces a Surefire report must never publish a skippedTests count: the
+     * runOutput map must OMIT the key entirely (never a JSON null) when RunSnapshot.skippedTests() is null. */
+    @Test
+    void getTestRunOmitsSkippedTestsKeyWhenNoSurefireReportWasCaptured() throws Exception {
+        Path root = executionRoot();
+        TestRunCoordinator coordinator = ControlledCoordinatorFactory.waitingCoordinator(root);
+        try {
+            RunSnapshot started = coordinator.start(new StartTestRunRequest("regression-nextjs-commerce", null, "dev", true, 30), Map.of());
+            coordinator.cancel(started.runId());
+            RunSnapshot terminal = awaitTerminal(coordinator, started.runId());
+            assertThat(terminal.state().name()).isEqualTo("CANCELLED");
+            assertThat(terminal.skippedTests()).isNull();
+
+            SyncToolSpecification tool = RegressionMcpServer.getTestRunTool(coordinator);
+            CallToolResult result = tool.callHandler().apply(null, new CallToolRequest(RegressionMcpServer.GET_TEST_RUN_TOOL_NAME,
+                    Map.of("runId", started.runId())));
+
+            assertThat(result.isError()).isFalse();
+            @SuppressWarnings("unchecked") Map<String, Object> structured = (Map<String, Object>) result.structuredContent();
+            @SuppressWarnings("unchecked") Map<String, Object> data = (Map<String, Object>) structured.get("data");
+            assertThat(data).doesNotContainKey("skippedTests");
+        } finally { coordinator.close(); }
+    }
+
     @Test
     void exposesTheClosedReadOnlySurefireSummaryContract() {
         TestRunCoordinator coordinator = new TestRunCoordinator(validRoot().path(), () -> { throw new AssertionError("Summary contract must not validate a run."); });

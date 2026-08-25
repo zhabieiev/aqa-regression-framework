@@ -20,7 +20,7 @@ class SurefireSummaryStoreTest {
         RunStore store = new RunStore(root); RunSnapshot queued = snapshot(TestRunState.QUEUED); store.create(queued);
         RunCaptureLayout layout = store.captureLayout(queued.runId());
         Files.writeString(layout.surefireStaging().resolve("TEST-summary.xml"), xml());
-        store.updateCapture(queued.runId(), new ReportCapture().capture(layout, store.persisted(queued.runId()).capture()));
+        store.updateCapture(queued.runId(), new ReportCapture().capture(layout, store.persisted(queued.runId()).capture()).metadata());
         RunSnapshot terminal = snapshot(queued, TestRunState.PASSED); store.update(terminal, List.of());
         assertThat(store.summary(queued.runId()).passed()).isEqualTo(1);
 
@@ -46,7 +46,7 @@ class SurefireSummaryStoreTest {
             store.create(queued);
             RunCaptureLayout layout = store.captureLayout(queued.runId());
             Files.writeString(layout.surefireStaging().resolve("TEST-summary.xml"), xml());
-            store.updateCapture(queued.runId(), new ReportCapture().capture(layout, store.persisted(queued.runId()).capture()));
+            store.updateCapture(queued.runId(), new ReportCapture().capture(layout, store.persisted(queued.runId()).capture()).metadata());
             store.update(snapshot(queued, state), List.of());
 
             assertThat(store.summary(queued.runId()).passed()).as("state %s must not be rejected as non-terminal", state).isEqualTo(1);
@@ -58,6 +58,6 @@ class SurefireSummaryStoreTest {
         assertThatThrownBy(call).isInstanceOf(ExecutionPlanningException.class).extracting(error -> ((ExecutionPlanningException) error).code()).isEqualTo(expected);
     }
     private static String xml() { return "<testsuite name='summary' tests='1' failures='0' errors='0' skipped='0' time='0.2'><testcase classname='summary' name='pass' time='0.2'/></testsuite>"; }
-    private static RunSnapshot snapshot(TestRunState state) { Instant now = Instant.now(); return new RunSnapshot(RunId.generate(), ExecutionProfileRegistry.COMMERCE_MODULE, "dev", true, "not @wip", 30, state, now, state == TestRunState.QUEUED ? null : now, state.isTerminal() ? now : null, 0, state.name(), 0, 0, false, false); }
-    private static RunSnapshot snapshot(RunSnapshot source, TestRunState state) { Instant now = Instant.now(); return new RunSnapshot(source.runId(), source.module(), source.environment(), source.headless(), source.tags(), source.timeoutSeconds(), state, source.createdAt(), now, now, 0, state.name(), 0, 0, false, false); }
+    private static RunSnapshot snapshot(TestRunState state) { Instant now = Instant.now(); return new RunSnapshot(RunId.generate(), ExecutionProfileRegistry.COMMERCE_MODULE, "dev", true, "not @wip", 30, state, now, state == TestRunState.QUEUED ? null : now, state.isTerminal() ? now : null, 0, state.name(), 0, 0, false, false, null); }
+    private static RunSnapshot snapshot(RunSnapshot source, TestRunState state) { Instant now = Instant.now(); return new RunSnapshot(source.runId(), source.module(), source.environment(), source.headless(), source.tags(), source.timeoutSeconds(), state, source.createdAt(), now, now, 0, state.name(), 0, 0, false, false, null); }
 }

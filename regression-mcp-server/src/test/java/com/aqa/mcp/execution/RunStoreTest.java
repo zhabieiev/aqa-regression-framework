@@ -31,13 +31,27 @@ class RunStoreTest {
         Path directory = root.resolve(".regression-mcp/runs").resolve(queued.runId());
         String immutable = Files.readString(directory.resolve("run.json"));
         RunSnapshot passed = new RunSnapshot(queued.runId(), queued.module(), queued.environment(), queued.headless(), queued.tags(),
-                queued.timeoutSeconds(), TestRunState.PASSED, queued.createdAt(), Instant.now(), Instant.now(), 0, "PASSED", 0, 0, false, false);
+                queued.timeoutSeconds(), TestRunState.PASSED, queued.createdAt(), Instant.now(), Instant.now(), 0, "PASSED", 0, 0, false, false, null);
 
         store.update(passed, List.of());
 
         assertThat(Files.readString(directory.resolve("run.json"))).isEqualTo(immutable);
         assertThat(store.get(queued.runId()).state()).isEqualTo(TestRunState.PASSED);
         try (var files = Files.list(directory)) { assertThat(files.map(path -> path.getFileName().toString())).noneMatch(name -> name.endsWith(".tmp")); }
+    }
+
+    @Test
+    void terminalSkippedTestsCountSurvivesAWriteReadRoundTripThroughStatusJson() throws Exception {
+        RunStore store = new RunStore(root);
+        RunSnapshot queued = snapshot(TestRunState.QUEUED);
+        store.create(queued);
+        RunSnapshot terminalWithCount = new RunSnapshot(queued.runId(), queued.module(), queued.environment(), queued.headless(), queued.tags(),
+                queued.timeoutSeconds(), TestRunState.PASSED, queued.createdAt(), Instant.now(), Instant.now(), 0, "PASSED", 0, 0, false, false, 3);
+
+        store.update(terminalWithCount, List.of());
+
+        assertThat(store.get(queued.runId()).skippedTests()).isEqualTo(3);
+        assertThat(store.persisted(queued.runId()).snapshot().skippedTests()).isEqualTo(3);
     }
 
     @Test
@@ -48,7 +62,7 @@ class RunStoreTest {
         RunStore failing = new RunStore(root, (temporary, target) -> { throw new IOException("simulated atomic move failure"); });
 
         RunSnapshot running = new RunSnapshot(queued.runId(), queued.module(), queued.environment(), queued.headless(), queued.tags(),
-                queued.timeoutSeconds(), TestRunState.RUNNING, queued.createdAt(), Instant.now(), null, null, "RUNNING", 0, 0, false, false);
+                queued.timeoutSeconds(), TestRunState.RUNNING, queued.createdAt(), Instant.now(), null, null, "RUNNING", 0, 0, false, false, null);
         assertThatThrownBy(() -> failing.update(running, List.of()))
                 .isInstanceOf(ExecutionPlanningException.class)
                 .extracting(error -> ((ExecutionPlanningException) error).code()).isEqualTo("MAVEN_RUNTIME_UNAVAILABLE");
@@ -163,7 +177,7 @@ class RunStoreTest {
         Instant now = Instant.now();
         return new RunSnapshot(source.runId(), source.module(), source.environment(), source.headless(), source.tags(),
                 source.timeoutSeconds(), state, source.createdAt(), state == TestRunState.QUEUED ? null : now, null,
-                null, state.name(), 0, 0, false, false);
+                null, state.name(), 0, 0, false, false, null);
     }
 
     private static String describe(Throwable failure) {
@@ -174,6 +188,6 @@ class RunStoreTest {
     private static RunSnapshot snapshot(TestRunState state) {
         String id = RunId.generate(); Instant now = Instant.now();
         return new RunSnapshot(id, ExecutionProfileRegistry.COMMERCE_MODULE, "dev", true, "not @wip", 30, state, now,
-                state == TestRunState.QUEUED ? null : now, state.isTerminal() ? now : null, null, state.name(), 0, 0, false, false);
+                state == TestRunState.QUEUED ? null : now, state.isTerminal() ? now : null, null, state.name(), 0, 0, false, false, null);
     }
 }

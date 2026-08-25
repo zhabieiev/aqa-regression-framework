@@ -19,7 +19,7 @@ class ReportCaptureTest {
         Fixture fixture = fixture();
         Files.writeString(fixture.layout.surefireStaging().resolve("TEST-one.xml"), validSurefire());
 
-        CaptureMetadata capture = new ReportCapture().capture(fixture.layout, fixture.pending);
+        CaptureMetadata capture = new ReportCapture().capture(fixture.layout, fixture.pending).metadata();
 
         assertThat(capture.status()).isEqualTo(CaptureStatus.PARTIAL);
         assertThat(capture.surefire().files()).hasSize(1);
@@ -38,14 +38,14 @@ class ReportCaptureTest {
             Fixture fixture = fixture();
             Files.writeString(fixture.layout.surefireStaging().resolve("TEST-bad.xml"), content);
 
-            CaptureMetadata capture = new ReportCapture().capture(fixture.layout, fixture.pending);
+            CaptureMetadata capture = new ReportCapture().capture(fixture.layout, fixture.pending).metadata();
 
             assertThat(capture.status()).isEqualTo(CaptureStatus.UNAVAILABLE);
             assertThat(fixture.layout.surefireIndex()).doesNotExist();
             assertThat(fixture.layout.surefireFinal()).doesNotExist();
         }
         Fixture absent = fixture();
-        assertThat(new ReportCapture().capture(absent.layout, absent.pending).status()).isEqualTo(CaptureStatus.UNAVAILABLE);
+        assertThat(new ReportCapture().capture(absent.layout, absent.pending).metadata().status()).isEqualTo(CaptureStatus.UNAVAILABLE);
         assertThat(absent.layout.surefireIndex()).doesNotExist();
     }
 
@@ -91,19 +91,19 @@ class ReportCaptureTest {
     void validatesOptionalAllureJsonAndMarksOnlyOptionalFailuresPartial() throws Exception {
         Fixture valid = fixture();
         writeSurefire(valid); Files.writeString(valid.layout.allureStaging().resolve("one-result.json"), "{\"name\":\"one#fails\",\"status\":\"failed\"}");
-        CaptureMetadata complete = new ReportCapture().capture(valid.layout, valid.pending);
+        CaptureMetadata complete = new ReportCapture().capture(valid.layout, valid.pending).metadata();
         assertThat(complete.status()).isEqualTo(CaptureStatus.COMPLETE);
         assertThat(valid.layout.allureIndex()).isRegularFile();
 
         Fixture malformed = fixture();
         writeSurefire(malformed); Files.writeString(malformed.layout.allureStaging().resolve("result.json"), "{");
-        CaptureMetadata partial = new ReportCapture().capture(malformed.layout, malformed.pending);
+        CaptureMetadata partial = new ReportCapture().capture(malformed.layout, malformed.pending).metadata();
         assertThat(partial.status()).isEqualTo(CaptureStatus.PARTIAL);
         assertThat(malformed.layout.allureIndex()).doesNotExist();
 
         Fixture oversized = fixture();
         writeSurefire(oversized); Files.write(oversized.layout.allureStaging().resolve("result.json"), new byte[(int) ReportCapture.MAX_FILE_BYTES + 1]);
-        assertThat(new ReportCapture().capture(oversized.layout, oversized.pending).status()).isEqualTo(CaptureStatus.PARTIAL);
+        assertThat(new ReportCapture().capture(oversized.layout, oversized.pending).metadata().status()).isEqualTo(CaptureStatus.PARTIAL);
         assertThat(oversized.layout.allureIndex()).doesNotExist();
     }
 
@@ -113,7 +113,7 @@ class ReportCaptureTest {
         Files.writeString(fixture.layout.surefireStaging().resolve("TEST-one.xml"), failingSurefire());
         Files.writeString(fixture.layout.allureStaging().resolve("one-result.json"), "{\"name\":\"one#fails\",\"status\":\"failed\",\"statusDetails\":{\"message\":\"detail\"},\"steps\":[{\"name\":\"step\",\"status\":\"failed\"}],\"attachments\":[{\"source\":\"private.bin\"}]}");
 
-        fixture.store.updateCapture(fixture.snapshot.runId(), new ReportCapture().capture(fixture.layout, fixture.pending));
+        fixture.store.updateCapture(fixture.snapshot.runId(), new ReportCapture().capture(fixture.layout, fixture.pending).metadata());
         fixture.store.update(terminal(fixture.snapshot), List.of());
 
         SurefireSummary summary = fixture.store.failureSummary(fixture.snapshot.runId());
@@ -129,7 +129,7 @@ class ReportCaptureTest {
         Fixture fixture = fixture(); Files.writeString(fixture.layout.surefireStaging().resolve("TEST-one.xml"), failingSurefire());
         Files.writeString(fixture.layout.allureStaging().resolve("one-result.json"), "{\"name\":\"one#fails\",\"status\":\"failed\"}");
         Files.writeString(fixture.layout.allureStaging().resolve("two-result.json"), "{\"name\":\"one#fails\",\"status\":\"failed\"}");
-        fixture.store.updateCapture(fixture.snapshot.runId(), new ReportCapture().capture(fixture.layout, fixture.pending)); fixture.store.update(terminal(fixture.snapshot), List.of());
+        fixture.store.updateCapture(fixture.snapshot.runId(), new ReportCapture().capture(fixture.layout, fixture.pending).metadata()); fixture.store.update(terminal(fixture.snapshot), List.of());
 
         SurefireSummary.FailureRecord record = fixture.store.failureSummary(fixture.snapshot.runId()).failureRecords().getFirst();
         assertThat(record.type()).isEqualTo("FAILURE"); assertThat(record.allure().availability()).isEqualTo("UNMATCHED");
@@ -141,7 +141,7 @@ class ReportCaptureTest {
         Fixture fixture = fixture(); writeSurefire(fixture);
         ReportCapture capture = new ReportCapture((source, target) -> { throw new IOException("simulated no atomic move"); });
 
-        assertThat(capture.capture(fixture.layout, fixture.pending).status()).isEqualTo(CaptureStatus.UNAVAILABLE);
+        assertThat(capture.capture(fixture.layout, fixture.pending).metadata().status()).isEqualTo(CaptureStatus.UNAVAILABLE);
         assertThat(fixture.layout.surefireIndex()).doesNotExist();
         assertThat(fixture.layout.surefireFinal()).doesNotExist();
         try (var paths = Files.walk(fixture.layout.runDirectory())) {
@@ -163,7 +163,7 @@ class ReportCaptureTest {
     }
 
     private void assertUnavailable(Fixture fixture) {
-        assertThat(new ReportCapture().capture(fixture.layout, fixture.pending).status()).isEqualTo(CaptureStatus.UNAVAILABLE);
+        assertThat(new ReportCapture().capture(fixture.layout, fixture.pending).metadata().status()).isEqualTo(CaptureStatus.UNAVAILABLE);
         assertThat(fixture.layout.surefireIndex()).doesNotExist();
         assertThat(fixture.layout.surefireFinal()).doesNotExist();
     }
@@ -179,8 +179,8 @@ class ReportCaptureTest {
     private static RunSnapshot snapshot() {
         java.time.Instant now = java.time.Instant.now();
         return new RunSnapshot(RunId.generate(), ExecutionProfileRegistry.COMMERCE_MODULE, "dev", true, "not @wip", 30,
-                TestRunState.QUEUED, now, null, null, null, "QUEUED", 0, 0, false, false);
+                TestRunState.QUEUED, now, null, null, null, "QUEUED", 0, 0, false, false, null);
     }
-    private static RunSnapshot terminal(RunSnapshot source) { java.time.Instant now = java.time.Instant.now(); return new RunSnapshot(source.runId(), source.module(), source.environment(), source.headless(), source.tags(), source.timeoutSeconds(), TestRunState.FAILED, source.createdAt(), now, now, 1, "FAILED", 0, 0, false, false); }
+    private static RunSnapshot terminal(RunSnapshot source) { java.time.Instant now = java.time.Instant.now(); return new RunSnapshot(source.runId(), source.module(), source.environment(), source.headless(), source.tags(), source.timeoutSeconds(), TestRunState.FAILED, source.createdAt(), now, now, 1, "FAILED", 0, 0, false, false, null); }
     private record Fixture(RunStore store, RunSnapshot snapshot, RunCaptureLayout layout, CaptureMetadata pending) { }
 }

@@ -68,9 +68,17 @@ tool declares):
   itself).
 - Output `data` (run snapshot): `runId`, `module`, `environment`,
   `headless`, `tags`, `timeoutSeconds`, `state`, `createdAt` (all
-  required), plus `startedAt`, `finishedAt`, `exitCode`, `reason` when
-  applicable, and `stdoutBytes`, `stderrBytes`, `stdoutTruncated`,
-  `stderrTruncated` (all required).
+  required), plus `startedAt`, `finishedAt`, `exitCode`, `reason`,
+  `skippedTests` when applicable, and `stdoutBytes`, `stderrBytes`,
+  `stdoutTruncated`, `stderrTruncated` (all required). `skippedTests` is
+  present only once a Surefire report has been parsed for the run; an
+  absent key means the count is unavailable (not yet known, or no report
+  was ever captured), while a present `0` means a report was parsed and no
+  tests were skipped. `RunSnapshot.skippedTests` is the authoritative
+  skipped-test count for a run — the same value `regression_get_test_summary`'s
+  `skipped` field reports, read back from the same published Surefire
+  report, just computed once at capture time and carried on the snapshot
+  instead of re-read on each call.
 
 ### `regression_get_test_run`
 - Purpose: returns a server-generated run's current snapshot.

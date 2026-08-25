@@ -93,7 +93,7 @@ class FailureArtifactStoreTest {
         Files.writeString(layout.allureStaging().resolve("one-result.json"),
                 "{\"name\":\"one#fails\",\"status\":\"failed\",\"attachments\":[{\"source\":\"page.html\"}]}");
         Files.writeString(layout.allureStaging().resolve("page.html"), "<html><body>page source</body></html>");
-        store.updateCapture(snapshot.runId(), new ReportCapture().capture(layout, store.persisted(snapshot.runId()).capture()));
+        store.updateCapture(snapshot.runId(), new ReportCapture().capture(layout, store.persisted(snapshot.runId()).capture()).metadata());
         store.update(terminal(snapshot), List.of());
 
         List<FailureArtifact> artifacts = store.artifacts(snapshot.runId());
@@ -183,7 +183,7 @@ class FailureArtifactStoreTest {
                     "{\"name\":\"one#fails\",\"status\":\"failed\",\"attachments\":[{\"source\":\"failure-screenshot.png\"}]}");
             Files.write(layout.allureStaging().resolve("failure-screenshot.png"), png);
         }
-        store.updateCapture(snapshot.runId(), new ReportCapture().capture(layout, store.persisted(snapshot.runId()).capture()));
+        store.updateCapture(snapshot.runId(), new ReportCapture().capture(layout, store.persisted(snapshot.runId()).capture()).metadata());
         store.update(terminal(snapshot, terminalState), List.of());
         return new Fixture(store, snapshot);
     }
@@ -194,7 +194,7 @@ class FailureArtifactStoreTest {
     private static RunSnapshot snapshot(TestRunState state) {
         Instant now = Instant.now();
         return new RunSnapshot(RunId.generate(), ExecutionProfileRegistry.COMMERCE_MODULE, "dev", true, "not @wip", 30,
-                state, now, state == TestRunState.QUEUED ? null : now, state.isTerminal() ? now : null, 0, state.name(), 0, 0, false, false);
+                state, now, state == TestRunState.QUEUED ? null : now, state.isTerminal() ? now : null, 0, state.name(), 0, 0, false, false, null);
     }
 
     private static RunSnapshot terminal(RunSnapshot source) { return terminal(source, TestRunState.FAILED); }
@@ -202,7 +202,7 @@ class FailureArtifactStoreTest {
     private static RunSnapshot terminal(RunSnapshot source, TestRunState state) {
         Instant now = Instant.now();
         return new RunSnapshot(source.runId(), source.module(), source.environment(), source.headless(), source.tags(), source.timeoutSeconds(),
-                state, source.createdAt(), now, now, 1, state.name(), 0, 0, false, false);
+                state, source.createdAt(), now, now, 1, state.name(), 0, 0, false, false, null);
     }
 
     private record Fixture(RunStore store, RunSnapshot snapshot) { }

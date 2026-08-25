@@ -88,38 +88,30 @@ class ArchitectureToolTest {
         assertThat(error.get("code")).isEqualTo("UNKNOWN_MODULE");
     }
 
-    /** The standing instruction for this test was to establish real-reactor cleanliness via the tool itself, not
-     * assume it -- ARCH-002 was never manually pre-verified against the real reactor in Phase A. Running it for the
-     * first time during this test's own Phase B implementation surfaced a genuine, previously-unknown two-package cycle in
-     * regression-nextjs-commerce: com.aqa.nextjscommerce.config.UiSettings imports
-     * com.aqa.nextjscommerce.driver.BrowserType, while com.aqa.nextjscommerce.driver's ChromeOptionsFactory,
-     * DriverSession, and DriverFactory all import com.aqa.nextjscommerce.config.UiSettings. Per explicit user
-     * decision (accepted as known debt rather than fixed in this gate, which is scoped to the MCP server only, not
-     * product-module source), this test asserts that exactly this one known cycle is present, everywhere else in
-     * the reactor stays cycle-free, and ARCH-002 keeps failing the build the moment a second, different cycle
-     * ever appears. Fixing the underlying regression-nextjs-commerce cycle is deferred to a separate, explicitly
-     * authorized task -- it is not addressed by this gate. */
+    /** Strengthened successor to the former known-cycle allowance: the real reactor is now asserted to be
+     * completely cycle-free, with no per-module exception. The module-presence assertion below fixes the
+     * expected set of modules; it does not prove any source file was actually scanned. Because
+     * {@code ArchitectureTool.evaluate}'s {@code declaredModules} is taken from the {@code moduleTypeByName}
+     * map this test itself supplies, not from the filesystem, a scan that found no sources at all would still
+     * satisfy both assertions below. */
     @Test
-    void realReactorHasOnlyTheOneKnownAcceptedArch002PackageCycle() {
+    void realReactorHasNoArch002PackageCycles() {
         Path repositoryRoot = realRepositoryRoot();
 
         Map<String, Object> data = call(repositoryRoot, this::realModuleTypeByName, Map.of());
 
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> modules = (List<Map<String, Object>>) data.get("modules");
+        assertThat(modules).extracting(module -> module.get("module")).containsExactlyInAnyOrder(
+                "regression-core", "regression-petstore-api", "regression-jhipster",
+                "regression-nextjs-commerce", "regression-mcp-server");
+
         List<Map<String, Object>> arch002Violations = modules.stream()
                 .flatMap(module -> violations(module).stream())
                 .filter(violation -> "ARCH-002".equals(violation.get("ruleId")))
                 .toList();
 
-        assertThat(arch002Violations).hasSize(2);
-        assertThat(arch002Violations).allSatisfy(violation -> {
-            assertThat(violation.get("module")).isEqualTo("regression-nextjs-commerce");
-            assertThat((String) violation.get("message")).contains("com.aqa.nextjscommerce.config").contains("com.aqa.nextjscommerce.driver");
-        });
-        assertThat(arch002Violations).extracting(violation -> violation.get("file")).containsExactlyInAnyOrder(
-                "regression-nextjs-commerce/src/test/java/com/aqa/nextjscommerce/config/CommerceProperty.java",
-                "regression-nextjs-commerce/src/test/java/com/aqa/nextjscommerce/driver/BrowserType.java");
+        assertThat(arch002Violations).isEmpty();
     }
 
     /** The standing instruction for this test: confirms the real reactor surfaces exactly the 18 real, pre-existing

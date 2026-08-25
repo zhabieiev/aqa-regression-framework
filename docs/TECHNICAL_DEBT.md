@@ -185,38 +185,6 @@ can wait indefinitely.
 
 The fix is understood and was deferred. Action: schedule.
 
-### B1. Package-dependency cycle in `regression-nextjs-commerce`
-
-Module: regression-nextjs-commerce | Cost: 2 passes
-
-**What**: `com.aqa.nextjscommerce.config.UiSettings` imports
-`com.aqa.nextjscommerce.driver.BrowserType`, while `driver`'s
-`ChromeOptionsFactory`, `DriverSession`, and `DriverFactory` all import
-`config.UiSettings` back — a two-package import cycle.
-
-**Location**:
-- `regression-nextjs-commerce/src/test/java/com/aqa/nextjscommerce/config/UiSettings.java`
-- `regression-nextjs-commerce/src/test/java/com/aqa/nextjscommerce/driver/BrowserType.java`
-- `regression-nextjs-commerce/src/test/java/com/aqa/nextjscommerce/driver/ChromeOptionsFactory.java`
-- `regression-nextjs-commerce/src/test/java/com/aqa/nextjscommerce/driver/DriverSession.java`
-- `regression-nextjs-commerce/src/test/java/com/aqa/nextjscommerce/driver/DriverFactory.java`
-
-**Why deferred**: `regression_validate_architecture`'s ARCH-002 rule
-(package-dependency cycles) found this pre-existing cycle when its
-real-reactor test was first written. Untangling `config` and `driver`
-requires a `regression-nextjs-commerce`-only refactor that was explicitly
-out of scope for `regression-mcp-server` validator work.
-
-**What scheduling the fix also requires**: `ArchitectureTool` does not
-special-case or suppress this cycle — `ArchitectureToolTest`'s real-reactor
-ARCH-002 test asserts that *exactly* this one cycle exists, naming both
-participating files explicitly, and fails the build the moment any
-*different* cycle appears anywhere in the reactor. Fixing the cycle
-therefore requires updating that test too, from asserting "exactly one
-known cycle, these two files" to asserting "no cycles anywhere in the
-reactor" — a strictly stronger assertion than the one guarding this item
-today, not a simple deletion of an expectation.
-
 ### B2. Allure plugin/report versions are declared per module instead of centralized
 
 Module: cross-module (regression-petstore-api, regression-nextjs-commerce) | Cost: 1-2 passes
@@ -780,6 +748,36 @@ served and read) will ever become a practical concern, and at what point,
 given that only `HEAD` is read today.
 
 **Location**: `origin/gh-pages` branch (not a tracked file in `master`).
+
+### D6. `ArchitectureTool`'s per-module output carries no scanned-source-count signal
+
+Module: regression-mcp-server | Cost: n/a
+
+**What is established**: `ArchitectureTool.moduleResultOutput` reports
+`module`, `profile`, `rulesApplied`, `violations`, `advisoryViolations`,
+and `truncated` for each module — no field states how many source files
+were actually scanned. Every rule in `ArchitectureRules`, including
+`NoPackageCycles.evaluate`, simply iterates whatever
+`context.moduleSources()` contains; a module for which that collection is
+empty produces the same zero violations as a module that was genuinely
+scanned and found clean.
+
+**Open question**: whether a run that scanned zero source files for a
+module is currently distinguishable, from the tool's own output alone,
+from a run that scanned real sources and found none of that rule's
+violations. As things stand, it is not: the output carries no signal that
+any source file was actually scanned, so a run that scanned nothing is
+indistinguishable from a clean one — and the real-reactor ARCH-002 guard
+therefore cannot rule out a vacuous pass on that basis alone.
+
+**Closed by observation**: inspect whether the tool's per-module output
+could carry a scanned-source count — for example the size of
+`context.moduleSources()` at evaluation time — without a schema change,
+or whether adding it would require broadening `moduleResultSchema` and
+every consumer that depends on its current shape.
+
+**Location**: `ArchitectureTool.evaluate`, `ArchitectureTool.moduleResultOutput`,
+`ArchitectureTool.moduleResultSchema`; `ArchitectureRules.NoPackageCycles.evaluate`.
 
 ## Where module-level debt lives
 

@@ -279,13 +279,12 @@ the failure.
   Symbol Solver; it has a known, accepted gap for two-hop calls such as
   `regression-core`'s `S3Definitions.s3Steps.s3ServiceActions()
   .getObject(...)` (see `../docs/TECHNICAL_DEBT.md`).
-- `regression-nextjs-commerce` has a real, pre-existing package-dependency
+- `regression-nextjs-commerce` previously had a real package-dependency
   cycle between `com.aqa.nextjscommerce.config` and
-  `com.aqa.nextjscommerce.driver`. The architecture validator's `ARCH-002`
-  rule correctly reports it as present — this is known, accepted product-
-  module debt, not a validator bug, and its real-reactor test specifically
-  asserts that exactly this one cycle exists and no other
-  (`../docs/TECHNICAL_DEBT.md`).
+  `com.aqa.nextjscommerce.driver`; it was eliminated by moving
+  `BrowserType` into `config`. The architecture validator's `ARCH-002`
+  rule's real-reactor test now asserts that the whole reactor has zero
+  package-dependency cycles, with no per-module exception.
 - The three validator tools (`ModuleBoundariesTool`,
   `FrameworkConventionsTool`, `ArchitectureTool`) share roughly 120-140
   duplicated lines of schema/envelope/evaluation-loop code each. This is

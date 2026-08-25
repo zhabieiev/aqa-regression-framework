@@ -1,4 +1,4 @@
-package com.aqa.nextjscommerce.driver;
+package com.aqa.nextjscommerce.config;
 
 import java.util.Locale;
 

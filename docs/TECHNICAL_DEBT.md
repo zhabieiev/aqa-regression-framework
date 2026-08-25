@@ -185,38 +185,6 @@ can wait indefinitely.
 
 The fix is understood and was deferred. Action: schedule.
 
-### B1. Package-dependency cycle in `regression-nextjs-commerce`
-
-Module: regression-nextjs-commerce | Cost: 2 passes
-
-**What**: `com.aqa.nextjscommerce.config.UiSettings` imports
-`com.aqa.nextjscommerce.driver.BrowserType`, while `driver`'s
-`ChromeOptionsFactory`, `DriverSession`, and `DriverFactory` all import
-`config.UiSettings` back — a two-package import cycle.
-
-**Location**:
-- `regression-nextjs-commerce/src/test/java/com/aqa/nextjscommerce/config/UiSettings.java`
-- `regression-nextjs-commerce/src/test/java/com/aqa/nextjscommerce/driver/BrowserType.java`
-- `regression-nextjs-commerce/src/test/java/com/aqa/nextjscommerce/driver/ChromeOptionsFactory.java`
-- `regression-nextjs-commerce/src/test/java/com/aqa/nextjscommerce/driver/DriverSession.java`
-- `regression-nextjs-commerce/src/test/java/com/aqa/nextjscommerce/driver/DriverFactory.java`
-
-**Why deferred**: `regression_validate_architecture`'s ARCH-002 rule
-(package-dependency cycles) found this pre-existing cycle when its
-real-reactor test was first written. Untangling `config` and `driver`
-requires a `regression-nextjs-commerce`-only refactor that was explicitly
-out of scope for `regression-mcp-server` validator work.
-
-**What scheduling the fix also requires**: `ArchitectureTool` does not
-special-case or suppress this cycle — `ArchitectureToolTest`'s real-reactor
-ARCH-002 test asserts that *exactly* this one cycle exists, naming both
-participating files explicitly, and fails the build the moment any
-*different* cycle appears anywhere in the reactor. Fixing the cycle
-therefore requires updating that test too, from asserting "exactly one
-known cycle, these two files" to asserting "no cycles anywhere in the
-reactor" — a strictly stronger assertion than the one guarding this item
-today, not a simple deletion of an expectation.
-
 ### B2. Allure plugin/report versions are declared per module instead of centralized
 
 Module: cross-module (regression-petstore-api, regression-nextjs-commerce) | Cost: 1-2 passes

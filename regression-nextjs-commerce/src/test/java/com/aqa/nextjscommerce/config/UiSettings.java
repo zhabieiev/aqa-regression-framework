@@ -1,7 +1,5 @@
 package com.aqa.nextjscommerce.config;
 
-import com.aqa.nextjscommerce.driver.BrowserType;
-
 import java.time.Duration;
 
 import static com.aqa.nextjscommerce.config.CommerceProperty.UI_BROWSER;

@@ -89,7 +89,8 @@ class ArchitectureToolTest {
     }
 
     /** Strengthened successor to the former known-cycle allowance: the real reactor is now asserted to be
-     * completely cycle-free, with no per-module exception. */
+     * completely cycle-free, with no per-module exception. The module-presence assertion below exists so this
+     * cycle-free claim cannot pass vacuously against an empty or partial scan. */
     @Test
     void realReactorHasNoArch002PackageCycles() {
         Path repositoryRoot = realRepositoryRoot();
@@ -98,6 +99,10 @@ class ArchitectureToolTest {
 
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> modules = (List<Map<String, Object>>) data.get("modules");
+        assertThat(modules).extracting(module -> module.get("module")).containsExactlyInAnyOrder(
+                "regression-core", "regression-petstore-api", "regression-jhipster",
+                "regression-nextjs-commerce", "regression-mcp-server");
+
         List<Map<String, Object>> arch002Violations = modules.stream()
                 .flatMap(module -> violations(module).stream())
                 .filter(violation -> "ARCH-002".equals(violation.get("ruleId")))

@@ -839,6 +839,69 @@ line 35 as of 2026-08-25; `snapshot(TestRunState)`, line 61 as of
 (`executionRecordsRemainReadableAndAreNotUpgradedWhenTheirStatusChanges`,
 the genuine frozen-literal fixture, for comparison).
 
+### D10. `recoverIfUnowned`'s skipped-count guard is untested
+
+Module: regression-mcp-server | Cost: n/a
+
+**What**: `TestRunCoordinator.recoverIfUnowned` carries a restart-recovered
+run's freshly captured skipped-test count through with the same overwrite
+guard used in `execute()`
+(`TestRunCoordinator.java:272,275` as of 2026-08-25):
+```
+Integer captured = capture(snapshot.runId());
+store.update(replaceWithReason(snapshot, TestRunState.ERROR, "SERVER_RESTART_RECOVERY", snapshot.startedAt(), Instant.now(),
+        snapshot.exitCode(), snapshot.stdoutBytes(), snapshot.stderrBytes(), snapshot.stdoutTruncated(), snapshot.stderrTruncated(),
+        captured != null ? captured : snapshot.skippedTests()), stale.ownedProcesses());
+```
+No test asserts on `skippedTests` for this path: a targeted check of
+`StaleRunRecoveryTest.java` (as of 2026-08-25) found zero occurrences of
+`skippedTests` anywhere in the file, even though one of its existing tests,
+`restartPublishesValidatedStagedCaptureBeforeItsTerminalRecoveryState`,
+already writes a genuine, parseable Surefire XML into the run's staging
+directory before triggering recovery — meaning `captured` is almost
+certainly non-null when that test's `TestRunCoordinator` is constructed,
+yet nothing checks what value ends up on the resulting `RunSnapshot`. The
+branch executes under existing coverage, but its *value* is unverified.
+
+The equivalent guard in `execute()`
+(`TestRunCoordinator.java:119-120,161-162,168-169,174-175` as of
+2026-08-25: `Integer captured = capture(run); if (captured != null)
+skippedTests = captured;`, at all four call sites) does have a dedicated
+test —
+`TestRunCoordinatorTest.secondCaptureCallInTheRuntimeExceptionPathDoesNotOverwriteTheFirstCallsSkippedCount`
+— which forces a real capture to succeed once, forces a second (necessarily
+null-returning) capture call, and asserts the final persisted
+`skippedTests` still reflects the first call's value.
+
+**Open question**: whether `recoverIfUnowned`'s branch is reachable with a
+genuinely non-null `captured` value in practice at all. For a run orphaned
+by a server restart, the Maven process was killed (by the crash or restart
+itself, not gracefully) before recovery ever runs — whether
+`ReportCapture` can parse anything meaningful from whatever partial state
+the staging directory was left in at that moment is unverified here. It may
+be that `captured` is null in every realistic restart-recovery scenario, in
+which case this guard's `captured != null` branch is dead in production
+even though `restartPublishesValidatedStagedCaptureBeforeItsTerminalRecoveryState`
+can make it non-null under a controlled, hand-written fixture.
+
+**Closed by observation, not work**: add an assertion on `skippedTests` to
+`restartPublishesValidatedStagedCaptureBeforeItsTerminalRecoveryState` (or a
+new test alongside it) mirroring the `TestRunCoordinatorTest` assertion
+above, and separately, when a genuine server-restart recovery is next
+observed against a run that was actually mid-Surefire-execution, record
+whether the staging directory left behind anything `ReportCapture` could
+parse.
+
+**Location**: `regression-mcp-server/src/main/java/com/aqa/mcp/execution/TestRunCoordinator.java`
+(`recoverIfUnowned`, lines 272 and 275 as of 2026-08-25; `execute`'s four
+guarded call sites, lines 119-120, 161-162, 168-169, 174-175 as of
+2026-08-25);
+`regression-mcp-server/src/test/java/com/aqa/mcp/execution/StaleRunRecoveryTest.java`
+(`restartPublishesValidatedStagedCaptureBeforeItsTerminalRecoveryState`);
+`regression-mcp-server/src/test/java/com/aqa/mcp/execution/TestRunCoordinatorTest.java`
+(`secondCaptureCallInTheRuntimeExceptionPathDoesNotOverwriteTheFirstCallsSkippedCount`,
+the comparable, existing execute()-side test).
+
 ## Where module-level debt lives
 
 This file covers cross-module, repository-level, and

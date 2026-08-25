@@ -360,5 +360,5 @@ Trade-offs" for the current gap).
 
 `docs/TECHNICAL_DEBT.md` now carries a Cost estimate per item; among items
 with a filled-in estimate, B1 was the cheapest alongside B7 and was fixed
-and removed from the catalogue on `fix/b1-package-cycle` — B7 remains the
-cheapest open item, and its scheduling is not asserted here.
+and removed from the catalogue — B7 remains the cheapest open item, and
+its scheduling is not asserted here.

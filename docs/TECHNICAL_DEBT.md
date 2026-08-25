@@ -749,6 +749,36 @@ given that only `HEAD` is read today.
 
 **Location**: `origin/gh-pages` branch (not a tracked file in `master`).
 
+### D6. `ArchitectureTool`'s per-module output carries no scanned-source-count signal
+
+Module: regression-mcp-server | Cost: n/a
+
+**What is established**: `ArchitectureTool.moduleResultOutput` reports
+`module`, `profile`, `rulesApplied`, `violations`, `advisoryViolations`,
+and `truncated` for each module — no field states how many source files
+were actually scanned. Every rule in `ArchitectureRules`, including
+`NoPackageCycles.evaluate`, simply iterates whatever
+`context.moduleSources()` contains; a module for which that collection is
+empty produces the same zero violations as a module that was genuinely
+scanned and found clean.
+
+**Open question**: whether a run that scanned zero source files for a
+module is currently distinguishable, from the tool's own output alone,
+from a run that scanned real sources and found none of that rule's
+violations. As things stand, it is not: the output carries no signal that
+any source file was actually scanned, so a run that scanned nothing is
+indistinguishable from a clean one — and the real-reactor ARCH-002 guard
+therefore cannot rule out a vacuous pass on that basis alone.
+
+**Closed by observation**: inspect whether the tool's per-module output
+could carry a scanned-source count — for example the size of
+`context.moduleSources()` at evaluation time — without a schema change,
+or whether adding it would require broadening `moduleResultSchema` and
+every consumer that depends on its current shape.
+
+**Location**: `ArchitectureTool.evaluate`, `ArchitectureTool.moduleResultOutput`,
+`ArchitectureTool.moduleResultSchema`; `ArchitectureRules.NoPackageCycles.evaluate`.
+
 ## Where module-level debt lives
 
 This file covers cross-module, repository-level, and

@@ -89,8 +89,11 @@ class ArchitectureToolTest {
     }
 
     /** Strengthened successor to the former known-cycle allowance: the real reactor is now asserted to be
-     * completely cycle-free, with no per-module exception. The module-presence assertion below exists so this
-     * cycle-free claim cannot pass vacuously against an empty or partial scan. */
+     * completely cycle-free, with no per-module exception. The module-presence assertion below fixes the
+     * expected set of modules; it does not prove any source file was actually scanned. Because
+     * {@code ArchitectureTool.evaluate}'s {@code declaredModules} is taken from the {@code moduleTypeByName}
+     * map this test itself supplies, not from the filesystem, a scan that found no sources at all would still
+     * satisfy both assertions below. */
     @Test
     void realReactorHasNoArch002PackageCycles() {
         Path repositoryRoot = realRepositoryRoot();

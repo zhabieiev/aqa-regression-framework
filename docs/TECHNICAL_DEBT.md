@@ -132,55 +132,6 @@ miss detail that was actually cut off.
 `record`; lines 27-28, 32, 71, 75, 105-119 as of 2026-08-23);
 `regression-mcp-server/docs/SESSION_DEMO.md`.
 
-### A2. A run whose tag expression matches nothing is reported as PASSED
-
-Module: regression-mcp-server | Cost: no estimate yet — depends on a
-decision not yet made, between two different contracts with different
-costs: whether a zero-scenario match becomes a `FAILED` terminal state, or
-whether the skipped count is instead surfaced in the run snapshot itself
-
-**What**, established facts verified 2026-08-23:
-- `TestRunCoordinator` decides a run's terminal state solely from the
-  Maven process exit code, in `TestRunCoordinator.run` (`TestRunCoordinator.java:158`
-  as of 2026-08-23): `if (terminal == null) terminal =
-  process.exitValue() == 0 ? TestRunState.PASSED : TestRunState.FAILED;`.
-  `SurefireSummaryParser` plays no part in that decision.
-- A `regression-nextjs-commerce` run with
-  `-Dcucumber.filter.tags="@nosuchtag"` exits 0, reports BUILD SUCCESS, and
-  Cucumber reports 0 Scenarios / 0 Steps.
-- Surefire for that same run reports `Tests run: 2, Failures: 0, Errors: 0,
-  Skipped: 2`.
-- Neither the root `pom.xml` nor `regression-nextjs-commerce/pom.xml`
-  configures `failIfNoTests`, `failIfNoSpecifiedTests`, or
-  `testFailureIgnore`.
-- The `tags` field on a `regression_start_test_run` request is a free-form
-  string with no validation against tags that actually exist in the
-  target module's feature files.
-
-**Consequence**: an MCP client that mistypes a Cucumber tag expression
-receives a `PASSED` terminal state from `regression_get_test_run`, exactly
-as if every intended scenario had run and passed. The skipped count that
-would reveal the mistake (`Skipped: 2` in the Surefire summary) is
-available only through a different tool
-(`regression_get_test_summary`/`regression_get_failure_summary`), not from
-the terminal state itself.
-
-**Why this is tolerable for now, and only barely**: this reason is weaker
-than A1's, not merely shorter, and should be read as such. The only
-clients currently driving these MCP tools are operated interactively by
-this repository's own maintainer, who would notice a suspiciously fast run
-reporting zero scenarios; no automated consumer exists today that reads a
-`PASSED` verdict and acts on it unattended. That justification expires the
-moment any unattended or third-party client starts using these tools — and
-its comparative weakness, next to items with a solidly stated reason, is
-itself an argument for scheduling this ahead of them, not evidence that it
-can wait indefinitely.
-
-**Location**: `regression-mcp-server/src/main/java/com/aqa/mcp/execution/TestRunCoordinator.java`
-(`run`, line 158 as of 2026-08-23); root `pom.xml`;
-`regression-nextjs-commerce/pom.xml`; `TestRunRequestValidator` (the
-`tags` field's validation, or lack of it).
-
 ## B. Debt
 
 The fix is understood and was deferred. Action: schedule.
@@ -778,6 +729,178 @@ every consumer that depends on its current shape.
 
 **Location**: `ArchitectureTool.evaluate`, `ArchitectureTool.moduleResultOutput`,
 `ArchitectureTool.moduleResultSchema`; `ArchitectureRules.NoPackageCycles.evaluate`.
+
+### D7. Response key order is not stable across server restarts
+
+Module: regression-mcp-server | Cost: n/a
+
+**What**: `RegressionMcpServer.runOutput` (`RegressionMcpServer.java:313-323`
+as of 2026-08-25) builds a `java.util.LinkedHashMap` in a deliberate field
+order, then returns `Map.copyOf(data)` (line 322). `Map.copyOf` returns one
+of the JDK's immutable map implementations, which do not preserve insertion
+order; HotSpot randomizes an immutable map's iteration order independently
+per JVM start. The `LinkedHashMap`'s deliberate ordering is therefore dead
+from the moment `Map.copyOf` wraps it. This is functionally harmless — JSON
+object key order carries no semantic meaning, and no test in the module
+asserts an exact key order (confirmed during A2's inspection phase; see
+`output.log`'s "PHASE A'' " Q6, which found no test compares against
+`runOutputSchema()`'s exact field-name set) — but a
+`regression_get_test_run`/`regression_start_test_run`/
+`regression_cancel_test_run` response's JSON key order will differ between
+separate server restarts, purely as an artifact of `Map.copyOf`'s randomized
+iteration order rather than any change in the underlying data.
+
+**Closed by observation, not work**: if a future consumer starts depending
+on stable key order, replace `Map.copyOf(data)` with
+`Collections.unmodifiableMap(data)`, which preserves `LinkedHashMap`'s
+insertion order while remaining unmodifiable.
+
+**Location**: `regression-mcp-server/src/main/java/com/aqa/mcp/RegressionMcpServer.java`
+(`runOutput`, lines 313-323 as of 2026-08-25).
+
+### D8. `run.json` has no reader
+
+Module: regression-mcp-server | Cost: n/a
+
+**What**: `RunStore.create` writes an immutable `run.json` per run
+(`RunStore.java:64` as of 2026-08-25,
+`writeNew(directory.resolve("run.json"), record);`) alongside the live,
+atomically-replaced `status.json`, but nothing in production code ever
+reads `run.json` back: every read path in `RunStore` (`get`, `persisted`,
+`summary`, `failureSummary`, `artifacts`, `readArtifact`) resolves
+exclusively through the private `status(String id)` method, which always
+targets `status.json`. The only place anywhere in the module that reads
+`run.json` at all is a test,
+`RunStoreTest.runMetadataIsImmutableAndStatusReplacementLeavesNoTemporaryFiles`,
+which reads it once before a status transition and once after, and asserts
+the two reads are equal — i.e. it compares `run.json` to itself across
+time, to prove immutability, not to any other file or any production
+consumer. This was verified directly during A2's inspection phase
+(`output.log`'s "PHASE A'' " Q3), including a targeted grep of the whole
+module for `run\.json` that found no other match.
+
+**Closed by observation, not work**: if a future feature needs to read a
+run's original, pre-mutation request shape (module/environment/tags/etc.
+as they were at creation, independent of any later state transition),
+`run.json` already exists and already carries that data — the fix is
+adding a reader, not adding the file. If no such need ever materializes,
+`run.json` remains a write-only audit artifact and nothing needs to
+change.
+
+**Location**: `regression-mcp-server/src/main/java/com/aqa/mcp/execution/RunStore.java`
+(`create`, line 64 as of 2026-08-25; `status`, the sole read-path target
+for every other `RunStore` reader);
+`regression-mcp-server/src/test/java/com/aqa/mcp/execution/RunStoreTest.java`
+(`runMetadataIsImmutableAndStatusReplacementLeavesNoTemporaryFiles`).
+
+### D9. `SurefireSummaryStoreTest`'s legacy fixture is not frozen
+
+Module: regression-mcp-server | Cost: n/a
+
+**What**: `ReportCaptureTest.executionRecordsRemainReadableAndAreNotUpgradedWhenTheirStatusChanges`
+proves backward compatibility with a hand-written, hardcoded literal JSON
+string that encodes the pre-A2 `RunSnapshot` shape and stays frozen in
+source text regardless of what `RunSnapshot` looks like today.
+`SurefireSummaryStoreTest.readsOnlyPublishedIndexAndRejectsMissingDigestMismatchWrongRunAndActiveOrLegacyRuns`
+appears to test the same kind of thing, but its `old` fixture
+(`SurefireSummaryStoreTest.java:35` as of 2026-08-25) is not a literal — it
+is built at test-run time by serializing an actual `RunSnapshot` (`legacy`,
+constructed via this same file's own local `snapshot(TestRunState)`
+builder, line 61 as of 2026-08-25) through a live `JsonMapper` with no
+`NON_NULL` inclusion configured. Because that builder must track
+`RunSnapshot`'s current arity (it gained a trailing `null` for
+`skippedTests` during A2), this fixture's serialized JSON now includes
+`"skippedTests":null` — a field that did not exist in the actual pre-A2
+persisted shape it is meant to represent. It tracks the CURRENT record
+shape, not the historical one, and will continue doing so for every future
+`RunSnapshot` field addition.
+
+This does not currently affect the test's own pass/fail outcome: the test
+only exercises this fixture to prove `store.summary(legacy.runId())`
+throws `NOT_FOUND` for a `schemaVersion: 2` (pre-capture-schema) record, a
+check that short-circuits on `record.capture() == null` before ever
+inspecting the embedded snapshot's field count or names. But the
+backward-compatibility proof this repository's own review process expected
+here — that an ALREADY-STORED, pre-migration-shaped file still
+deserializes under a grown `RunSnapshot` — is carried by
+`ReportCaptureTest`'s literal alone; this fixture does not independently
+corroborate it, despite reading as if it does.
+
+**Closed by observation, not work**: if this ever needs to become a
+genuine second proof of the same claim, replace the
+dynamically-serialized `old` string with a hand-written literal (mirroring
+`ReportCaptureTest`'s), frozen at whatever `RunSnapshot` shape is current
+at the time it is written.
+
+**Location**: `regression-mcp-server/src/test/java/com/aqa/mcp/execution/SurefireSummaryStoreTest.java`
+(`readsOnlyPublishedIndexAndRejectsMissingDigestMismatchWrongRunAndActiveOrLegacyRuns`,
+line 35 as of 2026-08-25; `snapshot(TestRunState)`, line 61 as of
+2026-08-25); `regression-mcp-server/src/test/java/com/aqa/mcp/execution/ReportCaptureTest.java`
+(`executionRecordsRemainReadableAndAreNotUpgradedWhenTheirStatusChanges`,
+the genuine frozen-literal fixture, for comparison).
+
+### D10. `recoverIfUnowned`'s skipped-count guard is untested
+
+Module: regression-mcp-server | Cost: n/a
+
+**What**: `TestRunCoordinator.recoverIfUnowned` carries a restart-recovered
+run's freshly captured skipped-test count through with the same overwrite
+guard used in `execute()`
+(`TestRunCoordinator.java:272,275` as of 2026-08-25):
+```
+Integer captured = capture(snapshot.runId());
+store.update(replaceWithReason(snapshot, TestRunState.ERROR, "SERVER_RESTART_RECOVERY", snapshot.startedAt(), Instant.now(),
+        snapshot.exitCode(), snapshot.stdoutBytes(), snapshot.stderrBytes(), snapshot.stdoutTruncated(), snapshot.stderrTruncated(),
+        captured != null ? captured : snapshot.skippedTests()), stale.ownedProcesses());
+```
+No test asserts on `skippedTests` for this path: a targeted check of
+`StaleRunRecoveryTest.java` (as of 2026-08-25) found zero occurrences of
+`skippedTests` anywhere in the file, even though one of its existing tests,
+`restartPublishesValidatedStagedCaptureBeforeItsTerminalRecoveryState`,
+already writes a genuine, parseable Surefire XML into the run's staging
+directory before triggering recovery — meaning `captured` is almost
+certainly non-null when that test's `TestRunCoordinator` is constructed,
+yet nothing checks what value ends up on the resulting `RunSnapshot`. The
+branch executes under existing coverage, but its *value* is unverified.
+
+The equivalent guard in `execute()`
+(`TestRunCoordinator.java:119-120,161-162,168-169,174-175` as of
+2026-08-25: `Integer captured = capture(run); if (captured != null)
+skippedTests = captured;`, at all four call sites) does have a dedicated
+test —
+`TestRunCoordinatorTest.secondCaptureCallInTheRuntimeExceptionPathDoesNotOverwriteTheFirstCallsSkippedCount`
+— which forces a real capture to succeed once, forces a second (necessarily
+null-returning) capture call, and asserts the final persisted
+`skippedTests` still reflects the first call's value.
+
+**Open question**: whether `recoverIfUnowned`'s branch is reachable with a
+genuinely non-null `captured` value in practice at all. For a run orphaned
+by a server restart, the Maven process was killed (by the crash or restart
+itself, not gracefully) before recovery ever runs — whether
+`ReportCapture` can parse anything meaningful from whatever partial state
+the staging directory was left in at that moment is unverified here. It may
+be that `captured` is null in every realistic restart-recovery scenario, in
+which case this guard's `captured != null` branch is dead in production
+even though `restartPublishesValidatedStagedCaptureBeforeItsTerminalRecoveryState`
+can make it non-null under a controlled, hand-written fixture.
+
+**Closed by observation, not work**: add an assertion on `skippedTests` to
+`restartPublishesValidatedStagedCaptureBeforeItsTerminalRecoveryState` (or a
+new test alongside it) mirroring the `TestRunCoordinatorTest` assertion
+above, and separately, when a genuine server-restart recovery is next
+observed against a run that was actually mid-Surefire-execution, record
+whether the staging directory left behind anything `ReportCapture` could
+parse.
+
+**Location**: `regression-mcp-server/src/main/java/com/aqa/mcp/execution/TestRunCoordinator.java`
+(`recoverIfUnowned`, lines 272 and 275 as of 2026-08-25; `execute`'s four
+guarded call sites, lines 119-120, 161-162, 168-169, 174-175 as of
+2026-08-25);
+`regression-mcp-server/src/test/java/com/aqa/mcp/execution/StaleRunRecoveryTest.java`
+(`restartPublishesValidatedStagedCaptureBeforeItsTerminalRecoveryState`);
+`regression-mcp-server/src/test/java/com/aqa/mcp/execution/TestRunCoordinatorTest.java`
+(`secondCaptureCallInTheRuntimeExceptionPathDoesNotOverwriteTheFirstCallsSkippedCount`,
+the comparable, existing execute()-side test).
 
 ## Where module-level debt lives
 

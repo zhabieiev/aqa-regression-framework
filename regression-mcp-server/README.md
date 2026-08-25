@@ -161,6 +161,18 @@ and `timeoutSeconds` must be between `30` and `1800` inclusive
 1024 characters) is accepted; the server always ANDs in `not @wip`, so a
 client-supplied `@cart` becomes `(@cart) and not @wip`.
 
+A run snapshot's `skippedTests` field is present only once a Surefire report
+has been parsed for that run; an absent key means the count is unavailable
+(no report was ever captured, or none has been parsed yet), while a present
+`0` means a report was parsed and no tests were skipped. This closes the gap
+`../docs/TECHNICAL_DEBT.md` used to track as item A2: a `regression_start_test_run`
+call with a `tags` expression that matches nothing still terminates as
+`PASSED` (Cucumber ran zero scenarios, so the Maven process still exits 0),
+but a client no longer has to make a second tool call to notice — a `PASSED`
+run whose `skippedTests` is unexpectedly high, in the terminal
+`regression_get_test_run` snapshot itself, is the signal that something
+matched nothing.
+
 Stale-run recovery: if the server cannot prove a previously-observed owned
 process identity is no longer live (for example after an unclean shutdown),
 it treats that identity as possibly still running and blocks any new

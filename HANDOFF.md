@@ -69,7 +69,7 @@ start of a session; update it at the end of one, per `CLAUDE.md`'s
   solely to feed it) was removed; it never actually ran under any real
   invocation.
 - Known debt and open questions: see [`docs/TECHNICAL_DEBT.md`](docs/TECHNICAL_DEBT.md)
-  (18 items as of this restructuring, grouped into four sections by the
+  (20 items as of 2026-08-25, grouped into four sections by the
   action each calls for — A. Defects: fix, or accept with a stated reason;
   B. Debt: schedule; C. Accepted characteristics: no action, each with a
   stated review trigger; D. Open questions: closed by observation, not
@@ -85,6 +85,48 @@ start of a session; update it at the end of one, per `CLAUDE.md`'s
   (reactor-wide, grouped by module).
 
 ## Most recent session
+
+2026-08-25 — `docs/TECHNICAL_DEBT.md` item A2 (a run whose tag expression
+matches nothing was reported as `PASSED` with no visible signal) closed via
+branch `a2-skipped-test-count` (PR opened, not merged as of this entry): the
+decision that item's Cost line had left open — surfacing the skipped count
+directly in the run snapshot, rather than changing the terminal-state
+contract — was made and implemented. `RunSnapshot` gained a new boxed
+`Integer skippedTests` component (appended last, no null-guard, since it is
+legitimately absent for any run with no parsed Surefire report).
+`ReportCapture.capture` now returns a `CaptureOutcome(CaptureMetadata,
+Integer skippedTests)` record instead of a bare `CaptureMetadata`, taking
+the count directly from the `SurefireSummary` it already parses in memory
+— no extra disk read. `TestRunCoordinator` threads that value through all
+four `execute()` paths that reach `persistTerminal` (including an overwrite
+guard so a redundant second capture call inside the
+`catch (RuntimeException)` path cannot wipe a count the first call already
+produced) and through `recoverIfUnowned()`'s restart-recovery path the same
+way. `RegressionMcpServer.runOutput`/`runOutputSchema` expose it following
+the same guarded-omit pattern as the four pre-existing nullable run-snapshot
+fields: present only when non-null, never emitted as a JSON `null`.
+`docs/TECHNICAL_DEBT.md` item A2 was removed (its identifier retired, not
+reused) and three new items were logged from observations made while
+implementing this: D7 (`Map.copyOf` discards `runOutput`'s deliberate
+`LinkedHashMap` key order, so response key order is not stable across
+server restarts — functionally harmless, closed by observation), D8
+(`run.json` is written by `RunStore.create` but never read back by any
+production code — the only reader anywhere is a test comparing the file to
+itself), and D9 (`SurefireSummaryStoreTest`'s "legacy" fixture is not
+actually a frozen literal the way `ReportCaptureTest`'s is — it serializes
+a live `RunSnapshot` through Jackson at test-run time, so it silently
+tracks the current record shape rather than the historical one it appears
+to prove). `docs/TECHNICAL_DEBT.md` now holds 20 items (was 18). Build
+re-verified green after a forced recompile (deleting `target/classes` and
+`target/test-classes`, not a full `clean`, since a running MCP server holds
+`target/regression-mcp-server.jar` open on Windows): 275 tests, 0 failures,
+0 errors, 5 pre-existing/environment-conditional skips, same total as the
+implementation pass before this one. `recoverIfUnowned()`'s own capture
+call (`TestRunCoordinator.java`) was also fixed in this pass to stop
+discarding the count it computes for a server-restart-recovered run: it now
+carries the freshly captured value through when non-null, falling back to
+the run's existing (always-null, for a recovered run) value only when the
+capture attempt itself returns null.
 
 2026-08-24 — `docs/TECHNICAL_DEBT.md` restructured into four action-typed
 sections, branch `docs/technical-debt-restructure`, PR #26 (open, not

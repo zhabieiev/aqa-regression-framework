@@ -341,6 +341,29 @@ class TestRunCoordinatorTest {
         assertThat(coordinator.get(run.runId()).state()).isEqualTo(TestRunState.PASSED);
     }
 
+    /** ReportCapture.capture publishes and transitions the persisted capture status away from PENDING the first
+     * time it runs, so a second capture(run) call inside the catch(RuntimeException) path always returns null.
+     * Forces persistTerminal's first attempt (in the try block, right after a real captured Surefire report has
+     * already produced a non-null skipped count) to throw by making the launched process's exitValue() fail
+     * exactly once, so execute() falls into the catch(RuntimeException) block and calls capture(run) a second
+     * time. The final persisted snapshot must still carry the count the first call already computed, not the
+     * null the redundant second call returns. */
+    @Test
+    void secondCaptureCallInTheRuntimeExceptionPathDoesNotOverwriteTheFirstCallsSkippedCount() throws Exception {
+        ControlledProcessLauncher inner = launcher("PASS");
+        launchers.add(inner);
+        TestRunCoordinator coordinator = new TestRunCoordinator(root, this::validator,
+                new SingleSkippedTestReportThenExitValueFailureOnceLauncher(inner), new ManualTimeoutScheduler(), ignored -> runtime());
+        coordinators.add(coordinator);
+
+        RunSnapshot run = coordinator.start(request(), Map.of());
+        RunSnapshot terminal = awaitTerminal(coordinator, run.runId());
+
+        assertThat(terminal.state()).isEqualTo(TestRunState.ERROR);
+        assertThat(terminal.skippedTests()).isEqualTo(1);
+        assertThat(new RunStore(root).persisted(run.runId()).snapshot().skippedTests()).isEqualTo(1);
+    }
+
     private TestRunCoordinator coordinator(ControlledProcessLauncher launcher, TestRunCoordinator.TimeoutScheduler scheduler) {
         launchers.add(launcher);
         TestRunCoordinator coordinator = new TestRunCoordinator(root, this::validator, launcher, scheduler, ignored -> runtime());
@@ -492,6 +515,46 @@ class TestRunCoordinatorTest {
         int successfulInstallations() { return successfulInstallations.get(); }
         TestFuture future() { return future; }
         void fire() { assertThat(task).isNotNull(); task.run(); }
+    }
+
+    /** Delegates the actual launch to a real ControlledProcessLauncher, first seeding the run's Surefire staging
+     * directory with a genuine report (one passed, one skipped test), then wraps the returned real process so its
+     * exitValue() throws exactly once -- forcing persistTerminal's first attempt to fail after capture(run) has
+     * already computed a real skipped count. */
+    private static final class SingleSkippedTestReportThenExitValueFailureOnceLauncher implements MavenProcessLauncher {
+        private final MavenProcessLauncher delegate;
+        SingleSkippedTestReportThenExitValueFailureOnceLauncher(MavenProcessLauncher delegate) { this.delegate = delegate; }
+        @Override public Process launch(MavenInvocation invocation) {
+            String reportsDirectory = invocation.arguments().stream().filter(argument -> argument.startsWith("-Dmcp.surefire.reportsDirectory="))
+                    .findFirst().orElseThrow().substring("-Dmcp.surefire.reportsDirectory=".length());
+            try {
+                Files.writeString(Path.of(reportsDirectory).resolve("TEST-once.xml"),
+                        "<testsuite name='once' tests='2' failures='0' errors='0' skipped='1' time='0.1'>"
+                                + "<testcase classname='once' name='passes' time='0.1'/>"
+                                + "<testcase classname='once' name='skipped' time='0.0'><skipped/></testcase></testsuite>");
+            } catch (java.io.IOException exception) { throw new AssertionError(exception); }
+            return new ExitValueFailsOnceProcess(delegate.launch(invocation));
+        }
+    }
+
+    private static final class ExitValueFailsOnceProcess extends Process {
+        private final Process delegate;
+        private final AtomicBoolean thrown = new AtomicBoolean();
+        ExitValueFailsOnceProcess(Process delegate) { this.delegate = delegate; }
+        @Override public java.io.OutputStream getOutputStream() { return delegate.getOutputStream(); }
+        @Override public java.io.InputStream getInputStream() { return delegate.getInputStream(); }
+        @Override public java.io.InputStream getErrorStream() { return delegate.getErrorStream(); }
+        @Override public int waitFor() throws InterruptedException { return delegate.waitFor(); }
+        @Override public boolean waitFor(long timeout, TimeUnit unit) throws InterruptedException { return delegate.waitFor(timeout, unit); }
+        @Override public int exitValue() {
+            if (thrown.compareAndSet(false, true)) throw new IllegalStateException("fixture forces exactly one persistTerminal failure");
+            return delegate.exitValue();
+        }
+        @Override public void destroy() { delegate.destroy(); }
+        @Override public Process destroyForcibly() { return delegate.destroyForcibly(); }
+        @Override public boolean isAlive() { return delegate.isAlive(); }
+        @Override public long pid() { return delegate.pid(); }
+        @Override public ProcessHandle toHandle() { return delegate.toHandle(); }
     }
 
     private static final class TestFuture implements ScheduledFuture<Object> {

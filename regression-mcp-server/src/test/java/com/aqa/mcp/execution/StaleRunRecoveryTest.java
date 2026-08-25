@@ -98,7 +98,7 @@ class StaleRunRecoveryTest {
         try {
             assertThat(view.destroyed).isEmpty();
             assertThat(store.get(queued.runId()).reason()).isEqualTo("SERVER_RESTART_RECOVERY");
-            RunSnapshot terminal = new RunSnapshot(queued.runId(), queued.module(), queued.environment(), queued.headless(), queued.tags(), queued.timeoutSeconds(), TestRunState.PASSED, queued.createdAt(), Instant.now(), Instant.now(), 0, "PASSED", 0, 0, false, false);
+            RunSnapshot terminal = new RunSnapshot(queued.runId(), queued.module(), queued.environment(), queued.headless(), queued.tags(), queued.timeoutSeconds(), TestRunState.PASSED, queued.createdAt(), Instant.now(), Instant.now(), 0, "PASSED", 0, 0, false, false, null);
             store.update(terminal, List.of());
             TestRunCoordinator second = coordinator(view);
             try { assertThat(store.get(queued.runId())).isEqualTo(terminal); } finally { second.close(); }
@@ -137,8 +137,8 @@ class StaleRunRecoveryTest {
                 invocation -> { throw new AssertionError("Recovery must not launch a process."); }, new NoTimeouts(), ignored -> null, view);
     }
     private static StartTestRunRequest request() { return new StartTestRunRequest(ExecutionProfileRegistry.COMMERCE_MODULE, null, "dev", true, 30); }
-    private static RunSnapshot snapshot(TestRunState state) { String id = RunId.generate(); Instant now = Instant.now(); return new RunSnapshot(id, ExecutionProfileRegistry.COMMERCE_MODULE, "dev", true, "not @wip", 30, state, now, null, null, null, state.name(), 0, 0, false, false); }
-    private static RunSnapshot running(RunSnapshot snapshot) { return new RunSnapshot(snapshot.runId(), snapshot.module(), snapshot.environment(), snapshot.headless(), snapshot.tags(), snapshot.timeoutSeconds(), TestRunState.RUNNING, snapshot.createdAt(), Instant.now(), null, null, "RUNNING", 0, 0, false, false); }
+    private static RunSnapshot snapshot(TestRunState state) { String id = RunId.generate(); Instant now = Instant.now(); return new RunSnapshot(id, ExecutionProfileRegistry.COMMERCE_MODULE, "dev", true, "not @wip", 30, state, now, null, null, null, state.name(), 0, 0, false, false, null); }
+    private static RunSnapshot running(RunSnapshot snapshot) { return new RunSnapshot(snapshot.runId(), snapshot.module(), snapshot.environment(), snapshot.headless(), snapshot.tags(), snapshot.timeoutSeconds(), TestRunState.RUNNING, snapshot.createdAt(), Instant.now(), null, null, "RUNNING", 0, 0, false, false, null); }
     private static final class NoTimeouts implements TestRunCoordinator.TimeoutScheduler { @Override public ScheduledFuture<?> schedule(Runnable task, int timeoutSeconds) { throw new AssertionError("No timeout should be scheduled."); } }
     private static final class FakeView implements ProcessView {
         private final java.util.Map<Long, ObservedProcess> processes = new java.util.HashMap<>(); private final List<Long> destroyed = new ArrayList<>();

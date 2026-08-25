@@ -7,7 +7,7 @@ import java.util.List;
 public record RunSnapshot(String runId, String module, String environment, boolean headless, String tags,
         int timeoutSeconds, TestRunState state, Instant createdAt, Instant startedAt, Instant finishedAt,
         Integer exitCode, String reason, long stdoutBytes, long stderrBytes, boolean stdoutTruncated,
-        boolean stderrTruncated) {
+        boolean stderrTruncated, Integer skippedTests) {
     public RunSnapshot {
         if (runId == null || module == null || environment == null || tags == null || state == null || createdAt == null) {
             throw new IllegalArgumentException("Run snapshot fields are required.");

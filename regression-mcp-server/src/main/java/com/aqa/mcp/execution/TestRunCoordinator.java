@@ -113,10 +113,12 @@ public final class TestRunCoordinator implements AutoCloseable {
         Process process = null;
         BoundedLogDrainer stdout = null;
         BoundedLogDrainer stderr = null;
+        Integer skippedTests = null;
         try {
             if (run.cause.get() != null) {
-                capture(run);
-                persistTerminal(run, run.cause.get(), null, null, null);
+                Integer captured = capture(run);
+                if (captured != null) skippedTests = captured;
+                persistTerminal(run, run.cause.get(), null, null, null, skippedTests);
                 return;
             }
             MavenInvocation invocation = MavenInvocationFactory.create(run.runtime, root, run.request, store.captureLayout(run.snapshot.runId()));
@@ -145,7 +147,7 @@ public final class TestRunCoordinator implements AutoCloseable {
             // successfully installed and retained by the active run.  If cancellation or an immediate
             // timeout won the race, stay in the deterministic cleanup path instead.
             if (run.cause.get() == null) {
-                RunSnapshot running = replace(run.snapshot, TestRunState.RUNNING, Instant.now(), null, null, 0, 0, false, false);
+                RunSnapshot running = replace(run.snapshot, TestRunState.RUNNING, Instant.now(), null, null, 0, 0, false, false, run.snapshot.skippedTests());
                 store.update(running, tracker.identities());
                 run.snapshot = running;
                 run.observation = ownershipObserver.scheduleAtFixedRate(() -> observe(run), 100, 100, TimeUnit.MILLISECONDS);
@@ -156,19 +158,22 @@ public final class TestRunCoordinator implements AutoCloseable {
             awaitDrainers(stdout, stderr);
             TestRunState terminal = run.cause.get();
             if (terminal == null) terminal = process.exitValue() == 0 ? TestRunState.PASSED : TestRunState.FAILED;
-            capture(run);
-            persistTerminal(run, terminal, process, stdout, stderr);
+            Integer captured = capture(run);
+            if (captured != null) skippedTests = captured;
+            persistTerminal(run, terminal, process, stdout, stderr, skippedTests);
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             if (process != null) cleanup(run, process);
             awaitDrainers(stdout, stderr);
-            capture(run);
-            persistTerminal(run, firstCause(run, TestRunState.CANCELLED), process, stdout, stderr);
+            Integer captured = capture(run);
+            if (captured != null) skippedTests = captured;
+            persistTerminal(run, firstCause(run, TestRunState.CANCELLED), process, stdout, stderr, skippedTests);
         } catch (RuntimeException exception) {
             if (process != null) cleanup(run, process);
             awaitDrainers(stdout, stderr);
-            capture(run);
-            persistTerminal(run, firstCause(run, TestRunState.ERROR), process, stdout, stderr);
+            Integer captured = capture(run);
+            if (captured != null) skippedTests = captured;
+            persistTerminal(run, firstCause(run, TestRunState.ERROR), process, stdout, stderr, skippedTests);
         } finally {
             if (run.timeout != null) run.timeout.cancel(false);
             if (run.observation != null) run.observation.cancel(false);
@@ -215,23 +220,25 @@ public final class TestRunCoordinator implements AutoCloseable {
         return store.readArtifact(id, artifactId);
     }
 
-    private void capture(Active run) { synchronized (run) { capture(run.snapshot.runId()); } }
+    private Integer capture(Active run) { synchronized (run) { return capture(run.snapshot.runId()); } }
 
-    private void capture(String runId) {
+    private Integer capture(String runId) {
         RunStore.PersistedRun persisted = store.persisted(runId);
-        if (persisted.capture() == null || persisted.capture().status() != CaptureStatus.PENDING) return;
-        store.updateCapture(runId, new ReportCapture().capture(store.captureLayout(runId), persisted.capture()));
+        if (persisted.capture() == null || persisted.capture().status() != CaptureStatus.PENDING) return null;
+        ReportCapture.CaptureOutcome outcome = new ReportCapture().capture(store.captureLayout(runId), persisted.capture());
+        store.updateCapture(runId, outcome.metadata());
+        return outcome.skippedTests();
     }
 
     private void persistTerminal(Active run, TestRunState state, Process process,
-            BoundedLogDrainer stdout, BoundedLogDrainer stderr) {
+            BoundedLogDrainer stdout, BoundedLogDrainer stderr, Integer skippedTests) {
         synchronized (run) {
             TestRunState terminal = firstCause(run, state);
             Integer exitCode = process != null && !process.isAlive() ? process.exitValue() : null;
             long stdoutBytes = stdout == null ? 0 : stdout.bytes();
             long stderrBytes = stderr == null ? 0 : stderr.bytes();
             RunSnapshot terminalSnapshot = replace(run.snapshot, terminal, run.snapshot.startedAt(), Instant.now(), exitCode,
-                    stdoutBytes, stderrBytes, stdout != null && stdout.truncated(), stderr != null && stderr.truncated());
+                    stdoutBytes, stderrBytes, stdout != null && stdout.truncated(), stderr != null && stderr.truncated(), skippedTests);
             store.update(terminalSnapshot, run.tracker == null ? java.util.List.of() : run.tracker.identities(),
                     stdout == null ? 0 : stdout.observedBytes(), stdout == null ? 0 : stdout.droppedBytes(),
                     stderr == null ? 0 : stderr.observedBytes(), stderr == null ? 0 : stderr.droppedBytes());
@@ -262,10 +269,10 @@ public final class TestRunCoordinator implements AutoCloseable {
                     recoveryBlocked.set(true);
                     continue;
                 }
-                capture(snapshot.runId());
+                Integer captured = capture(snapshot.runId());
                 store.update(replaceWithReason(snapshot, TestRunState.ERROR, "SERVER_RESTART_RECOVERY", snapshot.startedAt(), Instant.now(),
-                        snapshot.exitCode(), snapshot.stdoutBytes(), snapshot.stderrBytes(), snapshot.stdoutTruncated(), snapshot.stderrTruncated()),
-                        stale.ownedProcesses());
+                        snapshot.exitCode(), snapshot.stdoutBytes(), snapshot.stderrBytes(), snapshot.stdoutTruncated(), snapshot.stderrTruncated(),
+                        captured != null ? captured : snapshot.skippedTests()), stale.ownedProcesses());
             }
         } catch (ExecutionPlanningException exception) {
             if (!"RUN_ALREADY_ACTIVE".equals(exception.code())) recoveryBlocked.set(true);
@@ -339,21 +346,21 @@ public final class TestRunCoordinator implements AutoCloseable {
             boolean stdoutTruncated, boolean stderrTruncated) {
         return new RunSnapshot(id, request.profile().module(), request.environment(), request.headless(),
                 request.effectiveTagExpression(), request.timeoutSeconds(), state, created, started, finished, exit,
-                reason, stdout, stderr, stdoutTruncated, stderrTruncated);
+                reason, stdout, stderr, stdoutTruncated, stderrTruncated, null);
     }
 
     private static RunSnapshot replace(RunSnapshot snapshot, TestRunState state, Instant started, Instant finished,
-            Integer exit, long stdout, long stderr, boolean stdoutTruncated, boolean stderrTruncated) {
+            Integer exit, long stdout, long stderr, boolean stdoutTruncated, boolean stderrTruncated, Integer skippedTests) {
         return new RunSnapshot(snapshot.runId(), snapshot.module(), snapshot.environment(), snapshot.headless(), snapshot.tags(),
                 snapshot.timeoutSeconds(), state, snapshot.createdAt(), started, finished, exit, state.name(), stdout, stderr,
-                stdoutTruncated, stderrTruncated);
+                stdoutTruncated, stderrTruncated, skippedTests);
     }
 
     private static RunSnapshot replaceWithReason(RunSnapshot snapshot, TestRunState state, String reason, Instant started,
-            Instant finished, Integer exit, long stdout, long stderr, boolean stdoutTruncated, boolean stderrTruncated) {
+            Instant finished, Integer exit, long stdout, long stderr, boolean stdoutTruncated, boolean stderrTruncated, Integer skippedTests) {
         return new RunSnapshot(snapshot.runId(), snapshot.module(), snapshot.environment(), snapshot.headless(), snapshot.tags(),
                 snapshot.timeoutSeconds(), state, snapshot.createdAt(), started, finished, exit, reason, stdout, stderr,
-                stdoutTruncated, stderrTruncated);
+                stdoutTruncated, stderrTruncated, skippedTests);
     }
 
     private static ExecutionPlanningException notFound() {

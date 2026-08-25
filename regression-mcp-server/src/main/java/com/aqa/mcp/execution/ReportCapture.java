@@ -40,7 +40,11 @@ final class ReportCapture {
     ReportCapture() { this((source, target) -> Files.move(source, target, StandardCopyOption.ATOMIC_MOVE)); }
     ReportCapture(RunStore.AtomicMover mover) { this.mover = mover; }
 
-    CaptureMetadata capture(RunCaptureLayout layout, CaptureMetadata pending) {
+    /** Carries the persisted capture status alongside the skipped-test count already computed while parsing the
+     * Surefire report, so callers never need to read the published report back off disk to learn it. */
+    record CaptureOutcome(CaptureMetadata metadata, Integer skippedTests) { }
+
+    CaptureOutcome capture(RunCaptureLayout layout, CaptureMetadata pending) {
         String runId = layout.runDirectory().getFileName().toString();
         SurefireSummary summary;
         List<CaptureMetadata.IndexedFile> surefireFiles;
@@ -49,18 +53,18 @@ final class ReportCapture {
             if (surefireFiles.isEmpty() || surefireFiles.stream().noneMatch(file -> file.path().startsWith("TEST-") && file.path().endsWith(".xml"))) throw new IOException("Required Surefire XML is absent.");
             summary = SurefireSummaryParser.parse(layout.surefireStaging(), surefireFiles, runId);
         } catch (SurefireSummaryParser.MalformedReportException exception) {
-            cleanup(layout.surefireStaging()); cleanup(layout.allureStaging()); return new CaptureMetadata(1, CaptureStatus.UNAVAILABLE, pending.nonce(), new CaptureMetadata.CaptureSet("MALFORMED", List.of(), null), null);
+            cleanup(layout.surefireStaging()); cleanup(layout.allureStaging()); return new CaptureOutcome(new CaptureMetadata(1, CaptureStatus.UNAVAILABLE, pending.nonce(), new CaptureMetadata.CaptureSet("MALFORMED", List.of(), null), null), null);
         } catch (Exception exception) {
             cleanup(layout.surefireStaging());
             cleanup(layout.allureStaging());
-            return new CaptureMetadata(1, CaptureStatus.UNAVAILABLE, pending.nonce(), null, null);
+            return new CaptureOutcome(new CaptureMetadata(1, CaptureStatus.UNAVAILABLE, pending.nonce(), null, null), null);
         }
         OptionalAllure optional = publishOptional(layout.allureStaging(), layout.allureFinal(), layout.allureIndex(), runId);
         summary = enrich(summary, optional.results(), optional.availability());
         CaptureMetadata.CaptureSet surefire = publishRequired(layout.surefireStaging(), layout.surefireFinal(), layout.surefireIndex(), runId, surefireFiles, summary);
-        if (surefire == null || !surefire.status().equals("AVAILABLE")) return new CaptureMetadata(1, CaptureStatus.UNAVAILABLE, pending.nonce(), surefire, optional.capture());
+        if (surefire == null || !surefire.status().equals("AVAILABLE")) return new CaptureOutcome(new CaptureMetadata(1, CaptureStatus.UNAVAILABLE, pending.nonce(), surefire, optional.capture()), null);
         CaptureMetadata.CaptureSet allure = optional.capture();
-        return new CaptureMetadata(1, allure == null ? CaptureStatus.PARTIAL : CaptureStatus.COMPLETE, pending.nonce(), surefire, allure);
+        return new CaptureOutcome(new CaptureMetadata(1, allure == null ? CaptureStatus.PARTIAL : CaptureStatus.COMPLETE, pending.nonce(), surefire, allure), (int) summary.skipped());
     }
 
     private CaptureMetadata.CaptureSet publishRequired(Path staging, Path target, Path index, String runId, List<CaptureMetadata.IndexedFile> files, SurefireSummary summary) {

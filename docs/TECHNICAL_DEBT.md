@@ -491,6 +491,36 @@ as of 2026-08-23), `RunStore.layout` (line 322 as of 2026-08-23), and
 directory creation; no `maven-clean-plugin` configuration exists anywhere
 in the reactor's POMs naming `allure-results`.
 
+### C5. The running MCP server's jar can lag `master` by days
+
+Module: regression-mcp-server | Cost: n/a | Review trigger: a change to
+how or when `regression-mcp-server.jar` is rebuilt or the live server
+process is restarted.
+
+**What**: the running MCP server process is launched from
+`regression-mcp-server/target/regression-mcp-server.jar`. That jar is
+deliberately not rebuilt while a live MCP client holds a lock on it (see
+`regression-mcp-server/README.md`'s JAR-lock troubleshooting section), so
+the jar backing the live server can lag the current `master` source by
+however long that client stays connected — potentially days. Because of
+this, results returned by the MCP tools (e.g.
+`regression_validate_architecture`, `regression_validate_module_boundaries`,
+`regression_validate_framework_conventions`) are not evidence about the
+current state of the source; they reflect whatever code was compiled into
+the jar at its last build.
+
+**Location**: `regression-mcp-server/target/regression-mcp-server.jar`
+(the running artifact); `regression-mcp-server/README.md` (JAR-lock
+troubleshooting section).
+
+**Decision**: rebuilding on every source change was rejected because a
+live client holds an OS-level lock on the jar on Windows, making an
+in-session rebuild fail outright; the accepted workaround is to stop the
+live MCP client connection before rebuilding, as already documented in
+`regression-mcp-server/README.md`. No automatic staleness signal exists
+today — a consumer of the MCP tools' output must independently confirm the
+jar was rebuilt after the source state it cares about.
+
 ## D. Open questions and unproven assumptions
 
 Closed by observation or verification, not by work. Each item states what
@@ -846,7 +876,7 @@ Module: regression-mcp-server | Cost: n/a
 **What**: `TestRunCoordinator.recoverIfUnowned` carries a restart-recovered
 run's freshly captured skipped-test count through with the same overwrite
 guard used in `execute()`
-(`TestRunCoordinator.java:272,275` as of 2026-08-25):
+(`TestRunCoordinator.java`, `recoverIfUnowned`):
 ```
 Integer captured = capture(snapshot.runId());
 store.update(replaceWithReason(snapshot, TestRunState.ERROR, "SERVER_RESTART_RECOVERY", snapshot.startedAt(), Instant.now(),
@@ -901,6 +931,50 @@ guarded call sites, lines 119-120, 161-162, 168-169, 174-175 as of
 `regression-mcp-server/src/test/java/com/aqa/mcp/execution/TestRunCoordinatorTest.java`
 (`secondCaptureCallInTheRuntimeExceptionPathDoesNotOverwriteTheFirstCallsSkippedCount`,
 the comparable, existing execute()-side test).
+
+### D11. Four `StaticJavaParser`-based test fixtures may depend on another test class's `ThreadLocal` mutation
+
+Module: regression-mcp-server | Cost: n/a
+
+**What**: `ArchitectureRulesTest` and `FrameworkConventionRulesTest` both call
+`StaticJavaParser.getParserConfiguration().setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_21)`,
+mutating `StaticJavaParser`'s configuration, which is stored in a single
+`ThreadLocal<ParserConfiguration>` shared by every caller running on the same
+thread — not test-instance-scoped state. Four other test classes —
+`EvaluationContextTest`, `BasePackagesTest`, `ModuleBoundaryRulesTest`, and
+`SourceUnitTest` — parse fixtures through `StaticJavaParser.parse(...)`
+without configuring any language level of their own.
+
+**Open question**: whether those four classes are green because their own
+fixtures genuinely need nothing above the parser library's default language
+level, or because one of the two mutating classes happened to already run on
+the same Surefire thread first, leaving that thread's `ThreadLocal` slot
+configured to `JAVA_21` for whichever test runs after it. Test execution
+order within `regression-mcp-server` is not pinned by the POM, so this is not
+settled by the module's tests currently passing. `JavaSourceScanner` formerly
+performed the same kind of global, per-thread mutation from a `static {}`
+initializer and no longer does, so any such cross-class dependency among
+these six test classes is now one contributor short of whatever might have
+configured the thread before — this item does not claim the six classes are
+affected by that specific removal, only that it eliminated one possible
+source of the same shared-state pattern.
+
+**Closed by observation, not work**: parse each of the four non-configuring
+classes' fixtures on a thread where no other class in the module has
+previously configured `StaticJavaParser`'s language level (for example, run
+each of the four test classes alone via `-Dtest=<ClassName>`, or on a freshly
+forked JVM with no prior `StaticJavaParser` use in that fork), and confirm
+each fixture still parses successfully. This is closed by observing the four
+in isolation, not by rewriting any of the six classes.
+
+**Location**: `regression-mcp-server/src/test/java/com/aqa/mcp/validation/ArchitectureRulesTest.java`,
+`regression-mcp-server/src/test/java/com/aqa/mcp/validation/FrameworkConventionRulesTest.java`
+(the two `setLanguageLevel` calls);
+`regression-mcp-server/src/test/java/com/aqa/mcp/validation/EvaluationContextTest.java`,
+`regression-mcp-server/src/test/java/com/aqa/mcp/validation/BasePackagesTest.java`,
+`regression-mcp-server/src/test/java/com/aqa/mcp/validation/ModuleBoundaryRulesTest.java`,
+`regression-mcp-server/src/test/java/com/aqa/mcp/validation/SourceUnitTest.java` (the four
+`StaticJavaParser.parse(...)` calls with no language-level configuration of their own).
 
 ## Where module-level debt lives
 

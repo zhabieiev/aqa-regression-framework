@@ -6,11 +6,13 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import com.github.javaparser.ParseProblemException;
+import com.github.javaparser.JavaParser;
+import com.github.javaparser.ParseResult;
 import com.github.javaparser.ParserConfiguration;
-import com.github.javaparser.StaticJavaParser;
+import com.github.javaparser.Problem;
 import com.github.javaparser.ast.CompilationUnit;
 
 /**
@@ -22,11 +24,10 @@ public final class JavaSourceScanner {
 
     static final long MAX_JAVA_FILE_BYTES = 1_048_576;
     static final int MAX_JAVA_FILES = 10_000;
+    private static final int MAX_REPORTED_PROBLEMS = 3;
     private static final List<String> SOURCE_ROOTS = List.of("src/main/java", "src/test/java");
-
-    static {
-        StaticJavaParser.getParserConfiguration().setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_21);
-    }
+    private static final ParserConfiguration PARSER_CONFIGURATION =
+            new ParserConfiguration().setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_21);
 
     private JavaSourceScanner() {
     }
@@ -39,14 +40,16 @@ public final class JavaSourceScanner {
         if (!modulePath.startsWith(repositoryRoot) || !Files.isDirectory(modulePath)) {
             throw new ValidationException("SOURCE_PATH_VIOLATION", "Unable to inspect selected module: " + module + ".");
         }
+        JavaParser parser = new JavaParser(PARSER_CONFIGURATION);
         List<SourceUnit> units = new ArrayList<>();
         for (String sourceRootName : SOURCE_ROOTS) {
-            units.addAll(scanSourceRoot(repositoryRoot, modulePath, module, sourceRootName));
+            units.addAll(scanSourceRoot(repositoryRoot, modulePath, module, sourceRootName, parser));
         }
         return List.copyOf(units);
     }
 
-    private static List<SourceUnit> scanSourceRoot(Path repositoryRoot, Path modulePath, String module, String sourceRootName) {
+    private static List<SourceUnit> scanSourceRoot(Path repositoryRoot, Path modulePath, String module, String sourceRootName,
+            JavaParser parser) {
         Path sourceRoot = modulePath.resolve(sourceRootName).normalize();
         if (!sourceRoot.startsWith(modulePath) || !Files.exists(sourceRoot)) {
             return List.of();
@@ -61,7 +64,7 @@ public final class JavaSourceScanner {
             List<Path> files = files(sourceRoot, realSourceRoot);
             List<SourceUnit> units = new ArrayList<>();
             for (Path file : files) {
-                units.add(parse(file, repositoryRoot, module));
+                units.add(parse(file, repositoryRoot, module, parser));
             }
             return units;
         }
@@ -106,21 +109,33 @@ public final class JavaSourceScanner {
         }
     }
 
-    private static SourceUnit parse(Path file, Path repositoryRoot, String module) {
+    private static SourceUnit parse(Path file, Path repositoryRoot, String module, JavaParser parser) {
         String relativePath = display(repositoryRoot.relativize(file));
         try {
             if (Files.size(file) > MAX_JAVA_FILE_BYTES) {
                 throw error("SOURCE_FILE_TOO_LARGE", "Java source file exceeds " + MAX_JAVA_FILE_BYTES + " bytes: " + relativePath);
             }
-            CompilationUnit unit = StaticJavaParser.parse(file);
-            return new SourceUnit(module, relativePath, unit);
+            ParseResult<CompilationUnit> result = parser.parse(file);
+            if (!result.isSuccessful()) {
+                throw error("SOURCE_PARSE_ERROR",
+                        "Malformed Java source in " + relativePath + ": " + problemSummary(result.getProblems()));
+            }
+            return new SourceUnit(module, relativePath, result.getResult().orElseThrow());
         }
         catch (IOException exception) {
             throw new ValidationException("SOURCE_IO_ERROR", "Unable to read Java source file: " + relativePath, exception);
         }
-        catch (ParseProblemException exception) {
-            throw new ValidationException("SOURCE_PARSE_ERROR", "Malformed Java source in " + relativePath + ".", exception);
+    }
+
+    private static String problemSummary(List<Problem> problems) {
+        String summary = problems.stream()
+                .limit(MAX_REPORTED_PROBLEMS)
+                .map(Problem::getVerboseMessage)
+                .collect(Collectors.joining("; "));
+        if (problems.size() > MAX_REPORTED_PROBLEMS) {
+            summary += "; ... (" + (problems.size() - MAX_REPORTED_PROBLEMS) + " more problem(s))";
         }
+        return summary;
     }
 
     private static String display(Path path) {

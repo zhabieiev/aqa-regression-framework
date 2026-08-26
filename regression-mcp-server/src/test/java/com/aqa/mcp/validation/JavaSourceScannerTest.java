@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
@@ -15,6 +16,70 @@ class JavaSourceScannerTest {
 
     @TempDir
     Path temporaryDirectory;
+
+    /**
+     * Guards against a regression where the parser's Java-21 language level was configured only on whichever
+     * thread first triggered {@link JavaSourceScanner}'s class initialization, leaving every other thread to parse
+     * at the parser library's default language level and fail on JAVA_21-only syntax (records, pattern-matching
+     * instanceof, switch expressions) genuinely present in this repository's own sources. Class initialization is
+     * forced on one freshly created thread, joined to completion, and the scan is then performed on a second,
+     * separately created thread that has never touched the class before. Two dedicated threads are used, rather
+     * than initializing on the test thread itself, so the guarantee holds by construction: it must not depend on
+     * JUnit's test method execution order within this class, nor on Surefire fork or parallelism settings, neither
+     * of which the POM pins — either could otherwise let some earlier test method already have initialized the
+     * class on the Surefire thread, making this test pass even against the broken code by circumstance rather than
+     * by what it actually verifies. This test's power also depends on {@code regression-core} actually containing
+     * syntax the parser library's default language level cannot parse (records, pattern-matching {@code instanceof},
+     * switch expressions); if that ceases to be true, this test would pass vacuously — including against the
+     * pre-fix code — because a scan that never needs a JAVA_21-only feature cannot distinguish a correctly
+     * configured parser from a misconfigured one.
+     */
+    @Test
+    void scanSucceedsWhenPerformedOnAThreadThatNeverInitializedTheScannerClass() throws Exception {
+        Thread initializingThread = new Thread(() -> {
+            try {
+                Class.forName(JavaSourceScanner.class.getName());
+            }
+            catch (ClassNotFoundException exception) {
+                throw new AssertionError(exception);
+            }
+        });
+        initializingThread.start();
+        initializingThread.join();
+
+        Path repositoryRoot = realRepositoryRoot();
+        AtomicReference<List<SourceUnit>> result = new AtomicReference<>();
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+        Thread scanningThread = new Thread(() -> {
+            try {
+                result.set(JavaSourceScanner.scan(repositoryRoot, "regression-core"));
+            }
+            catch (Throwable throwable) {
+                failure.set(throwable);
+            }
+        });
+        scanningThread.start();
+        scanningThread.join();
+
+        if (failure.get() != null) {
+            throw new AssertionError("Scanning regression-core on a separate thread failed", failure.get());
+        }
+        assertThat(result.get()).isNotEmpty();
+    }
+
+    /** Walks up from the test JVM's working directory to find the real reactor root, mirroring
+     * {@code ArchitectureToolTest.realRepositoryRoot()} (not reusable directly: that method is private to its own
+     * class). */
+    private static Path realRepositoryRoot() {
+        Path candidate = Path.of("").toAbsolutePath();
+        while (candidate != null) {
+            if (Files.isRegularFile(candidate.resolve("pom.xml")) && Files.isDirectory(candidate.resolve("regression-mcp-server"))) {
+                return candidate;
+            }
+            candidate = candidate.getParent();
+        }
+        throw new IllegalStateException("Unable to resolve the real reactor root from the working directory: " + Path.of("").toAbsolutePath());
+    }
 
     @Test
     void scansBothSrcMainJavaAndSrcTestJava() throws Exception {

@@ -28,13 +28,18 @@ public final class CatalogDefinitions {
         steps.openProduct(productName);
     }
 
-    @Then("the search results contain the product {string}")
-    public void verifyProduct(final String productName) {
-        steps.shouldShowProduct(productName);
-    }
-
     @Then("all returned product names contain {string}")
     public void verifyAllResults(final String text) {
         steps.allResultsShouldContain(text);
+    }
+
+    @When("the customer opens the first search result")
+    public void openFirstSearchResult() {
+        steps.openFirstSearchResult();
+    }
+
+    @Then("the product page shows that product")
+    public void verifyOpenedProductMatchesRemembered() {
+        steps.openedProductShouldMatchRemembered();
     }
 }

@@ -1,5 +1,6 @@
 package com.aqa.nextjscommerce.steps;
 
+import com.aqa.nextjscommerce.context.CommerceScenarioContext;
 import com.aqa.nextjscommerce.pages.CommercePages;
 import com.aqa.nextjscommerce.pages.StorefrontPage;
 
@@ -11,9 +12,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 public final class CatalogSteps {
 
     private final CommercePages pages;
+    private final CommerceScenarioContext scenarioContext;
 
-    public CatalogSteps(final CommercePages pages) {
+    public CatalogSteps(final CommercePages pages, final CommerceScenarioContext scenarioContext) {
         this.pages = requireNonNull(pages, "Commerce pages must not be null");
+        this.scenarioContext = requireNonNull(scenarioContext, "Commerce scenario context must not be null");
     }
 
     public void openStorefront() {
@@ -22,11 +25,6 @@ public final class CatalogSteps {
 
     public void searchFor(final String query) {
         pages.storefront().header().search(query);
-    }
-
-    public void shouldShowProduct(final String productName) {
-        final List<String> actualProductNames = pages.searchResults().productNames();
-        assertThat(actualProductNames).as("Products shown in search results").contains(productName);
     }
 
     public void allResultsShouldContain(final String expectedText) {
@@ -40,5 +38,21 @@ public final class CatalogSteps {
         final StorefrontPage storefront = pages.storefront();
         storefront.products().openProduct(productName);
         assertThat(pages.product().productName()).as("Opened product name").isEqualTo(productName);
+    }
+
+    public void openFirstSearchResult() {
+        final List<String> actualProductNames = pages.searchResults().productNames();
+        assertThat(actualProductNames).as("Products shown in search results").isNotEmpty();
+
+        final String firstProductName = actualProductNames.get(0);
+        assertThat(firstProductName).as("First product name in search results").isNotBlank();
+
+        scenarioContext.rememberProductName(firstProductName);
+        pages.searchResults().openProduct(firstProductName);
+    }
+
+    public void openedProductShouldMatchRemembered() {
+        assertThat(pages.product().productName()).as("Opened product name")
+                .isEqualTo(scenarioContext.productName());
     }
 }

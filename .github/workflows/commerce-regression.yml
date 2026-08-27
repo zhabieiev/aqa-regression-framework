@@ -15,6 +15,9 @@ on:
       - "regression-core/**"
       - "pom.xml"
       - ".github/workflows/commerce-regression.yml"
+  # A manual run executes the suite but does not publish to gh-pages: publishing
+  # below is gated on push events to master, and that gate is left untouched.
+  workflow_dispatch:
 
 permissions:
   contents: read

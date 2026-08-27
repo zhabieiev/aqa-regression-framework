@@ -69,7 +69,11 @@ start of a session; update it at the end of one, per `CLAUDE.md`'s
   solely to feed it) was removed; it never actually ran under any real
   invocation.
 - Known debt and open questions: see [`docs/TECHNICAL_DEBT.md`](docs/TECHNICAL_DEBT.md)
-  (20 items as of 2026-08-25, grouped into four sections by the
+  (30 items as of 2026-08-27, counted directly from the file's own `###`
+  headers rather than trusted from this bullet's own prior figure — this
+  bullet had drifted to "20 items as of 2026-08-25" when the file actually
+  held 23 at that date, a staleness caught and corrected during the
+  2026-08-27 session below; grouped into four sections by the
   action each calls for — A. Defects: fix, or accept with a stated reason;
   B. Debt: schedule; C. Accepted characteristics: no action, each with a
   stated review trigger; D. Open questions: closed by observation, not
@@ -77,6 +81,17 @@ start of a session; update it at the end of one, per `CLAUDE.md`'s
   not a flat list; position within a section carries no priority meaning —
   priority is read from each item's Cost field. Per-module limitations are
   maintained with their own modules' READMEs, not duplicated in that file.
+- `regression-mcp-server` now has a committed architecture map and test
+  map: [`regression-mcp-server/docs/ARCHITECTURE.md`](regression-mcp-server/docs/ARCHITECTURE.md)
+  (layer map, 66-class inventory with tier/fan-in/contract-exposure bucket
+  per class, three flow walkthroughs, lifecycle/ownership, data model,
+  boundary/trust surface, extension points, and a leaves-first/hubs-last
+  review order) and [`regression-mcp-server/docs/TEST_MAP.md`](regression-mcp-server/docs/TEST_MAP.md)
+  (every test file's type, what it pins, and — the load-bearing column —
+  what change would pass the whole suite unnoticed), both anchored to
+  commit `7107c49fa305dde53ac3d6d0e009da67d773d859`. A per-class dossier
+  directory (`regression-mcp-server/docs/classes/`) is planned but not yet
+  started; see "Next step" below for the order it should follow.
 - `regression-jhipster`'s Playwright trace-capture gap (traces written to
   `target/playwright/traces/` are never surfaced through the MCP server) is
   now logged as item C2 in `docs/TECHNICAL_DEBT.md`, rather than only noted
@@ -85,6 +100,67 @@ start of a session; update it at the end of one, per `CLAUDE.md`'s
   (reactor-wide, grouped by module).
 
 ## Most recent session
+
+2026-08-27 — `regression-mcp-server` inspection formalized into committed
+documentation, branch `docs/mcp-architecture-map` (not merged as of this
+entry):
+
+A prior inspection pass (this same session, before this entry) built a
+full architecture map and test-suite map for `regression-mcp-server`
+against commit `4d7c12148330e532aa0a68e076ab6bbcd69af3cc`, before any of it
+was committed to a tracked document. A drift check at the start of this
+pass found
+the tree had moved to `7107c49fa305dde53ac3d6d0e009da67d773d859` in the
+interim (two commits, `.github/workflows/main.yml` and
+`.github/workflows/commerce-regression.yml` gaining `workflow_dispatch`
+triggers only — confirmed additive by reading the diff directly, no
+`regression-mcp-server` file touched, no gate weakened) and that the
+original anchor, `4d7c1214`, had merged with **zero CI runs recorded
+against it** (`gh run list --commit`/the Checks API both empty), due to a
+GitHub Actions platform incident on 2026-08-26 that dropped its push
+event. The map's substance was unaffected (zero module files changed
+between the two commits) but its own arithmetic had two independent
+errors, both caught and corrected during the drift-check pass: the class
+count was stated as 67 rather than 66, and tier 0/1 were mis-totaled
+(27/16 stated vs. 24/17 actually listed) with one class,
+`MavenProcessLauncher`, omitted from the tier list and review order
+entirely. `docs/TECHNICAL_DEBT.md` item B7 (no branch protection) was
+updated to record the `4d7c1214` gap as a demonstrated occurrence rather
+than only a theoretical cost, rather than logging a separate item for it.
+
+The corrected map was then committed as
+[`regression-mcp-server/docs/ARCHITECTURE.md`](regression-mcp-server/docs/ARCHITECTURE.md)
+and [`regression-mcp-server/docs/TEST_MAP.md`](regression-mcp-server/docs/TEST_MAP.md)
+(new files), anchored to `7107c49f`. Seven new `docs/TECHNICAL_DEBT.md`
+items were logged from findings surfaced during the inspection: A3 (
+`docs/TOOLS.md` documents `regression_start_test_run` as "not open-world"
+while the code sets `openWorldHint(true)`, confirmed passing in
+`RegressionMcpServerStdioIntegrationTest`), B8 (`TestRunCoordinator`'s
+early-cause-return and `InterruptedException` terminal paths have zero
+test coverage), B9 (`MavenRuntimeConfigurationLoader.load` has no direct
+test), B10 (all three validator tools re-scan every declared module on
+every call regardless of request scope, with no cache), C6
+(`execution`/`validation` sibling independence is enforced only by
+ARCH-002's cycle detection, which does not catch one-way coupling), D12
+(`ModuleValidationResult.truncated` is a hardcoded `false` literal in all
+three validator tools; no code path can produce `true`), and D13
+(`request.environment()` is validated only by set membership, then
+reaches the Maven command line unescaped — inert today only because both
+registered profiles declare exactly `"dev"`). `docs/ROADMAP.md`'s
+`regression-mcp-server` section was rewritten with a cost-ranked candidate
+list (6 items, from the 1-pass documentation fix through the 3-4-pass
+four-path terminal-transition consolidation, the latter explicitly gated
+on characterization tests for the two newly-identified untested paths
+existing first — not merely recommended first). No production source,
+test, POM, or CI file was touched this pass; `mvn validate` was re-run
+clean after the documentation changes. No commit or push has been made
+without further authorization.
+
+**What remains open**: a per-class dossier directory
+(`regression-mcp-server/docs/classes/`) has not been started. The
+architecture map's own review order (Group 1 through Group 8, leaves
+first, hubs last) is the intended sequence for that work; see "Next step"
+below.
 
 2026-08-25 — `docs/TECHNICAL_DEBT.md` item A2 (a run whose tag expression
 matches nothing was reported as `PASSED` with no visible signal) closed via
@@ -366,6 +442,17 @@ client-facing MCP strings against the resulting code (`3c7ec68`, `f1159db`,
 MCP-executable module, on equal footing with `regression-nextjs-commerce`.
 
 ## Next step
+
+The concrete next step for `regression-mcp-server` is starting the
+per-class dossier directory (`regression-mcp-server/docs/classes/`),
+following [`regression-mcp-server/docs/ARCHITECTURE.md`](regression-mcp-server/docs/ARCHITECTURE.md)'s
+own review order (Group 1's tier-0 leaves first — e.g. `RepositoryRoot`,
+`ModuleType`, `FailureArtifact` — through `RegressionMcpServer` last).
+Each dossier is a separate, single-class pass; do not batch more than one
+class per pass. `docs/ROADMAP.md`'s `regression-mcp-server` section holds
+the cost-ranked refactoring candidates this inspection surfaced — none is
+authorized yet, and authorization of one item does not extend to any
+other.
 
 `regression-jhipster` is now MCP-executable, as the second module
 alongside `regression-nextjs-commerce`: it has an `ExecutionProfileRegistry`

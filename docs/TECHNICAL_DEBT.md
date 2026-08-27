@@ -132,6 +132,44 @@ miss detail that was actually cut off.
 `record`; lines 27-28, 32, 71, 75, 105-119 as of 2026-08-23);
 `regression-mcp-server/docs/SESSION_DEMO.md`.
 
+### A3. `docs/TOOLS.md` documents `regression_start_test_run` as "not open-world," contradicting the code
+
+Module: regression-mcp-server | Cost: 1 pass
+
+**What**: `regression-mcp-server/docs/TOOLS.md` states, for
+`regression_start_test_run`: "Read-only: no (execution/destructive/
+non-idempotent/not open-world per its `ToolAnnotations`)." The code sets
+the opposite value. `RegressionMcpServer.startTestRunTool` builds its
+annotations via `executionAnnotations(false, true, false, true)`, and
+`executionAnnotations(boolean readOnly, boolean destructive, boolean
+idempotent, boolean openWorld)` maps its fourth parameter directly to
+`.openWorldHint(openWorld)` — so `regression_start_test_run` is built with
+`openWorldHint(true)`, not `false`. Cross-checked against
+`regression_cancel_test_run`'s own call, `executionAnnotations(false,
+true, true, false)`, whose fourth argument correctly matches its own
+docs/TOOLS.md line ("not open-world") — confirming this is specifically a
+`start`-tool documentation error, not a misreading of the parameter
+order.
+
+`RegressionMcpServerStdioIntegrationTest.assertExecutionToolContracts`
+independently confirms the code's value is intentional, not accidental:
+it asserts `openWorldHint` is `true` for `regression_start_test_run`, and
+this assertion currently passes. `RegressionMcpServerContractTest` — the
+lighter-weight, non-STDIO contract test file — never invokes
+`startTestRunTool` at all, so it does not (and could not) catch this
+divergence; only the heavier STDIO test does.
+
+**Why the code, not the doc, is likely correct**: `openWorldHint(true)` is
+the semantically appropriate value for a tool that launches a Maven
+process touching the filesystem and, for both registered profiles, a live
+external test target — exactly what `openWorldHint` exists to flag.
+
+**Location**: `regression-mcp-server/src/main/java/com/aqa/mcp/RegressionMcpServer.java`
+(`startTestRunTool`, `executionAnnotations`);
+`regression-mcp-server/docs/TOOLS.md` (`regression_start_test_run`'s
+"Read-only" line); `regression-mcp-server/src/test/java/com/aqa/mcp/RegressionMcpServerStdioIntegrationTest.java`
+(`assertExecutionToolContracts`).
+
 ## B. Debt
 
 The fix is understood and was deferred. Action: schedule.
@@ -328,6 +366,122 @@ publishes whatever the pushed content produces, green or not.
 tracked file); `.github/workflows/commerce-regression.yml`'s `push:
 branches: ["master"]` trigger.
 
+**Demonstrated, not only theoretical, as of 2026-08-27**: commit
+`4d7c12148330e532aa0a68e076ab6bbcd69af3cc` merged to `master` with zero CI
+runs recorded against it — verified via `gh run list --commit
+4d7c1214...` (no rows) and `gh api .../commits/4d7c1214.../check-runs`
+(empty `check_runs` array); a later, unrelated commit's message attributes
+this to a GitHub Actions platform incident on 2026-08-26 that dropped the
+push event, which is plausible but not independently verified against
+GitHub's own incident history. This is not logged as its own item because
+the gap is already closed: `7107c49fa305dde53ac3d6d0e009da67d773d859` is a
+direct descendant of `4d7c1214` with zero `regression-mcp-server` (or any
+other module) files changed between them, and `7107c49f` itself is
+confirmed CI-green on both workflows — the same tree state has since been
+verified under a different SHA. The durable point is this item's own: no
+branch protection means nothing prevented an unverified commit from
+landing on `master` and staying there indefinitely if the dropped-event
+recovery (an unrelated `workflow_dispatch` addition, not a deliberate
+re-verification of `4d7c1214` itself) had not happened to occur first.
+
+### B8. Two of `TestRunCoordinator.execute()`'s four terminal paths have no test coverage
+
+Module: regression-mcp-server | Cost: 1-2 passes — constructing a
+deterministic seam for each race is the hard part
+
+**What**: `execute()` has four ways to reach `persistTerminal`: an
+early-cause return (the run was already cancelled before the worker
+thread began executing), normal completion (`process.waitFor()`
+returns), an `InterruptedException` catch, and a `RuntimeException`
+catch. `TestRunCoordinatorTest` thoroughly covers normal completion (16
+tests) and the `RuntimeException` path (2 tests, including
+`secondCaptureCallInTheRuntimeExceptionPathDoesNotOverwriteTheFirstCallsSkippedCount`
+and `timeoutSchedulingFailureNeverPublishesRunningAndCleansProcessAndLock`).
+The other two have zero coverage:
+- The early-cause return requires `cancel()` to complete before the
+  worker thread even begins running the submitted `execute()` task —
+  before any process launch is attempted. No fixture in the suite can
+  force this exact ordering deterministically: every cancellation test
+  cancels only after the launcher's `launch()` method has already been
+  entered, which is necessarily after this branch's own check already
+  passed.
+- The `InterruptedException` catch requires the worker thread itself to
+  be interrupted while blocked in `process.waitFor()`. No test in the
+  file interrupts the worker thread; `TestRunCoordinator.close()`'s own
+  `worker.shutdownNow()` interruption path is only reached if a
+  10-second graceful `awaitTermination` times out first, and no test
+  waits that out.
+
+**Why deferred**: identified during an inspection pass, not sought out as
+a scheduled fix; each gap needs its own deterministic seam (most likely a
+`CountDownLatch`-gated worker `ExecutorService` test double, mirroring
+the existing `ManualTimeoutScheduler` pattern) rather than a single
+shared fixture.
+
+**Consequence**: a regression in either branch — for example,
+accidentally still attempting a launch when `cause` is already set, or
+losing the `Thread.currentThread().interrupt()` re-assertion — would
+pass the whole suite unnoticed.
+
+**Location**: `regression-mcp-server/src/main/java/com/aqa/mcp/execution/TestRunCoordinator.java`
+(`execute`'s early-cause return and `InterruptedException` catch);
+`regression-mcp-server/src/test/java/com/aqa/mcp/execution/TestRunCoordinatorTest.java`.
+
+### B9. `MavenRuntimeConfigurationLoader.load` has no dedicated direct test
+
+Module: regression-mcp-server | Cost: 1 pass
+
+**What**: `MavenRuntimeConfigurationLoader.load`'s own validation of
+`REGRESSION_MAVEN_HOME`/`java.home`/the running JVM's feature version is
+only ever exercised indirectly, through fixture `runtime()` helpers in
+`MavenInvocationFactoryTest` and `ControlledCoordinatorFactory` that
+always construct a valid environment — one bypasses `load` entirely by
+calling `MavenRuntimeConfiguration.fromTrustedPaths` directly, the other
+supplies only the success path. No test exercises `load`'s own failure
+branches (missing/blank `REGRESSION_MAVEN_HOME`, a non-Java-21 runtime, a
+`java` executable that does not resolve under `java.home`) directly.
+
+**Location**: `regression-mcp-server/src/main/java/com/aqa/mcp/execution/MavenRuntimeConfigurationLoader.java`;
+`regression-mcp-server/src/test/java/com/aqa/mcp/execution/MavenInvocationFactoryTest.java`
+(`runtime()`); `regression-mcp-server/src/test/java/com/aqa/mcp/execution/ControlledCoordinatorFactory.java`
+(`runtime(Path)`).
+
+### B10. All three validator tools re-scan every declared module on every call, regardless of request scope, with no cache
+
+Module: regression-mcp-server | Cost: 2-3 passes
+
+**What**: `ModuleBoundariesTool.evaluate`, `FrameworkConventionsTool.evaluate`,
+and `ArchitectureTool.evaluate` each loop over every declared module
+(`declaredModules`, not `scope.modules()`) and call
+`JavaSourceScanner.scan` for all of them before filtering to the
+requested scope when building `ModuleValidationResult`s. This is
+necessary for the cross-module rules (MOD-001/003/004, ARCH-002), which
+genuinely need every module's sources to detect cross-module imports and
+cycles — but it means scoping a `regression_validate_framework_conventions`
+call to one module still fully re-parses every Java file in all five
+reactor modules, even though none of FC-001 through FC-005 are
+cross-module rules (confirmed by reading all seven
+`FrameworkConventionRules` rule classes: every one only ever reads
+`context.moduleSources()`, never `context.reactorModules()`).
+`JavaSourceScanner.scan` results are not cached at all across calls —
+every call to any of the three validator tools re-parses the entire
+reactor's Java source from disk.
+
+**Why deferred**: two viable fixes exist and need a design decision, not
+just implementation — (a) skip scanning a module when none of the rules
+being evaluated declare a need for cross-module data, which needs a new
+capability flag on `ValidationRule`, or (b) cache `scan()` results per
+`(repositoryRoot, module)` for the server process's lifetime, which is a
+product decision about staleness (the server's own README already
+accepts a comparable staleness characteristic for its own jar, per item
+C5, so a documented cache may be acceptable, but that is not this item's
+call to make).
+
+**Location**: `regression-mcp-server/src/main/java/com/aqa/mcp/validation/ModuleBoundariesTool.java`,
+`FrameworkConventionsTool.java`, `ArchitectureTool.java` (each
+`evaluate` method's module loop); `regression-mcp-server/src/main/java/com/aqa/mcp/validation/JavaSourceScanner.java`
+(`scan`, no caching).
+
 ## C. Accepted characteristics
 
 A decision was made. Action: none, but every item below states the
@@ -520,6 +674,38 @@ live MCP client connection before rebuilding, as already documented in
 `regression-mcp-server/README.md`. No automatic staleness signal exists
 today — a consumer of the MCP tools' output must independently confirm the
 jar was rebuilt after the source state it cares about.
+
+### C6. `execution` and `validation` sibling independence is enforced only by ARCH-002's cycle detection, which does not catch one-way coupling
+
+Module: regression-mcp-server | Cost: n/a | Review trigger: a future
+change introduces a one-way import from `execution` into `validation` or
+vice versa, with no cycle, and nothing flags it.
+
+**What**: no file in `com.aqa.mcp.execution` imports from
+`com.aqa.mcp.validation` today, and no file in `validation` imports from
+`execution` — confirmed by reading every file's import list in both
+packages. `ArchitectureRules.NoPackageCycles` (ARCH-002) is
+module-structure-agnostic and does run against `regression-mcp-server`'s
+own three packages when the validator tools are pointed at the real
+reactor (`ArchitectureToolTest.realReactorHasNoArch002PackageCycles` maps
+all five reactor modules, `regression-mcp-server` included, and asserts
+zero cycles) — so a genuine *cycle* between `execution` and `validation`
+would already be caught. But ARCH-002 only detects cycles, not one-way
+coupling: if `execution` started importing a `validation` type in one
+direction only (added coupling, not a cycle), nothing in the rule set
+would fire.
+
+**Decision**: this characteristic is accepted as-is rather than scheduled
+for a new rule, since no such coupling exists today and no proposal for
+one has been made — adding an ARCH-005-style rule speculatively, with no
+concrete case in view, would be exactly the kind of speculative
+abstraction this module's own review discipline avoids.
+
+**Location**: `regression-mcp-server/src/main/java/com/aqa/mcp/execution/`
+(every file's import list), `regression-mcp-server/src/main/java/com/aqa/mcp/validation/`
+(every file's import list); `regression-mcp-server/src/main/java/com/aqa/mcp/validation/ArchitectureRules.java`
+(`NoPackageCycles`); `regression-mcp-server/src/test/java/com/aqa/mcp/validation/ArchitectureToolTest.java`
+(`realReactorHasNoArch002PackageCycles`).
 
 ## D. Open questions and unproven assumptions
 
@@ -975,6 +1161,85 @@ in isolation, not by rewriting any of the six classes.
 `regression-mcp-server/src/test/java/com/aqa/mcp/validation/ModuleBoundaryRulesTest.java`,
 `regression-mcp-server/src/test/java/com/aqa/mcp/validation/SourceUnitTest.java` (the four
 `StaticJavaParser.parse(...)` calls with no language-level configuration of their own).
+
+### D12. `ModuleValidationResult.truncated` is permanently `false`; no code path can produce `true`
+
+Module: regression-mcp-server | Cost: n/a
+
+**What**: All three validator `Tool` classes construct their per-module
+result with a hardcoded literal, not a computed value —
+`ModuleBoundariesTool.evaluate`, `FrameworkConventionsTool.evaluate`, and
+`ArchitectureTool.evaluate` each end with `results.add(new
+ModuleValidationResult(module, profile, List.copyOf(rulesApplied),
+List.copyOf(violations), false));` — identical across all three files.
+`regression-mcp-server/docs/TOOLS.md` documents `truncated` as a required
+output field for all three tools with no caveat that it is currently
+inert. Nothing in `JavaSourceScanner`, the three rule-set files, or the
+three `Tool` classes computes any bound that could set it `true`; unlike
+`stdoutTruncated`/`stderrTruncated`/`skippedTests` on the execution side,
+which are genuinely computed from real bounded state, this field has no
+producer anywhere in the current code. No test in the suite (neither
+`ModuleValidationResultTest` nor any of the three validator functional
+tests) asserts a computed value for it.
+
+**Open question this closes by observation**: whether a "successful but
+truncated" validation result is even a coherent concept today — hitting
+`JavaSourceScanner`'s own file-count/size bounds currently throws a
+tool-level error (`SOURCE_FILE_LIMIT_EXCEEDED`/`SOURCE_FILE_TOO_LARGE`)
+rather than producing a truncated-but-still-successful result, so there
+may be no code path where a real `true` value would ever make sense
+without a design decision first.
+
+**Closed by observation, not work**: either wire `truncated` to something
+real (a design decision, not a mechanical fix) or document it in
+`docs/TOOLS.md` as reserved/currently-always-false, matching how item D6
+already documents the sibling gap ("no scanned-source-count signal") for
+`ArchitectureTool`'s output.
+
+**Location**: `regression-mcp-server/src/main/java/com/aqa/mcp/validation/ModuleBoundariesTool.java`,
+`FrameworkConventionsTool.java`, `ArchitectureTool.java` (each `evaluate`
+method's final `ModuleValidationResult` construction, identical across
+all three); `regression-mcp-server/docs/TOOLS.md` (the
+architecture-validator tools' shared output shape description).
+
+### D13. `request.environment()` is raw client input reaching the Maven command line, validated only by set membership
+
+Module: regression-mcp-server | Cost: n/a
+
+**What**: `TestRunRequestValidator.validateEnvironment` only checks that
+the client-supplied `environment` string is a member of
+`profile.environments()` — it does not re-derive or sanitize the string
+itself. The original value is carried through verbatim by
+`ValidatedTestRunRequest.environment()` and lands in
+`MavenInvocationFactory.create`'s argument list as `"-Denv=" +
+request.environment()`, one literal argument in the list passed directly
+to `ProcessBuilder` (`DirectMavenProcessLauncher`). `ProcessBuilder` does
+not invoke a shell and does not word-split or re-interpret this string,
+so classic shell injection is not possible through this specific path —
+the exposure is narrower: whatever characters the string contains become
+a literal `-D` JVM system-property argument to the Maven/Classworlds
+launcher process.
+
+**Why this is inert today**: both registered profiles' `environments()`
+lists contain exactly one hardcoded value, the literal string `"dev"`
+(`ExecutionProfileRegistry`'s two static `ExecutionProfile` instances) —
+so the membership check can currently only ever let `"dev"` through,
+regardless of what a client sends. `MavenInvocationFactoryTest` was
+checked directly: neither of its two tests varies `environment` at all,
+both hardcoding `"dev"` via a shared helper — so no test in the suite
+would catch a future regression here even if the registry changed.
+
+**What would flip this from inert to live**: `ExecutionProfileRegistry`
+ever gaining a profile whose `environments()` list contains more than one
+value, or any value not chosen entirely by this codebase's own authors
+under the same review discipline as today's two hardcoded entries.
+
+**Location**: `regression-mcp-server/src/main/java/com/aqa/mcp/execution/TestRunRequestValidator.java`
+(`validateEnvironment`); `regression-mcp-server/src/main/java/com/aqa/mcp/execution/MavenInvocationFactory.java`
+(`create`, the `-Denv=` argument); `regression-mcp-server/src/main/java/com/aqa/mcp/execution/ExecutionProfileRegistry.java`
+(the two hardcoded `environments = List.of("dev")` profiles);
+`regression-mcp-server/src/test/java/com/aqa/mcp/execution/MavenInvocationFactoryTest.java`
+(neither test varies `environment`).
 
 ## Where module-level debt lives
 

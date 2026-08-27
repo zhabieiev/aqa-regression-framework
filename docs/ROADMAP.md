@@ -62,6 +62,79 @@ module/area; each module's own README carries more detail where noted.
 
 ### regression-mcp-server
 
+An inspection pass produced a full architecture map
+(`regression-mcp-server/docs/ARCHITECTURE.md`) and test-suite map
+(`regression-mcp-server/docs/TEST_MAP.md`), anchored to commit
+`7107c49fa305dde53ac3d6d0e009da67d773d859`. The candidates below are that
+pass's prioritized output — planned work, not yet authorized. Corresponding
+debt items are catalogued in `docs/TECHNICAL_DEBT.md` (A3, B8-B10, C6,
+D12-D13); this list is refactoring/improvement candidates, kept separate
+from that debt catalogue per this file's own scope.
+
+**Ranked by cost (ascending):**
+
+1. **Fix `docs/TOOLS.md`'s `openWorldHint` claim for `regression_start_test_run`**
+   (closes `docs/TECHNICAL_DEBT.md` item A3). Cost: 1 pass. Risk: none —
+   documentation-only.
+2. **`TestRunCoordinator` capture-guard extraction**: the 2-line "capture,
+   then keep-if-non-null" block (`Integer captured = capture(run); if
+   (captured != null) skippedTests = captured;`) is duplicated at all four
+   call sites inside `execute()`/`recoverIfUnowned()`. Extract a private
+   helper (`captureOrKeep(Active run, Integer current)`); each call site
+   collapses to one line. Cost: 1 pass. Risk: low — an existing test
+   (`secondCaptureCallInTheRuntimeExceptionPathDoesNotOverwriteTheFirstCallsSkippedCount`)
+   already pins the merge-vs-overwrite behavior this extraction must
+   preserve.
+3. **Add characterization tests for `TestRunCoordinator`'s two currently
+   untested terminal paths** (`docs/TECHNICAL_DEBT.md` item B8): the
+   early-cause return and the `InterruptedException` catch. Cost: 1-2
+   passes — the hard part is constructing a deterministic seam for each
+   race (most likely a `CountDownLatch`-gated worker `ExecutorService`
+   test double, mirroring the existing `ManualTimeoutScheduler` pattern).
+   Risk: low by itself (adds tests, changes no production behavior), but
+   is a **hard prerequisite** for item 5 below, not merely recommended
+   first.
+4. **Skip or cache `JavaSourceScanner.scan()` per module across validator
+   calls** (`docs/TECHNICAL_DEBT.md` item B10). Cost: 2-3 passes. Risk:
+   medium — needs a design decision (a new per-rule capability flag, or a
+   documented process-lifetime cache) before implementation.
+5. **Extract the shared validator `Tool` helper** (below) — cost 3-4
+   passes, scoped to also close the two safety-net gaps a coverage
+   audit found: neither the contract tests nor the functional tests
+   assert `ModuleValidationResult.truncated`'s value (`docs/TECHNICAL_DEBT.md`
+   item D12), and the contract tests never assert the full
+   `moduleResultSchema()` property/type map, only `oneOf` branch count and
+   required-field presence. Add one exact-schema-equality assertion per
+   tool and one "`ModuleBoundariesTool` never emits `advisoryViolations`"
+   assertion as part of this same pass.
+6. **Collapse `TestRunCoordinator`'s four `execute()` paths into one
+   terminal transition.** Cost: 3-4 passes, and explicitly gated on item 3
+   above — not merely "recommended first," a hard prerequisite, since two
+   of the four paths currently have no test proving what a consolidation
+   must preserve. Risk: high — this is the module's largest and most
+   structurally central class; a subtle behavioral change here affects
+   run-state correctness for every terminal run.
+
+**Design questions, not scheduled work** (see `docs/TECHNICAL_DEBT.md` for
+the full record): whether `ModuleValidationResult.truncated` should be
+wired to something real or documented as currently-inert (D12); whether
+`execution`/`validation` sibling independence should get its own enforced
+rule beyond ARCH-002's cycle-only coverage (C6); whether
+`request.environment()`'s unescaped pass-through needs independent
+defense regardless of registry contents (D13).
+
+**Not proposed as candidates**, and why: splitting `RegressionMcpServer.java`
+for cohesion (a full per-tool decomposition found no B3-style duplicated
+method bodies — the file's size is 11 tools' worth of breadth, each
+costing 3-50 lines of genuinely tool-specific code once shared envelope
+helpers are reused, not repetition); anything in `PublicDiagnosticSanitizer`
+(security-critical, no defect found, changing it needs its own
+negative-case-test justification pass, not a drive-by); merging the three
+rule-*set* files (`ArchitectureRules`/`FrameworkConventionRules`/
+`ModuleBoundaryRules` — confirmed to be genuinely distinct rule logic, not
+duplication; only a 3-4-line `violation(...)` helper is triplicated
+across them, too small to justify a shared utility on its own).
+
 #### Extract the shared validator `Tool` helper
 
 `docs/TECHNICAL_DEBT.md` item B3 names the duplicated methods across

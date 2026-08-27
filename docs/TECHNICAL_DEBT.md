@@ -477,6 +477,20 @@ accepts a comparable staleness characteristic for its own jar, per item
 C5, so a documented cache may be acceptable, but that is not this item's
 call to make).
 
+**No measurement survives**: a wall-clock comparison of a module-scoped
+validator call against an unscoped one was taken in an earlier session,
+but it lived only in `output.log` and was lost when that file was cleared
+— the same self-containment defect that D7 and D8 were rewritten to
+remove. No timing figure for this behaviour now exists anywhere in the
+repository, and none should be reconstructed from memory. Authorizing
+either the capability-flag skip (a) or the per-`(repositoryRoot, module)`
+cache (b) requires a fresh measurement taken with the JVM warmed
+(discard the first runs) and with the scoped and unscoped calls each run
+first in a separate ordering: a single scoped-then-unscoped pair on a
+cold JVM cannot separate the cost of the extra scanning from the cost of
+class-loading and JIT warm-up, so it cannot establish how much time the
+fix would actually save.
+
 **Location**: `regression-mcp-server/src/main/java/com/aqa/mcp/validation/ModuleBoundariesTool.java`,
 `FrameworkConventionsTool.java`, `ArchitectureTool.java` (each
 `evaluate` method's module loop); `regression-mcp-server/src/main/java/com/aqa/mcp/validation/JavaSourceScanner.java`

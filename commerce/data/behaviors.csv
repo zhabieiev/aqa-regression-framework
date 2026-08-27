@@ -1,3 +1,4 @@
 "BROKEN","EPIC","FAILED","FEATURE","PASSED","SKIPPED","STORY","UNKNOWN"
 "0","","0","Product catalog search","1","0","Search returns the expected product","0"
 "0","","0","Shopping cart management","1","0","Add a configured product and manage its quantity","0"
+"0","","0","Product catalog search","1","0","The first search result opens to its own product page","0"

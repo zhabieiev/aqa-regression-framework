@@ -1,3 +1,4 @@
 "DESCRIPTION","DURATION IN MS","NAME","PARENT SUITE","START TIME","STATUS","STOP TIME","SUB SUITE","SUITE","TEST CLASS","TEST METHOD"
-"","1811","Search returns the expected product","","2026-08-25","passed","2026-08-25","","Product catalog search","Search returns the expected product",""
-"","15144","Add a configured product and manage its quantity","","2026-08-25","passed","2026-08-25","","Shopping cart management","Add a configured product and manage its quantity",""
+"","1874","Search returns the expected product","","2026-08-27","passed","2026-08-27","","Product catalog search","Search returns the expected product",""
+"","18361","Add a configured product and manage its quantity","","2026-08-27","passed","2026-08-27","","Shopping cart management","Add a configured product and manage its quantity",""
+"","2375","The first search result opens to its own product page","","2026-08-27","passed","2026-08-27","","Product catalog search","The first search result opens to its own product page",""

@@ -9,9 +9,10 @@ start of a session; update it at the end of one, per `CLAUDE.md`'s
 
 - `regression-mcp-server` shipped as v1.0.0, tag `regression-mcp-server-v1.0.0`
   (commit `367fe27`).
-- Build: green, re-verified 2026-08-21 by running each suite fresh (figures
-  below are point-in-time, not a standing guarantee — re-run rather than
-  trust the date if it's more than a few sessions old):
+- Build: green. Each figure below carries the date it was actually
+  measured; they are point-in-time, not a standing guarantee — re-run
+  rather than trust a figure once its date is more than a few sessions
+  old:
   - `mvn -pl regression-mcp-server -am test` — Tests run: 276, Failures: 0,
     Errors: 0, Skipped: 5 (re-verified 2026-08-27; this supersedes the
     earlier 272 and 275 figures). All 5 skips are environment-conditional:
@@ -26,12 +27,12 @@ start of a session; update it at the end of one, per `CLAUDE.md`'s
     `main.yml`'s "Require all MCP security tests to execute" step fails the
     build if any is skipped.
   - `mvn -pl regression-jhipster -am test -Dcucumber.filter.tags="@api" -Denv=dev`
-    — 16 Scenarios (16 passed), 37 Steps (37 passed); Surefire Tests run:
-    21, Failures: 0, Errors: 0, Skipped: 5.
+    (measured 2026-08-21) — 16 Scenarios (16 passed), 37 Steps (37 passed);
+    Surefire Tests run: 21, Failures: 0, Errors: 0, Skipped: 5.
   - `mvn -pl regression-jhipster -am test -Dcucumber.filter.tags="@ui" -Denv=dev`
-    — 5 Scenarios (5 passed), 24 Steps (24 passed).
+    (measured 2026-08-21) — 5 Scenarios (5 passed), 24 Steps (24 passed).
   - `mvn -pl regression-jhipster -am test -Dcucumber.filter.tags="@hybrid" -Denv=dev`
-    — 2 Scenarios (2 passed), 15 Steps (15 passed).
+    (measured 2026-08-21) — 2 Scenarios (2 passed), 15 Steps (15 passed).
   - `regression-nextjs-commerce` has 3 Cucumber scenarios on disk since
     commit `a691978` (two in
     `regression-nextjs-commerce/src/test/resources/features/catalog_search.feature`,
@@ -39,7 +40,8 @@ start of a session; update it at the end of one, per `CLAUDE.md`'s
     2026-08-21. The suite was not re-run on 2026-08-27, so the step count
     and pass/fail are not re-measured; the last recorded run predates the
     third scenario.
-  - `mvn validate` — BUILD SUCCESS. The reactor summary shows six rows: the
+  - `mvn validate` (measured 2026-08-27) — BUILD SUCCESS. The reactor
+    summary shows six rows: the
     aggregator/parent POM `regression` plus its five modules
     (`regression-core`, `regression-petstore-api`, `regression-jhipster`,
     `regression-nextjs-commerce`, `regression-mcp-server`).

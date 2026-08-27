@@ -12,8 +12,19 @@ start of a session; update it at the end of one, per `CLAUDE.md`'s
 - Build: green, re-verified 2026-08-21 by running each suite fresh (figures
   below are point-in-time, not a standing guarantee — re-run rather than
   trust the date if it's more than a few sessions old):
-  - `mvn -pl regression-mcp-server -am test` — Tests run: 272, Failures: 0,
-    Errors: 0, Skipped: 5.
+  - `mvn -pl regression-mcp-server -am test` — Tests run: 276, Failures: 0,
+    Errors: 0, Skipped: 5 (re-verified 2026-08-27; this supersedes the
+    earlier 272 and 275 figures). All 5 skips are environment-conditional:
+    each is a symlink-escape defence test
+    (`ReportCaptureTest.rejectsSymlinkEscapesAndCleansOwnedStaging`,
+    `RunStoreTest.symlinkedStatusTargetIsRejectedWithoutFollowingIt`,
+    `FeatureDiscoveryTest.rejectsSymlinkedFeatureFilesThatEscapeTheFeatureRoot`,
+    `ModuleListTest.rejectsSymlinkedModulePathsEscapingTheRepositoryRoot`,
+    `JavaSourceScannerTest.rejectsSymlinkedSourceFilesThatEscapeTheSourceRoot`)
+    that aborts via a JUnit assumption because the local Windows account
+    cannot create symbolic links. All 5 run on the Linux CI runner, where
+    `main.yml`'s "Require all MCP security tests to execute" step fails the
+    build if any is skipped.
   - `mvn -pl regression-jhipster -am test -Dcucumber.filter.tags="@api" -Denv=dev`
     — 16 Scenarios (16 passed), 37 Steps (37 passed); Surefire Tests run:
     21, Failures: 0, Errors: 0, Skipped: 5.
@@ -21,9 +32,17 @@ start of a session; update it at the end of one, per `CLAUDE.md`'s
     — 5 Scenarios (5 passed), 24 Steps (24 passed).
   - `mvn -pl regression-jhipster -am test -Dcucumber.filter.tags="@hybrid" -Denv=dev`
     — 2 Scenarios (2 passed), 15 Steps (15 passed).
-  - `mvn -pl regression-nextjs-commerce -am test -Denv=dev` — 2 Scenarios
-    (2 passed), 15 Steps (15 passed).
-  - `mvn validate` — BUILD SUCCESS across all 6 reactor modules.
+  - `regression-nextjs-commerce` has 3 Cucumber scenarios on disk since
+    commit `a691978` (two in
+    `regression-nextjs-commerce/src/test/resources/features/catalog_search.feature`,
+    one in `.../cart_management.feature`) — not the 2 recorded here on
+    2026-08-21. The suite was not re-run on 2026-08-27, so the step count
+    and pass/fail are not re-measured; the last recorded run predates the
+    third scenario.
+  - `mvn validate` — BUILD SUCCESS. The reactor summary shows six rows: the
+    aggregator/parent POM `regression` plus its five modules
+    (`regression-core`, `regression-petstore-api`, `regression-jhipster`,
+    `regression-nextjs-commerce`, `regression-mcp-server`).
   The `regression-jhipster` runs require its live app at `localhost:8080`
   to be reachable; confirmed via `curl` (HTTP 200) immediately before
   running.
@@ -31,7 +50,12 @@ start of a session; update it at the end of one, per `CLAUDE.md`'s
   report/artifact, 3 architecture-validator) are implemented and documented
   in `regression-mcp-server/docs/TOOLS.md`. A real, verbatim client session
   against `regression-nextjs-commerce` was recorded 2026-08-22 and published
-  as `regression-mcp-server/docs/SESSION_DEMO.md`.
+  as `regression-mcp-server/docs/SESSION_DEMO.md`. That recording is a
+  2026-08-22 snapshot and is now stale in two confirmed respects: the
+  `RunSnapshot.skippedTests` field did not exist yet, so it is absent from
+  every run-status response shown, and the commerce scenario count has since
+  changed (see the build bullet above). Its
+  `regression_get_failure_artifacts` count has not been re-verified.
 - `regression-nextjs-commerce` runs in CI on every push and pull request to
   `master` that touches it (`.github/workflows/commerce-regression.yml`),
   including a reachability pre-flight against the public demo store and
@@ -100,6 +124,42 @@ start of a session; update it at the end of one, per `CLAUDE.md`'s
   (reactor-wide, grouped by module).
 
 ## Most recent session
+
+2026-08-27 (later) — cleanup and baseline pass, branch
+`docs/debt-evidence-selfcontained` (PR open, not merged as of this entry):
+
+Measured the current `regression-mcp-server` suite: `mvn -pl
+regression-mcp-server -am test` (run with the live MCP server still up —
+the `test` phase does not repackage the jar, so the Windows file lock does
+not apply) reported 276 tests, 0 failures, 0 errors, 5 skipped. 276 is the
+current figure; the 272 and 275 numbers in older notes are superseded. The
+5 skips are all the symlink-escape defence tests, which abort on this
+Windows account and run on Linux CI.
+
+Corrected the documents against that measurement and the current tree,
+across three commits on this branch, all stacked on `1b98248`:
+  - finished the in-flight D7/D8 rewrite — both items now cite named
+    files, classes and methods instead of the cleared local working log —
+    and committed it;
+  - added a paragraph to `docs/TECHNICAL_DEBT.md` item B10 recording that
+    its earlier scoped-vs-unscoped validator timing measurement did not
+    survive into any committed document, and that authorizing the cache or
+    skip work needs a fresh measurement taken with the JVM warmed and with
+    the two calls each run first in a separate ordering (B10's Cost field
+    was left at "2-3 passes" — the benchmark folds into the first
+    implementation pass);
+  - corrected four stale statements in this file: the mcp-server test
+    count (272 -> 276), the commerce scenario count (2 -> 3 on disk since
+    `a691978`), the missing staleness caveat on
+    `regression-mcp-server/docs/SESSION_DEMO.md`, and the "6 reactor
+    modules" wording (five modules plus the aggregator POM).
+
+Branch state: commit `1b98248` (the architecture map and test map) is on
+two local branches, `docs/mcp-architecture-map` and
+`docs/debt-evidence-selfcontained`. This pass's three commits are on
+`docs/debt-evidence-selfcontained` only. Both branches are pushed and each
+has its own PR to `master`; the map PR must merge first, and until it does
+the debt-evidence PR's diff will also show the map's contents.
 
 2026-08-27 — `regression-mcp-server` inspection formalized into committed
 documentation, branch `docs/mcp-architecture-map` (not merged as of this

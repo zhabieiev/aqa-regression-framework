@@ -477,6 +477,20 @@ accepts a comparable staleness characteristic for its own jar, per item
 C5, so a documented cache may be acceptable, but that is not this item's
 call to make).
 
+**No measurement survives**: a wall-clock comparison of a module-scoped
+validator call against an unscoped one was taken in an earlier session,
+but it lived only in `output.log` and was lost when that file was cleared
+— the same self-containment defect that D7 and D8 were rewritten to
+remove. No timing figure for this behaviour now exists anywhere in the
+repository, and none should be reconstructed from memory. Authorizing
+either the capability-flag skip (a) or the per-`(repositoryRoot, module)`
+cache (b) requires a fresh measurement taken with the JVM warmed
+(discard the first runs) and with the scoped and unscoped calls each run
+first in a separate ordering: a single scoped-then-unscoped pair on a
+cold JVM cannot separate the cost of the extra scanning from the cost of
+class-loading and JIT warm-up, so it cannot establish how much time the
+fix would actually save.
+
 **Location**: `regression-mcp-server/src/main/java/com/aqa/mcp/validation/ModuleBoundariesTool.java`,
 `FrameworkConventionsTool.java`, `ArchitectureTool.java` (each
 `evaluate` method's module loop); `regression-mcp-server/src/main/java/com/aqa/mcp/validation/JavaSourceScanner.java`
@@ -951,16 +965,21 @@ every consumer that depends on its current shape.
 Module: regression-mcp-server | Cost: n/a
 
 **What**: `RegressionMcpServer.runOutput` (`RegressionMcpServer.java:313-323`
-as of 2026-08-25) builds a `java.util.LinkedHashMap` in a deliberate field
+as of 2026-08-27, unchanged since 2026-08-25) builds a `java.util.LinkedHashMap` in a deliberate field
 order, then returns `Map.copyOf(data)` (line 322). `Map.copyOf` returns one
 of the JDK's immutable map implementations, which do not preserve insertion
 order; HotSpot randomizes an immutable map's iteration order independently
 per JVM start. The `LinkedHashMap`'s deliberate ordering is therefore dead
 from the moment `Map.copyOf` wraps it. This is functionally harmless — JSON
 object key order carries no semantic meaning, and no test in the module
-asserts an exact key order (confirmed during A2's inspection phase; see
-`output.log`'s "PHASE A'' " Q6, which found no test compares against
-`runOutputSchema()`'s exact field-name set) — but a
+asserts an exact key order, confirmed directly as of 2026-08-27: a search
+of the whole test suite for any reference to `runOutputSchema`,
+`Map.copyOf`, or a `LinkedHashMap`-order-sensitive comparison against
+`runOutput`'s field set finds none. `RegressionMcpServerContractTest` and
+`RegressionMcpServerStdioIntegrationTest` — the two test files that
+exercise run-snapshot output — both read individual fields off the parsed
+response (`structuredContent().get(...)` and `path(...)` respectively),
+never the full serialized JSON string or the map's iteration order — but a
 `regression_get_test_run`/`regression_start_test_run`/
 `regression_cancel_test_run` response's JSON key order will differ between
 separate server restarts, purely as an artifact of `Map.copyOf`'s randomized
@@ -972,14 +991,14 @@ on stable key order, replace `Map.copyOf(data)` with
 insertion order while remaining unmodifiable.
 
 **Location**: `regression-mcp-server/src/main/java/com/aqa/mcp/RegressionMcpServer.java`
-(`runOutput`, lines 313-323 as of 2026-08-25).
+(`runOutput`, lines 313-323 as of 2026-08-27).
 
 ### D8. `run.json` has no reader
 
 Module: regression-mcp-server | Cost: n/a
 
 **What**: `RunStore.create` writes an immutable `run.json` per run
-(`RunStore.java:64` as of 2026-08-25,
+(`RunStore.java:64` as of 2026-08-27, unchanged since 2026-08-25,
 `writeNew(directory.resolve("run.json"), record);`) alongside the live,
 atomically-replaced `status.json`, but nothing in production code ever
 reads `run.json` back: every read path in `RunStore` (`get`, `persisted`,
@@ -991,9 +1010,16 @@ targets `status.json`. The only place anywhere in the module that reads
 which reads it once before a status transition and once after, and asserts
 the two reads are equal — i.e. it compares `run.json` to itself across
 time, to prove immutability, not to any other file or any production
-consumer. This was verified directly during A2's inspection phase
-(`output.log`'s "PHASE A'' " Q3), including a targeted grep of the whole
-module for `run\.json` that found no other match.
+consumer. Re-confirmed directly as of 2026-08-27: a grep of the whole
+module (`src/main` and `src/test`) for the literal string `run.json`
+finds exactly five occurrences — the one production write in
+`RunStore.create`; this same test's two `Files.readString` calls; and two
+further test-fixture writes, in `ReportCaptureTest` and
+`SurefireSummaryStoreTest`, each writing a placeholder `run.json`
+alongside `status.json` as part of constructing a `legacy`/`old`-shaped
+fixture directory (so it looks like a real run directory), with neither
+test ever reading that `run.json` back. No other read of `run.json`
+exists anywhere in the module.
 
 **Closed by observation, not work**: if a future feature needs to read a
 run's original, pre-mutation request shape (module/environment/tags/etc.
@@ -1004,10 +1030,14 @@ adding a reader, not adding the file. If no such need ever materializes,
 change.
 
 **Location**: `regression-mcp-server/src/main/java/com/aqa/mcp/execution/RunStore.java`
-(`create`, line 64 as of 2026-08-25; `status`, the sole read-path target
+(`create`, line 64 as of 2026-08-27; `status`, the sole read-path target
 for every other `RunStore` reader);
 `regression-mcp-server/src/test/java/com/aqa/mcp/execution/RunStoreTest.java`
-(`runMetadataIsImmutableAndStatusReplacementLeavesNoTemporaryFiles`).
+(`runMetadataIsImmutableAndStatusReplacementLeavesNoTemporaryFiles`);
+`regression-mcp-server/src/test/java/com/aqa/mcp/execution/ReportCaptureTest.java`
+and `regression-mcp-server/src/test/java/com/aqa/mcp/execution/SurefireSummaryStoreTest.java`
+(the two additional write-only `run.json` fixture-setup lines, neither a
+reader).
 
 ### D9. `SurefireSummaryStoreTest`'s legacy fixture is not frozen
 

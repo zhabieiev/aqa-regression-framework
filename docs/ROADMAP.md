@@ -90,11 +90,12 @@ from that debt catalogue per this file's own scope.
    early-cause return. The `InterruptedException` catch was covered on
    2026-08-28 by
    `interruptedWaitInWaitForPersistsCancelledTerminalRecordAndReleasesLockAndSlot`
-   (which also refuted the dossier's O2 concern). Cost: 1-2
-   passes — the hard part is constructing a deterministic seam for the
-   race (most likely an injectable worker `ExecutorService`, or a
-   `CountDownLatch`-gated executor test double mirroring the existing
-   `ManualTimeoutScheduler` pattern).
+   (which also refuted the dossier's O2 concern). The deterministic seam
+   this test needs — an injectable worker `ExecutorService` — was added
+   2026-08-28 (branch `refactor/coordinator-worker-seam`, 7-arg
+   constructor); a `CountDownLatch`-gated executor mirroring the
+   `ManualTimeoutScheduler` pattern is now all the test requires. Cost: 1
+   pass.
    Risk: low by itself (adds a test, changes no production behavior), but
    is a **hard prerequisite** for item 5 below, not merely recommended
    first.

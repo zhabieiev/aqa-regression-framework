@@ -47,13 +47,20 @@ public final class TestRunCoordinator implements AutoCloseable {
 
     TestRunCoordinator(Path root, Supplier<TestRunRequestValidator> validator, MavenProcessLauncher launcher,
             TimeoutScheduler timeouts, Function<Map<String, String>, MavenRuntimeConfiguration> runtimeLoader, ProcessView processView) {
+        this(root, validator, launcher, timeouts, runtimeLoader, processView,
+                Executors.newFixedThreadPool(3, runnable -> new Thread(runnable, "regression-mcp-run-worker")));
+    }
+
+    TestRunCoordinator(Path root, Supplier<TestRunRequestValidator> validator, MavenProcessLauncher launcher,
+            TimeoutScheduler timeouts, Function<Map<String, String>, MavenRuntimeConfiguration> runtimeLoader, ProcessView processView,
+            ExecutorService worker) {
         this.root = root;
         this.validator = validator;
         this.launcher = launcher;
         this.timeouts = timeouts;
         this.runtimeLoader = runtimeLoader;
         this.processView = processView;
-        this.worker = Executors.newFixedThreadPool(3, runnable -> new Thread(runnable, "regression-mcp-run-worker"));
+        this.worker = worker;
         this.ownershipObserver = Executors.newSingleThreadScheduledExecutor(runnable -> new Thread(runnable, "regression-mcp-ownership"));
         this.store = new RunStore(root);
         recoverIfUnowned();

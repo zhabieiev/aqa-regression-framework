@@ -13,9 +13,11 @@ start of a session; update it at the end of one, per `CLAUDE.md`'s
   measured; they are point-in-time, not a standing guarantee — re-run
   rather than trust a figure once its date is more than a few sessions
   old:
-  - `mvn -pl regression-mcp-server -am test` — Tests run: 276, Failures: 0,
-    Errors: 0, Skipped: 5 (re-verified 2026-08-27; this supersedes the
-    earlier 272 and 275 figures). All 5 skips are environment-conditional:
+  - `mvn -pl regression-mcp-server -am test` — Tests run: 277, Failures: 0,
+    Errors: 0, Skipped: 5 (measured 2026-08-28, after adding one
+    characterization test to `TestRunCoordinatorTest`; was 276 on
+    2026-08-27, which superseded the earlier 272 and 275 figures). All 5
+    skips are environment-conditional:
     each is a symlink-escape defence test
     (`ReportCaptureTest.rejectsSymlinkEscapesAndCleansOwnedStaging`,
     `RunStoreTest.symlinkedStatusTargetIsRejectedWithoutFollowingIt`,
@@ -130,6 +132,41 @@ start of a session; update it at the end of one, per `CLAUDE.md`'s
   (reactor-wide, grouped by module).
 
 ## Most recent session
+
+2026-08-28 (later) — characterization test for `TestRunCoordinator`'s
+`catch (InterruptedException)` terminal path, branch
+`test/coordinator-interrupted-path` (PR open, not merged as of this
+entry):
+
+Added one test to `TestRunCoordinatorTest`,
+`interruptedWaitInWaitForPersistsCancelledTerminalRecordAndReleasesLockAndSlot`,
+plus two nested `Process`/`MavenProcessLauncher` fixtures
+(`WaitForThrowsInterruptedLauncher`, `WaitForThrowsInterruptedProcess`)
+that mirror the suite's existing `SingleSkippedTestReportThenExitValueFailureOnceLauncher`
+/ `ExitValueFailsOnceProcess` pair. The launcher delegates to a real
+`ControlledProcessLauncher("WAIT")` (so `execute()`'s process-identity
+lookup succeeds against the real `SystemProcessView`) and wraps the
+returned process so its blocking `waitFor()` throws
+`InterruptedException` — driving the worker into the catch with **no
+production change** and no new seam. No production source, POM, or CI
+file was touched.
+
+**The dossier's O2 concern is refuted.** O2 (PLAUSIBLE, unverified) held
+that the branch's `Thread.currentThread().interrupt()` re-assertion would
+make the subsequent `RunStore` filesystem I/O throw a
+`ClosedByInterruptException`-derived error and leave no terminal record
+on disk. Observed, with the worker's interrupt flag set: `status.json`
+reaches `CANCELLED`, `finishedAt` set, capture published as
+`UNAVAILABLE`, lock released, active slot cleared, no exception escapes
+the catch. The JDK bulk helpers `Files.readString`/`writeString` run on
+uninterruptible channels. The interrupt flag also does not leak to the
+next task on the pooled worker thread. `docs/TECHNICAL_DEBT.md` item B8
+was narrowed to the early-cause return only (still uncovered — it needs
+an injectable worker `ExecutorService`), with the O2 refutation and the
+new test recorded there; `docs/ROADMAP.md` item 3 and
+`regression-mcp-server/docs/TEST_MAP.md` were updated to match.
+`mvn -pl regression-mcp-server -am test` = 277/0/0/5 (was 276; delta is
+exactly this test). `mvn validate` from the root re-run clean.
 
 2026-08-28 — first per-class dossier: `TestRunCoordinator`, branch
 `docs/dossier-testruncoordinator` (PR open, not merged as of this entry):

@@ -85,13 +85,17 @@ from that debt catalogue per this file's own scope.
    (`secondCaptureCallInTheRuntimeExceptionPathDoesNotOverwriteTheFirstCallsSkippedCount`)
    already pins the merge-vs-overwrite behavior this extraction must
    preserve.
-3. **Add characterization tests for `TestRunCoordinator`'s two currently
-   untested terminal paths** (`docs/TECHNICAL_DEBT.md` item B8): the
-   early-cause return and the `InterruptedException` catch. Cost: 1-2
-   passes — the hard part is constructing a deterministic seam for each
-   race (most likely a `CountDownLatch`-gated worker `ExecutorService`
-   test double, mirroring the existing `ManualTimeoutScheduler` pattern).
-   Risk: low by itself (adds tests, changes no production behavior), but
+3. **Add a characterization test for `TestRunCoordinator`'s last
+   untested terminal path** (`docs/TECHNICAL_DEBT.md` item B8): the
+   early-cause return. The `InterruptedException` catch was covered on
+   2026-08-28 by
+   `interruptedWaitInWaitForPersistsCancelledTerminalRecordAndReleasesLockAndSlot`
+   (which also refuted the dossier's O2 concern). Cost: 1-2
+   passes — the hard part is constructing a deterministic seam for the
+   race (most likely an injectable worker `ExecutorService`, or a
+   `CountDownLatch`-gated executor test double mirroring the existing
+   `ManualTimeoutScheduler` pattern).
+   Risk: low by itself (adds a test, changes no production behavior), but
    is a **hard prerequisite** for item 5 below, not merely recommended
    first.
 4. **Skip or cache `JavaSourceScanner.scan()` per module across validator

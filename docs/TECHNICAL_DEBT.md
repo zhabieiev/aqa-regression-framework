@@ -423,9 +423,34 @@ accidentally still attempting a launch when `cause` is already set, or
 losing the `Thread.currentThread().interrupt()` re-assertion — would
 pass the whole suite unnoticed.
 
+**The `InterruptedException` branch may be non-functional, not merely
+untested** (surfaced by the `TestRunCoordinator` class dossier,
+2026-08-28, PLAUSIBLE / not verified by execution): the catch block does
+`Thread.currentThread().interrupt()` first, then calls `capture(run)` (→
+`RunStore.persisted` → `Files.readString`) and `persistTerminal` (→
+`RunStore.update` → `Files.writeString`/`Files.createTempFile`). Those
+reads and writes go through `java.nio.channels.FileChannel`, an
+`InterruptibleChannel` — a blocking read/write on a thread whose interrupt
+status is set closes the channel and throws `ClosedByInterruptException`,
+which `RunStore` wraps into `RUN_STATE_CORRUPT` / `MAVEN_RUNTIME_UNAVAILABLE`
+and which then propagates out of `execute` on the worker thread. If that
+holds, the path clears the active slot and releases the lock (in
+`finally`) but never persists a terminal snapshot; the run is left
+`RUNNING`/`QUEUED` on disk until the next server start's `recoverIfUnowned`
+transitions it to `ERROR`/`SERVER_RESTART_RECOVERY`. The characterization
+test for this branch must therefore assert that `status.json` actually
+reaches a terminal state, not merely that the branch was entered — and
+any fix must not re-assert the interrupt flag before the terminal write
+(or must save and restore it around the NIO).
+
+**One existing `RuntimeException`-path test does not cover what its name
+says** — see item B11, which also qualifies item D10's claim that the
+`execute()`-side skipped-count guard "does have a dedicated test".
+
 **Location**: `regression-mcp-server/src/main/java/com/aqa/mcp/execution/TestRunCoordinator.java`
 (`execute`'s early-cause return and `InterruptedException` catch);
-`regression-mcp-server/src/test/java/com/aqa/mcp/execution/TestRunCoordinatorTest.java`.
+`regression-mcp-server/src/test/java/com/aqa/mcp/execution/TestRunCoordinatorTest.java`;
+`regression-mcp-server/docs/classes/TestRunCoordinator.md` (§13c).
 
 ### B9. `MavenRuntimeConfigurationLoader.load` has no dedicated direct test
 
@@ -495,6 +520,58 @@ fix would actually save.
 `FrameworkConventionsTool.java`, `ArchitectureTool.java` (each
 `evaluate` method's module loop); `regression-mcp-server/src/main/java/com/aqa/mcp/validation/JavaSourceScanner.java`
 (`scan`, no caching).
+
+### B11. `TestRunCoordinator.execute()`'s skipped-count guard is not exercised by the test named for it
+
+Module: regression-mcp-server | Cost: 1 pass
+
+**What**: `TestRunCoordinatorTest.secondCaptureCallInTheRuntimeExceptionPathDoesNotOverwriteTheFirstCallsSkippedCount`
+is meant to prove the `if (captured != null) skippedTests = captured;`
+guard in `execute()` preserves an already-computed skipped-test count when
+a later `capture(run)` call returns `null`. It does not reach that
+interleaving. The fixture's `ExitValueFailsOnceProcess.exitValue()` throws
+on its first call, and — tracing `execute()` with no cause latched — the
+first `process.exitValue()` call is `terminal = process.exitValue() == 0
+? PASSED : FAILED`, which runs **before** the try-block `capture(run)`.
+So the throw lands in `catch (RuntimeException)` having never run the
+try-block capture; the catch block's `capture(run)` is then the first and
+only capture, it returns a real count, and `if (captured != null)` is a
+plain assignment on that path. The test still asserts something true (the
+`RuntimeException` path captures and persists a skipped count) but never
+demonstrates the guard.
+
+The guard is genuinely load-bearing on a narrow interleaving nothing
+tests: the try-block `capture` succeeds and sets `skippedTests`, then
+`persistTerminal` throws a `RuntimeException` (realistically `RunStore.update`
+wrapping an `IOException`), then `catch (RuntimeException)` re-runs
+`capture(run)` which now returns `null` because the persisted capture
+status is no longer `PENDING`, and the guard keeps the earlier count.
+Replacing it with `skippedTests = capture(run)` would persist `null` and
+lose the count there, and the whole suite would still pass.
+
+**Relationship to D10**: D10 (the recovery-path sibling) states the
+`execute()`-side guard "does have a dedicated test … which forces a real
+capture to succeed once, forces a second (necessarily null-returning)
+capture call, and asserts …". That description does not match the control
+flow above; this item is the correction. The early-cause, normal-completion
+and `InterruptedException` paths each only ever call `capture` once, so a
+plain assignment would not regress them — only the `RuntimeException` path
+after a successful try-block capture.
+
+**Fix**: a fixture that makes `persistTerminal`'s first `RunStore.update`
+throw exactly once (e.g. a wrapping `RunStore`/`AtomicMover`), leaving
+`exitValue()` alone, so line-order is try-block `capture` succeeds →
+`persistTerminal` throws → `catch` → second `capture` returns `null` →
+guard keeps the first value. Assert the persisted `skippedTests` equals
+the first capture's value, not `null`.
+
+**Location**: `regression-mcp-server/src/main/java/com/aqa/mcp/execution/TestRunCoordinator.java`
+(`execute`, the four `Integer captured = capture(run); if (captured !=
+null) skippedTests = captured;` sites and `persistTerminal`);
+`regression-mcp-server/src/test/java/com/aqa/mcp/execution/TestRunCoordinatorTest.java`
+(`secondCaptureCallInTheRuntimeExceptionPathDoesNotOverwriteTheFirstCallsSkippedCount`
+and its `ExitValueFailsOnceProcess` fixture);
+`regression-mcp-server/docs/classes/TestRunCoordinator.md` (§11 O1, §13).
 
 ## C. Accepted characteristics
 
@@ -720,6 +797,41 @@ abstraction this module's own review discipline avoids.
 (every file's import list); `regression-mcp-server/src/main/java/com/aqa/mcp/validation/ArchitectureRules.java`
 (`NoPackageCycles`); `regression-mcp-server/src/test/java/com/aqa/mcp/validation/ArchitectureToolTest.java`
 (`realReactorHasNoArch002PackageCycles`).
+
+### C7. `TestRunCoordinator` holds the per-run monitor across all of report capture's filesystem I/O
+
+Module: regression-mcp-server | Cost: n/a | Review trigger: report capture
+is ever made to run while the Maven process is still alive (for example
+incremental or streaming capture), or a second concurrent run is ever
+permitted.
+
+**What**: `TestRunCoordinator.capture(Active run)` is
+`synchronized (run) { return capture(run.snapshot.runId()); }`, and the
+inner `capture(String)` performs `RunStore.persisted` (read `status.json`),
+`new ReportCapture().capture(...)` (walk the staging tree, parse every
+`TEST-*.xml`, SHA-256 every file up to a 64 MiB total, two `ATOMIC_MOVE`s,
+write two index files) and `RunStore.updateCapture` (rewrite `status.json`)
+— all under that one monitor. The 100 ms fixed-rate `observe(run)`
+ownership tick synchronizes on the same monitor and is therefore blocked
+for the whole capture. Capture and terminal persistence are also two
+separate `synchronized (run)` sections rather than one, so `observe` can
+re-persist the still-`RUNNING` snapshot between them and `status.json`
+transiently carries `capture.status == COMPLETE/PARTIAL` together with
+`snapshot.state == RUNNING`.
+
+**Decision**: accepted as-is. It is harmless today because capture only
+ever runs after `process.waitFor()` has returned (paths B/C/D) or during
+restart recovery — in every case the Maven process has already exited, so
+the paused ownership observation cannot miss a new descendant, and no MCP
+tool exposes the intermediate on-disk state (`summary`/`failureSummary`/
+`artifacts`/`readArtifact` gate on the in-memory `Active.snapshot.terminal()`,
+`get` returns the in-memory snapshot). The `finishTerminally`-style
+single-terminal-transaction collapse discussed in the class dossier would
+close the split; it is gated on B8's characterization tests first.
+
+**Location**: `regression-mcp-server/src/main/java/com/aqa/mcp/execution/TestRunCoordinator.java`
+(`capture(Active)`, `persistTerminal`, `observe`);
+`regression-mcp-server/docs/classes/TestRunCoordinator.md` (§11 O3/O4, §13b).
 
 ## D. Open questions and unproven assumptions
 
@@ -1270,6 +1382,61 @@ under the same review discipline as today's two hardcoded entries.
 (the two hardcoded `environments = List.of("dev")` profiles);
 `regression-mcp-server/src/test/java/com/aqa/mcp/execution/MavenInvocationFactoryTest.java`
 (neither test varies `environment`).
+
+### D14. A malformed `runId` returns `INVALID_ARGUMENTS` from the report/artifact tools but `RUN_NOT_FOUND` from the run-status tools, and `docs/TOOLS.md` documents only one
+
+Module: regression-mcp-server | Cost: n/a
+
+**What**: `TestRunCoordinator.get` (and `cancel`, which delegates to `get`
+for a non-active id) throw `RUN_NOT_FOUND` when `RunId.valid(id)` is false
+— a syntactically malformed id and an unknown-but-well-formed id both
+produce `RUN_NOT_FOUND`. `TestRunCoordinator.summary`, `failureSummary`,
+`artifacts` and `readArtifact` instead throw
+`ExecutionPlanningException("INVALID_ARGUMENTS", "runId has an invalid
+format.")` for a malformed id, and only reach `RUN_NOT_FOUND` (via
+`RunStore.persisted`) for a well-formed-but-unknown id. So the same
+malformed `runId` string surfaces as `INVALID_ARGUMENTS` through
+`regression_get_test_summary` / `regression_get_failure_summary` /
+`regression_get_failure_artifacts` / `regression_read_failure_artifact`
+but as `RUN_NOT_FOUND` through `regression_get_test_run` /
+`regression_cancel_test_run`. All are structured errors in the
+`{"status":"error","error":{"code","message"}}` envelope — never an
+exception or a crash.
+
+`regression-mcp-server/docs/TOOLS.md` states, for the four report/artifact
+tools, "a missing or foreign `runId` returns `RUN_NOT_FOUND`", and its
+"Common error codes" section lists `RUN_NOT_FOUND` as "returned by
+`regression_get_test_run`, `regression_cancel_test_run`, and the four
+report/artifact tools" for "a `runId` [that] does not match any
+server-generated run", while listing `INVALID_ARGUMENTS` only as
+"schema-level input rejection". It documents `RUN_NOT_FOUND` for these
+tools and is silent on the app-layer `INVALID_ARGUMENTS` a malformed id
+actually produces from them.
+
+**Not a section-A defect**: `INVALID_ARGUMENTS` for a syntactically
+invalid id is neither wrong nor misleading — it is arguably more precise
+than `RUN_NOT_FOUND` (it distinguishes "you sent a malformed id" from
+"no such run"). The gap is that `docs/TOOLS.md` is incomplete about it,
+not that the server returns a wrong answer.
+
+**Closed by observation, not work**: add one sentence to
+`docs/TOOLS.md` noting that a `runId` failing the `run-<32 hex>` format
+check returns `INVALID_ARGUMENTS` from the four report/artifact tools
+(and `RUN_NOT_FOUND` from `regression_get_test_run` /
+`regression_cancel_test_run`), while a well-formed-but-unknown `runId`
+returns `RUN_NOT_FOUND` from all six — matching how item D12 proposes to
+document `ModuleValidationResult.truncated`. Alternatively, make the four
+report/artifact methods emit `RUN_NOT_FOUND` for a malformed id too, so
+all six agree; that is a client-contract change and should not be made
+without a reason.
+
+**Location**: `regression-mcp-server/src/main/java/com/aqa/mcp/execution/TestRunCoordinator.java`
+(`get`/`notFound`; `summary`/`failureSummary`/`artifacts`/`readArtifact`
+format checks); `regression-mcp-server/src/main/java/com/aqa/mcp/execution/RunId.java`
+(`valid`); `regression-mcp-server/docs/TOOLS.md` ("Report and artifact
+tools" preamble and "Common error codes");
+`regression-mcp-server/docs/classes/TestRunCoordinator.md` (§7, hypothesis
+H4).
 
 ## Where module-level debt lives
 

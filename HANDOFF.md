@@ -13,11 +13,12 @@ start of a session; update it at the end of one, per `CLAUDE.md`'s
   measured; they are point-in-time, not a standing guarantee — re-run
   rather than trust a figure once its date is more than a few sessions
   old:
-  - `mvn -pl regression-mcp-server -am test` — Tests run: 277, Failures: 0,
-    Errors: 0, Skipped: 5 (measured 2026-08-28, after adding one
-    characterization test to `TestRunCoordinatorTest`; was 276 on
-    2026-08-27, which superseded the earlier 272 and 275 figures). All 5
-    skips are environment-conditional:
+  - `mvn -pl regression-mcp-server -am test` — Tests run: 278, Failures: 0,
+    Errors: 0, Skipped: 5 (measured 2026-08-28, after adding two
+    characterization tests to `TestRunCoordinatorTest` — one for the
+    `InterruptedException` terminal path, one for the early-cause return;
+    was 276 on 2026-08-27, which superseded the earlier 272 and 275
+    figures). All 5 skips are environment-conditional:
     each is a symlink-escape defence test
     (`ReportCaptureTest.rejectsSymlinkEscapesAndCleansOwnedStaging`,
     `RunStoreTest.symlinkedStatusTargetIsRejectedWithoutFollowingIt`,
@@ -97,11 +98,14 @@ start of a session; update it at the end of one, per `CLAUDE.md`'s
   solely to feed it) was removed; it never actually ran under any real
   invocation.
 - Known debt and open questions: see [`docs/TECHNICAL_DEBT.md`](docs/TECHNICAL_DEBT.md)
-  (30 items as of 2026-08-27, counted directly from the file's own `###`
+  (32 items as of 2026-08-28, counted directly from the file's own `###`
   headers rather than trusted from this bullet's own prior figure — this
   bullet had drifted to "20 items as of 2026-08-25" when the file actually
   held 23 at that date, a staleness caught and corrected during the
-  2026-08-27 session below; grouped into four sections by the
+  2026-08-27 session below. Item **B8** — the two untested
+  `TestRunCoordinator.execute()` terminal paths — was retired on 2026-08-28
+  once characterization tests covered both (its identifier is not reused).
+  Grouped into four sections by the
   action each calls for — A. Defects: fix, or accept with a stated reason;
   B. Debt: schedule; C. Accepted characteristics: no action, each with a
   stated review trigger; D. Open questions: closed by observation, not
@@ -133,11 +137,48 @@ start of a session; update it at the end of one, per `CLAUDE.md`'s
 
 ## Most recent session
 
+2026-08-28 (latest) — characterization test for `TestRunCoordinator`'s
+early-cause return terminal path, branch `test/coordinator-early-cause-path`
+(PR open, not merged as of this entry). Stacked on PR #37 (the injectable
+worker `ExecutorService` seam), merged to `master` earlier this session:
+
+Added one test to `TestRunCoordinatorTest`,
+`causeLatchedBeforeWorkerStartsReturnsCancelledWithNothingLaunched`, plus
+two nested fixtures: `GatedWorkerExecutor` (an `ExecutorService` passed
+through the 7-arg constructor that holds the first submitted task in a real
+`CountDownLatch` barrier — no sleep, no timeout — and records, clock-free
+via happens-before, whether `cancel()` had returned when the task was
+released) and `NeverLaunchingLauncher` (throws if `execute()` ever reaches
+the launch). The test latches `CANCELLED` while the worker task is parked,
+then releases. Test sources only — no production, POM, or CI change.
+
+Observed current behaviour of the early-cause path: terminal state
+`CANCELLED`; in-memory and on-disk snapshots agree; `startedAt`,
+`exitCode`, `skippedTests` all absent; `finishedAt` set; capture published
+as `UNAVAILABLE`; **no process ever launched** (`launches()==0`, zero owned
+processes); lock released, active slot cleared; no exception on the worker
+thread. Not a defect — the path behaves coherently. 20+ consecutive runs
+green.
+
+With this, all four `execute()` terminal paths are covered (normal, the
+`RuntimeException` catch, the `InterruptedException` catch since PR #36,
+and now the early-cause return). **`docs/TECHNICAL_DEBT.md` item B8 was
+retired** — both gaps it tracked are closed; its identifier is not reused.
+Made B8 citations self-contained in `docs/TECHNICAL_DEBT.md` (C7),
+`regression-mcp-server/docs/TEST_MAP.md`, and `docs/ROADMAP.md` (items 3
+and 6). The dossier and `ARCHITECTURE.md` still cite B8 and the "two
+untested paths" framing; those, plus the seam-induced staleness from
+PR #37, are appended to the recorded pending-dossier-corrections list in
+`output.log` (P1-P8 from the prior pass, now extended) for the separate
+documentation pass. `mvn -pl regression-mcp-server -am test` on this
+branch: 277/0/0/5 before, 278/0/0/5 after (delta is exactly this test).
+`mvn validate` from the root re-run clean.
+
 2026-08-28 (later still) — injectable worker `ExecutorService` seam on
-`TestRunCoordinator`, branch `refactor/coordinator-worker-seam` (PR open,
-not merged as of this entry). PRs #35 (dossier) and #36 (the
-`InterruptedException` characterization test) both merged to `master`
-earlier this session — this branch is stacked on that merged state:
+`TestRunCoordinator`, branch `refactor/coordinator-worker-seam` (merged,
+PR #37). PRs #35 (dossier) and #36 (the `InterruptedException`
+characterization test) both merged to `master` earlier this session — that
+branch was stacked on that merged state:
 
 Made `TestRunCoordinator`'s internal worker `ExecutorService` injectable
 for tests, and nothing else — the one authorized production change.
@@ -608,12 +649,15 @@ MCP-executable module, on equal footing with `regression-nextjs-commerce`.
 
 The per-class dossier directory (`regression-mcp-server/docs/classes/`) is
 started — `TestRunCoordinator.md` is the first (merged, PR #35). Two
-follow-ups from it are also merged: PR #36 (the `InterruptedException`
-characterization test, which refuted concern O2) and — open, on branch
-`refactor/coordinator-worker-seam` — the injectable worker `ExecutorService`
-seam that makes `execute()`'s early-cause path reachable from a test (the
-path-A characterization test itself, `docs/TECHNICAL_DEBT.md` B8, is still
-unwritten). The concrete next step is to continue the dossier work following
+follow-ups are merged (PR #36 the `InterruptedException` characterization
+test, which refuted concern O2; PR #37 the injectable worker
+`ExecutorService` seam) and one is open on branch
+`test/coordinator-early-cause-path` (the early-cause characterization test).
+All four of `TestRunCoordinator.execute()`'s terminal paths are now
+covered and the debt item that tracked the gap (B8) is retired. The
+dossier itself still carries pending corrections (recorded in `output.log`,
+extended each pass) — a separate documentation pass, not yet scheduled.
+The concrete next step is to continue the dossier work following
 [`regression-mcp-server/docs/ARCHITECTURE.md`](regression-mcp-server/docs/ARCHITECTURE.md)'s
 own review order (Group 1's tier-0 leaves first — e.g. `RepositoryRoot`,
 `ModuleType`, `FailureArtifact` — through `RegressionMcpServer` last);

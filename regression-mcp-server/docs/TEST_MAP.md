@@ -52,10 +52,10 @@ debt items this map's gaps feed into.
 | `FailureArtifactStoreTest` | FS | CONTRACT — artifact listing/reading, MIME allow-list, the tamper/traversal defense-in-depth check | `RunStore.artifacts`/`readArtifact` | — |
 | `ReportCaptureTest` | FS | CONTRACT — every capture-status transition, all bounds, XXE/symlink rejection, atomic-move-failure fail-closed, Allure-Surefire ambiguity handling. Contains one genuine frozen-literal fixture (`executionRecordsRemainReadableAndAreNotUpgradedWhenTheirStatusChanges`) | `ReportCapture`, `SurefireSummaryParser`, `AllureResultParser` | — |
 | `RunStoreTest` | FS + concurrency | CONTRACT — `run.json` immutability, atomic replace with no temp-file leakage, corrupted-state handling, symlink rejection, 1000-iteration concurrent race safety | `RunStore` | — |
-| `StaleRunRecoveryTest` | UNIT (fake `ProcessView`) | CONTRACT — every recovery branch | `TestRunCoordinator.recoverIfUnowned` | **None of its 8 tests reference `skippedTests`** — the recovery path's skipped-count carry-through has no value assertion (a narrower, already-known gap, distinct from the two path gaps below) |
+| `StaleRunRecoveryTest` | UNIT (fake `ProcessView`) | CONTRACT — every recovery branch | `TestRunCoordinator.recoverIfUnowned` | **None of its 8 tests reference `skippedTests`** — the recovery path's skipped-count carry-through has no value assertion (a narrower, already-known gap) |
 | `SurefireSummaryParserTest` | UNIT | CONTRACT — aggregation, dedup-vs-contradiction rejection, sanitization, bounded truncation, XXE rejection | `SurefireSummaryParser` | — |
 | `SurefireSummaryStoreTest` | FS | CONTRACT — published-index-only reads, digest/schema/wrong-run rejection. **Its `legacy`/`old` fixture is not a frozen literal** — built by live Jackson serialization of a current-shape `RunSnapshot`, not a hand-written historical shape | `RunStore.summary`/`failureSummary` | Does not corroborate backward-compatible deserialization of a genuinely historical `RunSnapshot` shape, despite appearing to; the assertion it does make (`NOT_FOUND`) is unaffected either way |
-| `TestRunCoordinatorTest` | PROC + concurrency | CONTRACT — terminal-path transitions, ownership/observer safety, timeout-boundary races, lock lifecycle, log-cap persistence | `TestRunCoordinator` | **One of its four terminal paths in `execute()` has zero coverage** (`docs/TECHNICAL_DEBT.md` item B8): the early-cause return (cancellation completing before the worker thread even begins `execute()` — no fixture can force this race deterministically). A regression in it would pass the whole suite unnoticed. (The `InterruptedException` catch was covered on 2026-08-28 by `interruptedWaitInWaitForPersistsCancelledTerminalRecordAndReleasesLockAndSlot`.) |
+| `TestRunCoordinatorTest` | PROC + concurrency | CONTRACT — terminal-path transitions, ownership/observer safety, timeout-boundary races, lock lifecycle, log-cap persistence | `TestRunCoordinator` | All four `execute()` terminal paths are now covered: normal completion (16 tests), the `RuntimeException` catch (2), the `InterruptedException` catch (`interruptedWaitInWaitForPersistsCancelledTerminalRecordAndReleasesLockAndSlot`, 2026-08-28), and the early-cause return (`causeLatchedBeforeWorkerStartsReturnsCancelledWithNothingLaunched`, 2026-08-28, via the injectable worker `ExecutorService`). Remaining narrower gap: `secondCaptureCallInTheRuntimeExceptionPath…` does not exercise the `skippedTests` guard it is named for. |
 
 ## validation package — 20 files
 
@@ -84,19 +84,15 @@ debt items this map's gaps feed into.
 
 ## Cross-cutting gaps, named once here rather than repeated per row
 
-1. **`TestRunCoordinator`'s early-cause return terminal path has zero test
-   coverage** — see the `TestRunCoordinatorTest` row. The
-   `InterruptedException` path was covered on 2026-08-28. Tracked as
-   `docs/TECHNICAL_DEBT.md` item B8.
-2. **`MavenRuntimeConfigurationLoader.load` has no dedicated direct test**
+1. **`MavenRuntimeConfigurationLoader.load` has no dedicated direct test**
    — see the row between `BoundedLogDrainerLimitTest` and
    `FailureArtifactStoreTest`. Tracked as item B9.
-3. **`ModuleValidationResult.truncated` is asserted nowhere as a real,
+2. **`ModuleValidationResult.truncated` is asserted nowhere as a real,
    production-computed value** — neither the record's own unit test nor
    any of the three validator functional tests (`ModuleBoundariesToolTest`,
    `FrameworkConventionsToolTest`, `ArchitectureToolTest`) reads it.
    Tracked as item D12.
-4. **`SurefireSummaryStoreTest`'s `legacy`/`old` fixture is not a frozen
+3. **`SurefireSummaryStoreTest`'s `legacy`/`old` fixture is not a frozen
    literal** — see the `SurefireSummaryStoreTest` row above. It is built
    by live Jackson serialization of a current-shape `RunSnapshot` at
    test-run time, so it silently tracks the current record shape rather

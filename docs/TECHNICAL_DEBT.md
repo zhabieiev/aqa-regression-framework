@@ -384,96 +384,6 @@ landing on `master` and staying there indefinitely if the dropped-event
 recovery (an unrelated `workflow_dispatch` addition, not a deliberate
 re-verification of `4d7c1214` itself) had not happened to occur first.
 
-### B8. `TestRunCoordinator.execute()`'s early-cause return terminal path has no test coverage
-
-Module: regression-mcp-server | Cost: 1 pass — the deterministic seam now
-exists (see below); only the test itself remains
-
-**What**: `execute()` has four ways to reach `persistTerminal`: an
-early-cause return (the run was already cancelled before the worker
-thread began executing), normal completion (`process.waitFor()`
-returns), an `InterruptedException` catch, and a `RuntimeException`
-catch. `TestRunCoordinatorTest` covers normal completion (16 tests), the
-`RuntimeException` path (2 tests, including
-`secondCaptureCallInTheRuntimeExceptionPathDoesNotOverwriteTheFirstCallsSkippedCount`
-and `timeoutSchedulingFailureNeverPublishesRunningAndCleansProcessAndLock`),
-and — since 2026-08-28 — the `InterruptedException` catch
-(`interruptedWaitInWaitForPersistsCancelledTerminalRecordAndReleasesLockAndSlot`,
-see below). The early-cause return still has zero coverage:
-
-- The early-cause return requires `cancel()` to complete before the
-  worker thread even begins running the submitted `execute()` task —
-  before any process launch is attempted. No fixture in the suite can
-  force this exact ordering deterministically: every cancellation test
-  cancels only after the launcher's `launch()` method has already been
-  entered, which is necessarily after this branch's own check already
-  passed. A test must be able to hold the worker between `worker.submit`
-  and the body of `execute`.
-
-**Seam added 2026-08-28** (branch `refactor/coordinator-worker-seam`): the
-worker `ExecutorService` is now injectable through a new 7-arg
-package-private constructor
-(`TestRunCoordinator(Path, Supplier, MavenProcessLauncher, TimeoutScheduler, Function, ProcessView, ExecutorService)`),
-following the same widening-constructor chain as the existing
-`launcher`/`timeouts`/`runtimeLoader`/`processView` seams; the public
-constructor still supplies the identical default
-(`Executors.newFixedThreadPool(3, …"regression-mcp-run-worker")`), and
-`close()` shuts an injected executor down exactly as it does the default,
-so a caller passing one hands over its lifetime. A test can now inject a
-hold-until-released executor (e.g. a `CountDownLatch`-gated
-`ExecutorService`, mirroring the existing `ManualTimeoutScheduler`
-pattern). Only the characterization test itself remains: inject the held
-executor; `start()`; `cancel(runId)`; release; assert
-`get(runId).state() == CANCELLED`, `startedAt() == null`,
-`exitCode() == null`, the injected `MavenProcessLauncher` was never
-invoked, no owned processes persisted, `active` cleared,
-`acquireActiveLock()` succeeds afterward.
-
-**Why still open**: the seam pass deliberately added no test (its scope
-was the production seam only); the path-A characterization test is a
-separate pass.
-
-**Consequence**: a regression in the branch — for example, accidentally
-still attempting a launch when `cause` is already set — would pass the
-whole suite unnoticed.
-
-**The `InterruptedException` branch is functional — the class dossier's
-O2 concern is refuted** (verified by execution 2026-08-28). O2 held that
-the catch block's `Thread.currentThread().interrupt()` re-assertion would
-make the subsequent `RunStore` filesystem I/O (`capture(run)` →
-`Files.readString`, `persistTerminal` → `Files.writeString` /
-`Files.createTempFile` / `Files.move`) throw a
-`ClosedByInterruptException`-derived `RUN_STATE_CORRUPT` /
-`MAVEN_RUNTIME_UNAVAILABLE` and leave no terminal record on disk. It does
-not: the JDK's bulk helpers `Files.readString` (→ `Files.readAllBytes`)
-and `Files.writeString` (→ `Files.write`) run on channels explicitly made
-uninterruptible, and `Files.createTempFile` / `Files.move` are not
-blocking channel reads or writes. Observed directly with the worker
-thread's interrupt flag set and still set afterward: `status.json`
-reaches `CANCELLED`, `finishedAt` is set, capture status publishes as
-`UNAVAILABLE`, the lock is released and the active slot cleared, and no
-exception escapes the catch block. The interrupt flag also does not leak
-to the next task on the pooled worker thread — `awaitDrainers`'s
-`Future.get` clears it via `Thread.interrupted()` when a drainer is not
-yet complete, and `ThreadPoolExecutor.runWorker` clears any leftover flag
-before the next task when the pool is not stopping; a second run on the
-same coordinator completes normally. `interruptedWaitInWaitForPersistsCancelledTerminalRecordAndReleasesLockAndSlot`
-pins this behaviour and asserts the on-disk terminal record, not merely
-that the branch was entered.
-
-**One existing `RuntimeException`-path test does not cover what its name
-says** — see item B11, which also qualifies item D10's claim that the
-`execute()`-side skipped-count guard "does have a dedicated test".
-
-**Location**: `regression-mcp-server/src/main/java/com/aqa/mcp/execution/TestRunCoordinator.java`
-(`execute`'s early-cause return; the 7-arg constructor is the worker
-seam);
-`regression-mcp-server/src/test/java/com/aqa/mcp/execution/TestRunCoordinatorTest.java`
-(`interruptedWaitInWaitForPersistsCancelledTerminalRecordAndReleasesLockAndSlot`
-covers the `InterruptedException` path; no test covers the early-cause
-return);
-`regression-mcp-server/docs/classes/TestRunCoordinator.md` (§3, §5, §13c, §11 O2).
-
 ### B9. `MavenRuntimeConfigurationLoader.load` has no dedicated direct test
 
 Module: regression-mcp-server | Cost: 1 pass
@@ -849,7 +759,10 @@ tool exposes the intermediate on-disk state (`summary`/`failureSummary`/
 `artifacts`/`readArtifact` gate on the in-memory `Active.snapshot.terminal()`,
 `get` returns the in-memory snapshot). The `finishTerminally`-style
 single-terminal-transaction collapse discussed in the class dossier would
-close the split; it is gated on B8's characterization tests first.
+close the split; it was gated on characterization tests for `execute()`'s
+early-cause and `InterruptedException` terminal paths, both of which now
+exist (`TestRunCoordinatorTest.causeLatchedBeforeWorkerStartsReturnsCancelledWithNothingLaunched`
+and `TestRunCoordinatorTest.interruptedWaitInWaitForPersistsCancelledTerminalRecordAndReleasesLockAndSlot`).
 
 **Location**: `regression-mcp-server/src/main/java/com/aqa/mcp/execution/TestRunCoordinator.java`
 (`capture(Active)`, `persistTerminal`, `observe`);

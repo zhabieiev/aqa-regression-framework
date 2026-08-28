@@ -364,6 +364,55 @@ class TestRunCoordinatorTest {
         assertThat(new RunStore(root).persisted(run.runId()).snapshot().skippedTests()).isEqualTo(1);
     }
 
+    /** Characterization of execute()'s catch (InterruptedException) terminal path (path C). The worker thread is
+     * driven into that catch by a launcher whose returned Process throws InterruptedException from the blocking
+     * waitFor(); the process-identity lookup at launch still succeeds because the fake is backed by a real
+     * short-lived OS process, so the real SystemProcessView resolves it (the alternative, a fake ProcessView via
+     * the 6-arg constructor, would also reach the branch). This records CURRENT behaviour. The dossier's O2 raised
+     * the possibility that the branch's Thread.currentThread().interrupt() re-assertion would make the subsequent
+     * RunStore filesystem I/O throw ClosedByInterruptException and leave no terminal record on disk; observation
+     * refutes that -- the JDK bulk helpers Files.readString/writeString run on uninterruptible channels, so the
+     * terminal record IS persisted and the in-memory and on-disk snapshots agree. */
+    @Test
+    void interruptedWaitInWaitForPersistsCancelledTerminalRecordAndReleasesLockAndSlot() throws Exception {
+        ControlledProcessLauncher inner = launcher("WAIT");
+        launchers.add(inner);
+        TestRunCoordinator coordinator = new TestRunCoordinator(root, this::validator,
+                new WaitForThrowsInterruptedLauncher(inner), new ManualTimeoutScheduler(), ignored -> runtime());
+        coordinators.add(coordinator);
+
+        RunSnapshot run = coordinator.start(request(), Map.of());
+        RunSnapshot terminal = awaitTerminal(coordinator, run.runId());
+        RunStore.PersistedRun persisted = new RunStore(root).persisted(run.runId());
+
+        // firstCause(run, CANCELLED) supplies the default: no cancel() or timeout ever latched run.cause, so the
+        // catch (InterruptedException) default wins. Path B would have produced FAILED (non-zero exit), path D
+        // ERROR, path A a run with startedAt == null.
+        assertThat(terminal.state()).isEqualTo(TestRunState.CANCELLED);
+        assertThat(terminal.reason()).isEqualTo("CANCELLED");
+        assertThat(terminal.startedAt()).isNotNull();
+        assertThat(terminal.finishedAt()).isNotNull();
+        assertThat(terminal.skippedTests()).isNull();
+        // O2 refuted: a terminal record reaches status.json despite the re-asserted interrupt flag, and the
+        // in-memory snapshot and the on-disk record agree.
+        assertThat(persisted.snapshot().state()).isEqualTo(TestRunState.CANCELLED);
+        assertThat(persisted.snapshot()).isEqualTo(terminal);
+        assertThat(persisted.snapshot().finishedAt()).isNotNull();
+        assertThat(persisted.snapshot().skippedTests()).isNull();
+        // capture still runs and publishes; the empty staging directory makes it UNAVAILABLE rather than PENDING.
+        assertThat(persisted.capture().status()).isEqualTo(CaptureStatus.UNAVAILABLE);
+        assertThat(inner.process().isAlive()).isFalse();
+
+        // the run's lock is released in execute()'s finally, so a direct acquisition succeeds.
+        try (RunStore.Lock ignored = new RunStore(root).acquireActiveLock()) {
+            assertThat(ignored).isNotNull();
+        }
+        // the active slot is cleared and the lock is free, so a fresh coordinator accepts and completes a run.
+        TestRunCoordinator second = coordinator(launcher("PASS"), new ManualTimeoutScheduler());
+        assertThat(awaitTerminal(second, second.start(request(), Map.of()).runId()).state())
+                .isEqualTo(TestRunState.PASSED);
+    }
+
     private TestRunCoordinator coordinator(ControlledProcessLauncher launcher, TestRunCoordinator.TimeoutScheduler scheduler) {
         launchers.add(launcher);
         TestRunCoordinator coordinator = new TestRunCoordinator(root, this::validator, launcher, scheduler, ignored -> runtime());
@@ -550,6 +599,31 @@ class TestRunCoordinatorTest {
             if (thrown.compareAndSet(false, true)) throw new IllegalStateException("fixture forces exactly one persistTerminal failure");
             return delegate.exitValue();
         }
+        @Override public void destroy() { delegate.destroy(); }
+        @Override public Process destroyForcibly() { return delegate.destroyForcibly(); }
+        @Override public boolean isAlive() { return delegate.isAlive(); }
+        @Override public long pid() { return delegate.pid(); }
+        @Override public ProcessHandle toHandle() { return delegate.toHandle(); }
+    }
+
+    /** Delegates the launch to a real ControlledProcessLauncher (a genuine short-lived OS process, so the
+     * process-identity lookup in execute() succeeds), then wraps the returned process so its blocking waitFor()
+     * throws InterruptedException -- landing execute() in catch (InterruptedException) with no production change. */
+    private static final class WaitForThrowsInterruptedLauncher implements MavenProcessLauncher {
+        private final MavenProcessLauncher delegate;
+        WaitForThrowsInterruptedLauncher(MavenProcessLauncher delegate) { this.delegate = delegate; }
+        @Override public Process launch(MavenInvocation invocation) { return new WaitForThrowsInterruptedProcess(delegate.launch(invocation)); }
+    }
+
+    private static final class WaitForThrowsInterruptedProcess extends Process {
+        private final Process delegate;
+        WaitForThrowsInterruptedProcess(Process delegate) { this.delegate = delegate; }
+        @Override public java.io.OutputStream getOutputStream() { return delegate.getOutputStream(); }
+        @Override public java.io.InputStream getInputStream() { return delegate.getInputStream(); }
+        @Override public java.io.InputStream getErrorStream() { return delegate.getErrorStream(); }
+        @Override public int waitFor() throws InterruptedException { throw new InterruptedException("fixture interrupts the worker's blocking wait"); }
+        @Override public boolean waitFor(long timeout, TimeUnit unit) throws InterruptedException { return delegate.waitFor(timeout, unit); }
+        @Override public int exitValue() { return delegate.exitValue(); }
         @Override public void destroy() { delegate.destroy(); }
         @Override public Process destroyForcibly() { return delegate.destroyForcibly(); }
         @Override public boolean isAlive() { return delegate.isAlive(); }

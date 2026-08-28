@@ -384,73 +384,80 @@ landing on `master` and staying there indefinitely if the dropped-event
 recovery (an unrelated `workflow_dispatch` addition, not a deliberate
 re-verification of `4d7c1214` itself) had not happened to occur first.
 
-### B8. Two of `TestRunCoordinator.execute()`'s four terminal paths have no test coverage
+### B8. `TestRunCoordinator.execute()`'s early-cause return terminal path has no test coverage
 
 Module: regression-mcp-server | Cost: 1-2 passes — constructing a
-deterministic seam for each race is the hard part
+deterministic seam for the race is the hard part
 
 **What**: `execute()` has four ways to reach `persistTerminal`: an
 early-cause return (the run was already cancelled before the worker
 thread began executing), normal completion (`process.waitFor()`
 returns), an `InterruptedException` catch, and a `RuntimeException`
-catch. `TestRunCoordinatorTest` thoroughly covers normal completion (16
-tests) and the `RuntimeException` path (2 tests, including
+catch. `TestRunCoordinatorTest` covers normal completion (16 tests), the
+`RuntimeException` path (2 tests, including
 `secondCaptureCallInTheRuntimeExceptionPathDoesNotOverwriteTheFirstCallsSkippedCount`
-and `timeoutSchedulingFailureNeverPublishesRunningAndCleansProcessAndLock`).
-The other two have zero coverage:
+and `timeoutSchedulingFailureNeverPublishesRunningAndCleansProcessAndLock`),
+and — since 2026-08-28 — the `InterruptedException` catch
+(`interruptedWaitInWaitForPersistsCancelledTerminalRecordAndReleasesLockAndSlot`,
+see below). The early-cause return still has zero coverage:
+
 - The early-cause return requires `cancel()` to complete before the
   worker thread even begins running the submitted `execute()` task —
   before any process launch is attempted. No fixture in the suite can
   force this exact ordering deterministically: every cancellation test
   cancels only after the launcher's `launch()` method has already been
   entered, which is necessarily after this branch's own check already
-  passed.
-- The `InterruptedException` catch requires the worker thread itself to
-  be interrupted while blocked in `process.waitFor()`. No test in the
-  file interrupts the worker thread; `TestRunCoordinator.close()`'s own
-  `worker.shutdownNow()` interruption path is only reached if a
-  10-second graceful `awaitTermination` times out first, and no test
-  waits that out.
+  passed. The `worker` `ExecutorService` is hard-constructed in the
+  constructor and is not one of the injectable seams, so a test cannot
+  hold the worker between `worker.submit` and the body of `execute`.
 
 **Why deferred**: identified during an inspection pass, not sought out as
-a scheduled fix; each gap needs its own deterministic seam (most likely a
-`CountDownLatch`-gated worker `ExecutorService` test double, mirroring
-the existing `ManualTimeoutScheduler` pattern) rather than a single
-shared fixture.
+a scheduled fix; the gap needs its own deterministic seam — most likely
+an injectable worker `ExecutorService` (a package-private constructor
+parameter mirroring the existing `launcher`/`timeouts`/`processView`
+seams) so a test can pass a hold-until-released executor, or a
+`CountDownLatch`-gated executor test double mirroring the existing
+`ManualTimeoutScheduler` pattern.
 
-**Consequence**: a regression in either branch — for example,
-accidentally still attempting a launch when `cause` is already set, or
-losing the `Thread.currentThread().interrupt()` re-assertion — would
-pass the whole suite unnoticed.
+**Consequence**: a regression in the branch — for example, accidentally
+still attempting a launch when `cause` is already set — would pass the
+whole suite unnoticed.
 
-**The `InterruptedException` branch may be non-functional, not merely
-untested** (surfaced by the `TestRunCoordinator` class dossier,
-2026-08-28, PLAUSIBLE / not verified by execution): the catch block does
-`Thread.currentThread().interrupt()` first, then calls `capture(run)` (→
-`RunStore.persisted` → `Files.readString`) and `persistTerminal` (→
-`RunStore.update` → `Files.writeString`/`Files.createTempFile`). Those
-reads and writes go through `java.nio.channels.FileChannel`, an
-`InterruptibleChannel` — a blocking read/write on a thread whose interrupt
-status is set closes the channel and throws `ClosedByInterruptException`,
-which `RunStore` wraps into `RUN_STATE_CORRUPT` / `MAVEN_RUNTIME_UNAVAILABLE`
-and which then propagates out of `execute` on the worker thread. If that
-holds, the path clears the active slot and releases the lock (in
-`finally`) but never persists a terminal snapshot; the run is left
-`RUNNING`/`QUEUED` on disk until the next server start's `recoverIfUnowned`
-transitions it to `ERROR`/`SERVER_RESTART_RECOVERY`. The characterization
-test for this branch must therefore assert that `status.json` actually
-reaches a terminal state, not merely that the branch was entered — and
-any fix must not re-assert the interrupt flag before the terminal write
-(or must save and restore it around the NIO).
+**The `InterruptedException` branch is functional — the class dossier's
+O2 concern is refuted** (verified by execution 2026-08-28). O2 held that
+the catch block's `Thread.currentThread().interrupt()` re-assertion would
+make the subsequent `RunStore` filesystem I/O (`capture(run)` →
+`Files.readString`, `persistTerminal` → `Files.writeString` /
+`Files.createTempFile` / `Files.move`) throw a
+`ClosedByInterruptException`-derived `RUN_STATE_CORRUPT` /
+`MAVEN_RUNTIME_UNAVAILABLE` and leave no terminal record on disk. It does
+not: the JDK's bulk helpers `Files.readString` (→ `Files.readAllBytes`)
+and `Files.writeString` (→ `Files.write`) run on channels explicitly made
+uninterruptible, and `Files.createTempFile` / `Files.move` are not
+blocking channel reads or writes. Observed directly with the worker
+thread's interrupt flag set and still set afterward: `status.json`
+reaches `CANCELLED`, `finishedAt` is set, capture status publishes as
+`UNAVAILABLE`, the lock is released and the active slot cleared, and no
+exception escapes the catch block. The interrupt flag also does not leak
+to the next task on the pooled worker thread — `awaitDrainers`'s
+`Future.get` clears it via `Thread.interrupted()` when a drainer is not
+yet complete, and `ThreadPoolExecutor.runWorker` clears any leftover flag
+before the next task when the pool is not stopping; a second run on the
+same coordinator completes normally. `interruptedWaitInWaitForPersistsCancelledTerminalRecordAndReleasesLockAndSlot`
+pins this behaviour and asserts the on-disk terminal record, not merely
+that the branch was entered.
 
 **One existing `RuntimeException`-path test does not cover what its name
 says** — see item B11, which also qualifies item D10's claim that the
 `execute()`-side skipped-count guard "does have a dedicated test".
 
 **Location**: `regression-mcp-server/src/main/java/com/aqa/mcp/execution/TestRunCoordinator.java`
-(`execute`'s early-cause return and `InterruptedException` catch);
-`regression-mcp-server/src/test/java/com/aqa/mcp/execution/TestRunCoordinatorTest.java`;
-`regression-mcp-server/docs/classes/TestRunCoordinator.md` (§13c).
+(`execute`'s early-cause return);
+`regression-mcp-server/src/test/java/com/aqa/mcp/execution/TestRunCoordinatorTest.java`
+(`interruptedWaitInWaitForPersistsCancelledTerminalRecordAndReleasesLockAndSlot`
+covers the `InterruptedException` path; no test covers the early-cause
+return);
+`regression-mcp-server/docs/classes/TestRunCoordinator.md` (§13c, §11 O2).
 
 ### B9. `MavenRuntimeConfigurationLoader.load` has no dedicated direct test
 

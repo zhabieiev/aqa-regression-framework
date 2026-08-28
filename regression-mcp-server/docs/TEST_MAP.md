@@ -55,7 +55,7 @@ debt items this map's gaps feed into.
 | `StaleRunRecoveryTest` | UNIT (fake `ProcessView`) | CONTRACT — every recovery branch | `TestRunCoordinator.recoverIfUnowned` | **None of its 8 tests reference `skippedTests`** — the recovery path's skipped-count carry-through has no value assertion (a narrower, already-known gap, distinct from the two path gaps below) |
 | `SurefireSummaryParserTest` | UNIT | CONTRACT — aggregation, dedup-vs-contradiction rejection, sanitization, bounded truncation, XXE rejection | `SurefireSummaryParser` | — |
 | `SurefireSummaryStoreTest` | FS | CONTRACT — published-index-only reads, digest/schema/wrong-run rejection. **Its `legacy`/`old` fixture is not a frozen literal** — built by live Jackson serialization of a current-shape `RunSnapshot`, not a hand-written historical shape | `RunStore.summary`/`failureSummary` | Does not corroborate backward-compatible deserialization of a genuinely historical `RunSnapshot` shape, despite appearing to; the assertion it does make (`NOT_FOUND`) is unaffected either way |
-| `TestRunCoordinatorTest` | PROC + concurrency | CONTRACT — terminal-path transitions, ownership/observer safety, timeout-boundary races, lock lifecycle, log-cap persistence | `TestRunCoordinator` | **Two of its four terminal paths in `execute()` have zero coverage** (`docs/TECHNICAL_DEBT.md` item B8): the early-cause return (cancellation completing before the worker thread even begins `execute()` — no fixture can force this race deterministically) and the `InterruptedException` catch (no test interrupts the worker thread mid-`waitFor()`). A regression in either would pass the whole suite unnoticed. |
+| `TestRunCoordinatorTest` | PROC + concurrency | CONTRACT — terminal-path transitions, ownership/observer safety, timeout-boundary races, lock lifecycle, log-cap persistence | `TestRunCoordinator` | **One of its four terminal paths in `execute()` has zero coverage** (`docs/TECHNICAL_DEBT.md` item B8): the early-cause return (cancellation completing before the worker thread even begins `execute()` — no fixture can force this race deterministically). A regression in it would pass the whole suite unnoticed. (The `InterruptedException` catch was covered on 2026-08-28 by `interruptedWaitInWaitForPersistsCancelledTerminalRecordAndReleasesLockAndSlot`.) |
 
 ## validation package — 20 files
 
@@ -84,9 +84,10 @@ debt items this map's gaps feed into.
 
 ## Cross-cutting gaps, named once here rather than repeated per row
 
-1. **`TestRunCoordinator`'s early-cause and `InterruptedException` terminal
-   paths have zero test coverage** — see the `TestRunCoordinatorTest` row.
-   Tracked as `docs/TECHNICAL_DEBT.md` item B8.
+1. **`TestRunCoordinator`'s early-cause return terminal path has zero test
+   coverage** — see the `TestRunCoordinatorTest` row. The
+   `InterruptedException` path was covered on 2026-08-28. Tracked as
+   `docs/TECHNICAL_DEBT.md` item B8.
 2. **`MavenRuntimeConfigurationLoader.load` has no dedicated direct test**
    — see the row between `BoundedLogDrainerLimitTest` and
    `FailureArtifactStoreTest`. Tracked as item B9.

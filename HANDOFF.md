@@ -115,9 +115,13 @@ start of a session; update it at the end of one, per `CLAUDE.md`'s
   review order) and [`regression-mcp-server/docs/TEST_MAP.md`](regression-mcp-server/docs/TEST_MAP.md)
   (every test file's type, what it pins, and — the load-bearing column —
   what change would pass the whole suite unnoticed), both anchored to
-  commit `7107c49fa305dde53ac3d6d0e009da67d773d859`. A per-class dossier
-  directory (`regression-mcp-server/docs/classes/`) is planned but not yet
-  started; see "Next step" below for the order it should follow.
+  commit `7107c49fa305dde53ac3d6d0e009da67d773d859`. The per-class dossier
+  directory (`regression-mcp-server/docs/classes/`) is now started: the
+  first dossier is
+  [`regression-mcp-server/docs/classes/TestRunCoordinator.md`](regression-mcp-server/docs/classes/TestRunCoordinator.md)
+  (open PR, not merged). The review order in `ARCHITECTURE.md` puts
+  `TestRunCoordinator` last-but-one deliberately — it was taken first this
+  time by explicit instruction, ahead of the classes it depends on.
 - `regression-jhipster`'s Playwright trace-capture gap (traces written to
   `target/playwright/traces/` are never surfaced through the MCP server) is
   now logged as item C2 in `docs/TECHNICAL_DEBT.md`, rather than only noted
@@ -126,6 +130,34 @@ start of a session; update it at the end of one, per `CLAUDE.md`'s
   (reactor-wide, grouped by module).
 
 ## Most recent session
+
+2026-08-28 — first per-class dossier: `TestRunCoordinator`, branch
+`docs/dossier-testruncoordinator` (PR open, not merged as of this entry):
+
+Wrote `regression-mcp-server/docs/classes/TestRunCoordinator.md` from the
+tree (the full class plus every cited collaborator, test and doc), covering
+the standard sections 1-12 plus a section 13 that enumerates all four
+`execute()` terminal paths, their ordered side effects, a
+common-vs-unique side-effect table, and — for the two untested paths — what
+a test must control and which seams exist. Verdict: **TEST FIRST**. Ten
+hypotheses were checked against the source; the notable results: the
+`InterruptedException` path is reachable from a test with no production
+change (a `Process` whose `waitFor()` throws), but the early-cause path is
+not without an injectable worker `ExecutorService`; the
+`secondCaptureCallInTheRuntimeExceptionPath…` test does not exercise the
+guard it is named for (its fixture throws one call site too early); and a
+malformed `runId` returns `INVALID_ARGUMENTS` from the four report/artifact
+tools but `RUN_NOT_FOUND` from `regression_get_test_run`/`_cancel_test_run`.
+
+`docs/TECHNICAL_DEBT.md` gained three items — **B11** (the misfiring guard
+test), **C7** (the per-run monitor held across capture's filesystem I/O,
+accepted with a review trigger), **D14** (the malformed-`runId` error-code
+divergence vs `docs/TOOLS.md`, judged not a section-A defect) — and item
+**B8** was sharpened with a PLAUSIBLE note that the `InterruptedException`
+path may be unable to persist a terminal snapshot at all, because it
+re-asserts the interrupt flag before doing interruptible `FileChannel`
+I/O. No production source, test, POM or CI file was touched;
+`mvn validate` was re-run clean.
 
 2026-08-27 (later) — cleanup and baseline pass, branch
 `docs/debt-evidence-selfcontained` (PR open, not merged as of this entry):
@@ -505,11 +537,15 @@ MCP-executable module, on equal footing with `regression-nextjs-commerce`.
 
 ## Next step
 
-The concrete next step for `regression-mcp-server` is starting the
-per-class dossier directory (`regression-mcp-server/docs/classes/`),
-following [`regression-mcp-server/docs/ARCHITECTURE.md`](regression-mcp-server/docs/ARCHITECTURE.md)'s
+The per-class dossier directory (`regression-mcp-server/docs/classes/`) is
+started — `TestRunCoordinator.md` is the first, on an open PR. The concrete
+next step is to continue it following
+[`regression-mcp-server/docs/ARCHITECTURE.md`](regression-mcp-server/docs/ARCHITECTURE.md)'s
 own review order (Group 1's tier-0 leaves first — e.g. `RepositoryRoot`,
-`ModuleType`, `FailureArtifact` — through `RegressionMcpServer` last).
+`ModuleType`, `FailureArtifact` — through `RegressionMcpServer` last);
+`TestRunCoordinator` was taken out of order by explicit instruction, so the
+classes it depends on still need their own dossiers and its own
+verdict (TEST FIRST) should be revisited once they exist.
 Each dossier is a separate, single-class pass; do not batch more than one
 class per pass. `docs/ROADMAP.md`'s `regression-mcp-server` section holds
 the cost-ranked refactoring candidates this inspection surfaced — none is

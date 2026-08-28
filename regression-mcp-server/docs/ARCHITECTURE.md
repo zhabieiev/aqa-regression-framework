@@ -514,11 +514,13 @@ is only comprehensible together)**: `ModuleBoundariesTool`,
 `FrameworkConventionsTool`, `ArchitectureTool`.
 
 **Group 7 — tier 4, execution's own hub, reviewed last in its package**:
-`TestRunCoordinator` — the module's largest, most complex class; two of
-its four terminal paths have zero test coverage (`docs/TECHNICAL_DEBT.md`
-item B8), so its own dossier's refactor verdict is very likely TEST
-FIRST, and that verdict should be reached only after every class it
-depends on already has a completed dossier.
+`TestRunCoordinator` — the module's largest, most complex class. Its
+dossier (`docs/classes/TestRunCoordinator.md`) was written ahead of order
+and reached a TEST FIRST verdict; all four of its `execute()` terminal
+paths now have characterization tests, with the `skippedTests`
+preservation guard (`docs/TECHNICAL_DEBT.md` item B11) the remaining test
+gap. Dossiers for the classes it depends on are still the prerequisite for
+acting on that verdict.
 
 **Group 8 — tier 6, reviewed absolutely last**: `RegressionMcpServer` —
 depends on everything above it; the only dossier for which every other

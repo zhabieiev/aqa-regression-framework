@@ -8,7 +8,8 @@ edit.
 
 Source read in full this pass:
 `regression-mcp-server/src/main/java/com/aqa/mcp/execution/TestRunCoordinator.java`
-(418 lines) plus every file cited below.
+(418 lines when this dossier was written; 425 after the 7-arg worker
+constructor was added) plus every file cited below.
 
 ---
 
@@ -17,7 +18,7 @@ Source read in full this pass:
 | Field | Value |
 |---|---|
 | Path | `regression-mcp-server/src/main/java/com/aqa/mcp/execution/TestRunCoordinator.java` |
-| Lines | 418 (`wc -l`) |
+| Lines | 425 (`wc -l`; was 418 before the 7-arg worker constructor was added) |
 | Kind | `public final class TestRunCoordinator implements AutoCloseable` — a stateful per-JVM service |
 | Package | `com.aqa.mcp.execution` |
 | Nested types | `Active` (private static), `TimeoutScheduler` (package-private nested `@FunctionalInterface` extending `AutoCloseable`), `SystemTimeoutScheduler` (private static, the default `TimeoutScheduler`) — the "(+3 nested)" in `ARCHITECTURE.md` |
@@ -67,9 +68,11 @@ previous process left non-terminal.
   `Process`/`ProcessHandle`).
 - Report parsing — delegated to `ReportCapture`. Respected.
 
-It does construct `RunStore`, the worker pool, and the ownership observer
-directly (see §5) — that is composition, not a boundary violation, but the
-two executors being non-injectable is the root of the §13c test gaps.
+It does construct `RunStore` and the ownership observer directly, and
+supplies the default worker `ExecutorService` (see §5) — that is
+composition, not a boundary violation. The worker's former
+non-injectability was the root of the §13c test gaps; it is now injectable
+through the 7-arg constructor and both formerly-untested paths are covered.
 
 ---
 
@@ -81,9 +84,9 @@ Every member, its callers, and whether it is reachable from an MCP tool.
 |---|---|---|---|
 | `TestRunCoordinator(Path, Supplier<TestRunRequestValidator>)` | production 2-arg ctor; delegates to the 6-arg ctor with all real seams | `RegressionMcpServer.createServer` (line 75); `RegressionMcpServerContractTest` (5×, for description-only contracts) | — |
 | `TestRunCoordinator(Path, Supplier, MavenProcessLauncher)` | 3-arg test ctor | none in tree (superseded by the 5-arg) | — |
-| `TestRunCoordinator(Path, Supplier, MavenProcessLauncher, TimeoutScheduler, Function<Map,MavenRuntimeConfiguration>)` | 5-arg test ctor | `TestRunCoordinatorTest.coordinator(...)`, `CrossJvmLockTest`, the `secondCapture…` test | — |
+| `TestRunCoordinator(Path, Supplier, MavenProcessLauncher, TimeoutScheduler, Function<Map,MavenRuntimeConfiguration>)` | 5-arg test ctor | `TestRunCoordinatorTest.coordinator(...)`, the `secondCapture…` and `interruptedWaitInWaitFor…` tests, `CrossJvmLockTest`, `ControlledCoordinatorFactory.waitingCoordinator` / `.failingCoordinatorWithArtifacts` | — |
 | `TestRunCoordinator(Path, Supplier, MavenProcessLauncher, TimeoutScheduler, Function, ProcessView)` | 6-arg test ctor (adds fake `ProcessView`); since the worker seam was added it delegates to the 7-arg ctor, supplying the default worker `Executors.newFixedThreadPool(3, …"regression-mcp-run-worker")` — it is no longer the field-initialising base | `StaleRunRecoveryTest.coordinator(...)` | — |
-| `TestRunCoordinator(Path, Supplier, MavenProcessLauncher, TimeoutScheduler, Function, ProcessView, ExecutorService worker)` | 7-arg test ctor (adds injectable worker `ExecutorService`); the field-initialising base ctor — every narrower ctor now reaches it. `close()` shuts this executor down like any other, so a caller passing one hands over its lifetime | none in tree yet (its purpose is the path-A characterization test B8 still needs) | — |
+| `TestRunCoordinator(Path, Supplier, MavenProcessLauncher, TimeoutScheduler, Function, ProcessView, ExecutorService worker)` | 7-arg test ctor (adds injectable worker `ExecutorService`); the field-initialising base ctor — every narrower ctor now reaches it. `close()` shuts this executor down like any other, so a caller passing one hands over its lifetime | `TestRunCoordinatorTest.causeLatchedBeforeWorkerStartsReturnsCancelledWithNothingLaunched` (the early-cause characterization test) | — |
 | `RunSnapshot start(StartTestRunRequest, Map<String,String>)` | validate, lock, persist QUEUED, submit `execute` to the worker, return the QUEUED snapshot synchronously | `RegressionMcpServer.startTestRunTool` (line 110); `TestRunCoordinatorTest`, `StaleRunRecoveryTest`, `CrossJvmLockTest`, `RegressionMcpServerContractTest`, STDIO test (via `ControlledMcpServerMain`) | `regression_start_test_run` |
 | `RunSnapshot get(String id)` | in-memory `Active` snapshot if the id matches an active run, else `store.get(id)` | `RegressionMcpServer.runActionTool` (get branch, line 158); `cancel` (line 105); tests' `awaitState`/`awaitTerminal` | `regression_get_test_run` |
 | `RunSnapshot cancel(String id)` | set `run.cause = CANCELLED` (CAS), `terminate` the process if launched, return the current in-memory snapshot; delegates to `get(id)` for a non-active id | `RegressionMcpServer.runActionTool` (cancel branch, line 158); `close()` (line 374); tests | `regression_cancel_test_run` |
@@ -102,13 +105,13 @@ Every member, its callers, and whether it is reachable from an MCP tool.
   package-private, read-only seam with no production path, in the same
   category as the injectable `TimeoutScheduler`/`ProcessView` seams. No
   action recommended.
-- Two constructors have *zero* callers in the tree. The 3-arg constructor
-  is a documented overload sitting between the 2-arg and 5-arg forms; worth
-  deleting on the next touch, not worth a debt entry. The 7-arg constructor
-  is the new worker seam — uncalled only until the path-A characterization
-  test (B8) is written, its intended and sole purpose. Neither is dead in
-  the strict sense. Every other public and package-private member has at
-  least one caller.
+- One constructor has *zero* callers in the tree: the 3-arg constructor, a
+  documented overload sitting between the 2-arg and 5-arg forms; worth
+  deleting on the next touch, not worth a debt entry. It is not dead in the
+  strict sense. Every other public and package-private member — including
+  the 7-arg worker seam, called by
+  `TestRunCoordinatorTest.causeLatchedBeforeWorkerStartsReturnsCancelledWithNothingLaunched` —
+  has at least one caller.
 - All seven non-`close` public methods map 1:1 onto the seven
   execution/report MCP tools. `close()` is driven only by the shutdown
   hook and the stdin-EOF callback.
@@ -126,7 +129,7 @@ Every member, its callers, and whether it is reachable from an MCP tool.
 | `store` | `RunStore` | final | hard-constructed `new RunStore(root)` (line 58) |
 | `launcher` | `MavenProcessLauncher` | final | injectable seam |
 | `runtimeLoader` | `Function<Map<String,String>, MavenRuntimeConfiguration>` | final | injectable seam; default `MavenRuntimeConfigurationLoader::load` |
-| `worker` | `ExecutorService` | final | `Executors.newFixedThreadPool(3, …"regression-mcp-run-worker")` (line 56) — **not injectable** |
+| `worker` | `ExecutorService` | final | **injectable** via the 7-arg constructor; default `Executors.newFixedThreadPool(3, …"regression-mcp-run-worker")` supplied by the 6-arg ctor |
 | `timeouts` | `TimeoutScheduler` | final | injectable seam; default `SystemTimeoutScheduler` |
 | `ownershipObserver` | `ScheduledExecutorService` | final | `Executors.newSingleThreadScheduledExecutor(…"regression-mcp-ownership")` (line 57) — **not injectable** |
 | `processView` | `ProcessView` | final | injectable seam; default `SystemProcessView` |
@@ -224,8 +227,9 @@ Guarding:
   `RunStore` instances in the JVM, so concurrent coordinators (tests) and
   the observer thread serialise their `status.json` writes.
 
-**Worker pool size is 3, hard-coded** (line 56
-`Executors.newFixedThreadPool(3, …)`). What determines it: one thread runs
+**The default worker pool size is 3** (`Executors.newFixedThreadPool(3, …)`,
+supplied by the 6-arg ctor; a test may inject any `ExecutorService` through
+the 7-arg ctor). What determines the default: one thread runs
 `execute()`; two run the `BoundedLogDrainer`s that `execute` submits at
 lines 138-139; `awaitDrainers()` blocks the `execute` thread on those two
 drainers, so they *must* run on different threads. Only one run is ever
@@ -261,9 +265,10 @@ after `worker.shutdown()`.
 — `ProcessOwnershipTracker`, `BoundedLogDrainer` ×2, `ReportCapture`.
 
 `ownershipObserver` remains hard-constructed. `worker` is now injectable
-(7-arg ctor), which is what makes §13c path A **reachable** from a test —
-a hold-until-released executor can delay `execute()` past a `cancel()`.
-The path is reachable, not yet tested (B8).
+(7-arg ctor): a hold-until-released executor can delay `execute()` past a
+`cancel()`, which is how
+`TestRunCoordinatorTest.causeLatchedBeforeWorkerStartsReturnsCancelledWithNothingLaunched`
+covers §13c path A.
 
 ---
 
@@ -368,15 +373,16 @@ divergence and its `docs/TOOLS.md` mismatch (logged as D14).
 
 | Test file | Type | What it pins | What would pass unnoticed |
 |---|---|---|---|
-| `TestRunCoordinatorTest` (19 `@Test`, PROC + concurrency) | real child processes via `ControlledProcessFixture`, `ManualTimeoutScheduler`, injected `runtime()` | PASS/FAIL/CANCELLED/TIMED_OUT transitions; the QUEUED→RUNNING publication boundary (5 tests around the timeout-install race); idempotent cancel; deepest-first descendant cleanup + retained-identity persistence; forced termination; the cross-coordinator `RUN_ALREADY_ACTIVE` + lock-release-after-terminal ordering; capped-log byte/observed/dropped persistence; `normalCompletion…` proves a late timeout callback cannot overwrite a terminal state; `secondCaptureCallInTheRuntimeExceptionPath…` (see O1) | the **early-cause** path (§13c A) and the **`InterruptedException`** path (§13c C) — zero coverage (`TECHNICAL_DEBT.md` B8); the execute()-side `skippedTests` *preservation* semantics (O1); `close()`'s `worker.awaitTermination` timeout → `shutdownNow` branch (no test hangs a worker 10 s) |
+| `TestRunCoordinatorTest` (21 `@Test`, PROC + concurrency) | real child processes via `ControlledProcessFixture`, `ManualTimeoutScheduler`, injected `runtime()` | PASS/FAIL/CANCELLED/TIMED_OUT transitions; the QUEUED→RUNNING publication boundary (5 tests around the timeout-install race); idempotent cancel; deepest-first descendant cleanup + retained-identity persistence; forced termination; the cross-coordinator `RUN_ALREADY_ACTIVE` + lock-release-after-terminal ordering; capped-log byte/observed/dropped persistence; `normalCompletion…` proves a late timeout callback cannot overwrite a terminal state; `secondCaptureCallInTheRuntimeExceptionPath…` (see O1); the **`InterruptedException`** path (`interruptedWaitInWaitFor…`) and the **early-cause** path (`causeLatchedBeforeWorkerStarts…`, via the injected worker) | the execute()-side `skippedTests` *preservation* semantics (O1 / B11); `close()`'s `worker.awaitTermination` timeout → `shutdownNow` branch (no test hangs a worker 10 s) |
 | `StaleRunRecoveryTest` (8 `@Test`, UNIT, fake `ProcessView`, launcher that asserts it is never called) | every `recoverIfUnowned` branch: QUEUED→ERROR/`SERVER_RESTART_RECOVERY`; staged-capture published before the recovery terminal state; live-identity cleaned; reused-PID **not** killed; RUNNING-without-identity → `recoveryBlocked`; corrupt `status.json` → `recoveryBlocked`; dead identity → no termination attempt; descendant recovery after the root is gone | the `skippedTests` value carried through recovery — no assertion anywhere in the file (`TECHNICAL_DEBT.md` D10) |
 | `CrossJvmLockTest` (1 `@Test`, PROC, second real JVM holds the lock) | `start()` throws `RUN_ALREADY_ACTIVE` and creates **no** run directory while another JVM owns `active.lock` | anything past the lock acquisition |
 | `RegressionMcpServerContractTest` (execution-tool rows) | tool **descriptions/annotations**; one real cancelled run and one real failing-with-artifacts run through `ControlledCoordinatorFactory` to exercise `get`/`artifacts`/`readArtifact` schemas end to end | schema/description drift is caught; lifecycle races are not this file's job |
-| `RegressionMcpServerStdioIntegrationTest` (`servesControlledExecutionToolsOverStdioAndCleansRunOnEof`, `eofClosesAnActiveControlledRunAndPersistsCancellation`, `servesFailureArtifactToolsForARealFailingRun…`) | real JSON-RPC over a spawned server: `QUEUED`→`RUNNING`, `RUN_NOT_TERMINAL`, `RUN_ALREADY_ACTIVE`, `RUN_NOT_FOUND` (well-formed-unknown id), `INVALID_TIMEOUT`, schema rejection of an extra key, cancel→`CANCELLED`, EOF→persisted `CANCELLED` with ≥1 owned process, the full failure-artifact walk | a **malformed-format** runId to `summary`/`artifacts` (only well-formed-unknown is tested → `RUN_NOT_FOUND`; the malformed case returns `INVALID_ARGUMENTS`, untested — O6/H4); path A and path C |
+| `RegressionMcpServerStdioIntegrationTest` (`servesControlledExecutionToolsOverStdioAndCleansRunOnEof`, `eofClosesAnActiveControlledRunAndPersistsCancellation`, `servesFailureArtifactToolsForARealFailingRun…`) | real JSON-RPC over a spawned server: `QUEUED`→`RUNNING`, `RUN_NOT_TERMINAL`, `RUN_ALREADY_ACTIVE`, `RUN_NOT_FOUND` (well-formed-unknown id), `INVALID_TIMEOUT`, schema rejection of an extra key, cancel→`CANCELLED`, EOF→persisted `CANCELLED` with ≥1 owned process, the full failure-artifact walk | a **malformed-format** runId to `summary`/`artifacts` (only well-formed-unknown is tested → `RUN_NOT_FOUND`; the malformed case returns `INVALID_ARGUMENTS`, untested — O6/H4); path A and path C (this file exercises neither — they are covered by `TestRunCoordinatorTest`) |
 | Fixtures (not tests) | `ControlledProcessLauncher`, `ControlledProcessFixture`, `ControlledCoordinatorFactory`, `RunStoreLockHolderFixture`, `ControlledMcpServerMain`, `FailingWithArtifactsMcpServerMain`, nested `ManualTimeoutScheduler` | — |
 
-Roughly 28 test methods exercise this class. Two of the four `execute()`
-terminal paths and one guard are the material gaps.
+Roughly 30 test methods exercise this class. All four `execute()` terminal
+paths are now covered; the one remaining material gap is the `skippedTests`
+preservation guard (see O1, tracked as B11).
 
 ---
 
@@ -425,8 +431,9 @@ releases the lock) and out of `execute` — **uncaught on the worker thread**,
 handled by the default handler (stack trace to stderr). The run is then
 left non-terminal on disk with no in-memory owner and the lock free; the
 next server start's `recoverIfUnowned` resolves it (QUEUED/RUNNING → ERROR /
-`SERVER_RESTART_RECOVERY`). §11 O2 argues path C reaches exactly this state
-in normal operation.
+`SERVER_RESTART_RECOVERY`). §11 O2 raised the concern that path C would
+reach exactly this state in normal operation; that concern was refuted (see
+O2).
 
 **Malformed / absent client input** — every documented input path yields a
 structured `ExecutionPlanningException`, never an NPE. The one unguarded
@@ -476,7 +483,8 @@ directly release the `RunStore.Lock`, persist a terminal snapshot, or join
 `execute` beyond the 10 s `worker.awaitTermination` — it relies on the
 worker's `execute` reaching its `finally`. If the 10 s elapses,
 `worker.shutdownNow()` interrupts the worker → `process.waitFor()` throws
-`InterruptedException` → path C (with O2's caveat). The STDIO test
+`InterruptedException` → path C (O2's caveat about that path was refuted;
+see O2). The STDIO test
 `eofClosesAnActiveControlledRunAndPersistsCancellation` shows the normal
 case (fixture process dies fast on `terminate`, `execute` finishes within
 the grace period, `status.json` = `CANCELLED`).
@@ -523,35 +531,32 @@ once, forces a second (necessarily null-returning) capture call, and
 asserts …". That description does not match the control flow above. Logged
 as **B11**, which qualifies D10's parenthetical.
 
-### O2 — the `InterruptedException` path re-asserts the interrupt flag, then does interruptible NIO — it may be unable to persist a terminal state (PLAUSIBLE, unverified)
+### O2 — the `InterruptedException` path re-asserts the interrupt flag before doing NIO — raised as possibly unable to persist a terminal state, then REFUTED
 
-**Evidence.** `catch (InterruptedException)` (line 164) begins with
-`Thread.currentThread().interrupt()` (line 165), then calls `cleanup`,
-`awaitDrainers`, `capture(run)` (→ `store.persisted` → `Files.readString`),
-and `persistTerminal` (→ `store.update` → `RunStore.replace` →
-`Files.createTempFile` / `Files.writeString` / `Files.move`). `Files.readString`
-and `Files.writeString` operate through `java.nio.channels.FileChannel`,
-which is an `InterruptibleChannel`: a blocking read/write invoked on a
-thread whose interrupt status is set closes the channel and throws
-`ClosedByInterruptException` (an `IOException`). `RunStore.persisted` wraps
-`IOException | RuntimeException` into `RUN_STATE_CORRUPT`; `RunStore.update`
-wraps `IOException` into `MAVEN_RUNTIME_UNAVAILABLE`.
+**The concern, as originally raised (PLAUSIBLE, unverified).**
+`catch (InterruptedException)` begins with `Thread.currentThread().interrupt()`,
+then calls `cleanup`, `awaitDrainers`, `capture(run)` (→ `store.persisted`
+→ `Files.readString`), and `persistTerminal` (→ `store.update` →
+`RunStore.replace` → `Files.createTempFile` / `Files.writeString` /
+`Files.move`). If `Files.readString` / `Files.writeString` operated through
+an `InterruptibleChannel`, a blocking read/write on a thread whose
+interrupt status is set would close the channel and throw
+`ClosedByInterruptException`, which `RunStore.persisted` wraps into
+`RUN_STATE_CORRUPT` and `RunStore.update` into `MAVEN_RUNTIME_UNAVAILABLE`
+— so path C would clear `active` and release the lock in `finally` but
+never persist a terminal snapshot, leaving the run stuck `RUNNING`/`QUEUED`
+until a restart's `recoverIfUnowned` resolved it.
 
-**Impact if confirmed.** On path C, `capture(run)` (line 168) already throws
-`RUN_STATE_CORRUPT` before `persistTerminal` is reached; it propagates out
-of the catch block, through `finally` (which still clears `active` and
-releases the lock), and out of `execute` uncaught on the worker thread. The
-run is left non-terminal (last persisted state `RUNNING` or `QUEUED`) with
-no in-memory owner. Within the JVM the client polls `get` and sees a run
-stuck `RUNNING`; a later server restart's `recoverIfUnowned` transitions it
-to `ERROR` / `SERVER_RESTART_RECOVERY`. This is exactly the path
-`TECHNICAL_DEBT.md` B8 flags as untested — the observation is that it may be
-not just untested but non-functional.
-
-**Not verified** — depends on JDK `FileChannel` interrupt semantics on the
-target platform; not executed this pass. Folded into **B8** as a sharpening:
-the characterization test for path C must assert `status.json` reaches a
-terminal state, not merely that the branch ran.
+**Refuted, verified by execution.**
+`TestRunCoordinatorTest.interruptedWaitInWaitForPersistsCancelledTerminalRecordAndReleasesLockAndSlot`
+(PR #36) drives path C with the worker's interrupt flag set and observes
+that a terminal `CANCELLED` record IS persisted, `finishedAt` set, capture
+published as `UNAVAILABLE`, lock released, active slot cleared, no exception
+escaping the catch. The JDK's bulk helpers `Files.readString`
+(→ `Files.readAllBytes`) and `Files.writeString` (→ `Files.write`) run on
+channels explicitly made uninterruptible, and `Files.createTempFile` /
+`Files.move` are not blocking channel reads or writes. The interrupt flag
+also does not leak to the next task on the pooled worker thread.
 
 ### O3 — `synchronized (run)` is held across all of capture's filesystem work
 
@@ -645,37 +650,35 @@ separately logged.
 
 **TEST FIRST.**
 
-Not `SAFE NOW`: two of the four `execute()` terminal paths are unverified
-(B8), the guard-preservation test for a third misfires (O1), and path C is
-plausibly non-functional under a set interrupt flag (O2).
+Not `SAFE NOW`: the guard-preservation test for the `skippedTests` guard
+misfires (O1), so that guard is still unproven by any test (tracked as
+B11).
 
 Not `DO NOT TOUCH`: the class has a clean, established seam pattern
-(`launcher`/`timeouts`/`runtimeLoader`/`processView` all injectable) and ~28
-tests; the two missing seams (worker `ExecutorService`) are a small,
-low-risk addition.
+(`launcher`/`timeouts`/`runtimeLoader`/`processView`/`worker` all
+injectable) and ~30 tests.
 
-**Characterization tests required before changing `execute()`:**
+**Characterization tests: status.**
 
-1. **Early-cause path (A)** — requires a **new seam**: an injectable worker
-   `ExecutorService` (package-private constructor parameter, mirroring
-   `launcher`/`timeouts`). Test: inject a hold-until-released executor;
-   `start()`; `cancel(runId)`; release; assert `get(runId).state() ==
-   CANCELLED`, `startedAt() == null`, `exitCode() == null`, the injected
-   `MavenProcessLauncher` was never invoked, no owned processes persisted,
-   `active` cleared, `acquireActiveLock()` succeeds afterward.
-2. **`InterruptedException` path (C)** — **no production change needed to
-   reach it** (H1): inject a `MavenProcessLauncher` returning a
-   real-process-backed `Process` whose `waitFor()` throws
-   `InterruptedException`. The test must assert `status.json` **reaches a
-   terminal state** (CANCELLED), `finishedAt` set, lock released, `active`
-   cleared — i.e. that the branch persists, not merely that it ran (O2).
-3. **execute()-side `skippedTests` guard (O1)** — a fixture where the
-   try-block `capture` (line 161) genuinely succeeds and the first
+1. **Early-cause path (A)** — DONE:
+   `causeLatchedBeforeWorkerStartsReturnsCancelledWithNothingLaunched`,
+   using the injectable worker `ExecutorService` (7-arg ctor). Inject a
+   hold-until-released executor; `start()`; `cancel(runId)`; release; the
+   run is `CANCELLED` with `startedAt() == null`, `exitCode() == null`, the
+   injected `MavenProcessLauncher` never invoked, no owned processes
+   persisted, `active` cleared, `acquireActiveLock()` succeeds afterward.
+2. **`InterruptedException` path (C)** — DONE:
+   `interruptedWaitInWaitForPersistsCancelledTerminalRecordAndReleasesLockAndSlot`,
+   with no production change (H1). It asserts `status.json` **reaches a
+   terminal state** (CANCELLED) — which also refuted O2.
+3. **execute()-side `skippedTests` guard (O1)** — STILL OPEN (B11): a
+   fixture where the try-block `capture` genuinely succeeds and the first
    `persistTerminal` `store.update` then throws once. Assert the persisted
-   `skippedTests` equals the line-161 value, not `null`.
+   `skippedTests` equals the successful-capture value, not `null`.
 
-Only with 1-3 green: the §13b `finishTerminally(...)` collapse and the
-`requireTerminal(id)` extraction (O10) become low-risk cleanups.
+With 1 and 2 green, the §13b `finishTerminally(...)` collapse and the
+`requireTerminal(id)` extraction (O10) are close to low-risk cleanups —
+item 3 (B11) is the remaining test that a collapse must not break.
 
 ---
 
@@ -761,12 +764,12 @@ finally { … }`. Four ways to reach `persistTerminal`.
   6. `finally`: cancel `run.timeout`; cancel `run.observation`;
      `active.compareAndSet(run, null)`; `run.lock.close()`.
 - **Client sees:** `CANCELLED` (or a cause already latched).
-- **Caveat (O2):** with the interrupt flag re-asserted at step 1, the NIO
-  in steps 4-5 may throw `ClosedByInterruptException`-derived
-  `RUN_STATE_CORRUPT` / `MAVEN_RUNTIME_UNAVAILABLE`, in which case **no
-  terminal snapshot is persisted** — `finally` still clears `active` and
-  releases the lock, and the run is resolved only by a later restart's
-  `recoverIfUnowned`. Unverified.
+- **Caveat (O2), refuted:** it was raised that with the interrupt flag
+  re-asserted at step 1, the NIO in steps 4-5 might throw
+  `ClosedByInterruptException`-derived `RUN_STATE_CORRUPT` /
+  `MAVEN_RUNTIME_UNAVAILABLE` and persist no terminal snapshot. Verified by
+  execution (`interruptedWaitInWaitFor…`, PR #36) not to happen: the terminal
+  `CANCELLED` record is persisted. See O2.
 
 #### Path D — `catch (RuntimeException)` (lines 171-176)
 
@@ -840,12 +843,16 @@ reducing each catch/return site to one line; A would call it with
 `process=stdout=stderr=null` (its `cleanup`/`awaitDrainers` become no-ops
 via the null checks). This is **evidence that a collapse is feasible and
 would eliminate the three near-identical blocks** — it is **not** a
-recommendation. Two blockers stand in front of it: B8 (paths A and C need
-characterization tests first) and O2 (path C may be broken in a way a naive
-collapse preserves — the collapse must not re-assert the interrupt flag
-before the persist, or must save/restore it around the NIO).
+recommendation. The blockers that formerly stood in front of it are
+cleared: paths A and C now have characterization tests
+(`causeLatchedBeforeWorkerStarts…`, `interruptedWaitInWaitFor…`), and O2
+(the worry that path C could not persist a terminal state) is refuted. What
+remains is the `skippedTests` guard test (O1 / B11), which a collapse must
+not break; and the collapse must still not re-assert the interrupt flag
+before the persist (it is harmless today, per O2, but keeps the code
+honest).
 
-### 13c — the two untested paths
+### 13c — paths A and C (formerly untested, now both covered)
 
 #### Path A (early-cause return)
 
@@ -871,9 +878,10 @@ before the persist, or must save/restore it around the NIO).
   (7-arg constructor). Inject a hold-until-released executor; `start()`;
   `cancel(runId)`; release; assert the early-cause outcome.
 - **Reachable from a test without modifying the class? Yes**, as of the
-  worker seam. What remains is to write the test — it matches B8's own
-  suggested "`CountDownLatch`-gated worker `ExecutorService` test double".
-  The path is reachable, **not yet tested**.
+  worker seam, and **now tested**:
+  `causeLatchedBeforeWorkerStartsReturnsCancelledWithNothingLaunched` uses a
+  `CountDownLatch`-gated worker `ExecutorService` test double
+  (`GatedWorkerExecutor`).
 
 #### Path C (`InterruptedException` catch)
 
@@ -893,14 +901,14 @@ before the persist, or must save/restore it around the NIO).
 - **Seams that exist:** `MavenProcessLauncher` + `Process` subclassing
   (sufficient to *reach* the branch); the 6-arg constructor's `ProcessView`
   (for the pid lookup).
-- **Seams that do not exist:** none are needed to reach the branch — this
-  contradicts B8's implication that "no test interrupts the worker thread"
-  means a new seam is required. What is missing is any way to make the
-  branch's own behaviour *observable in isolation*; per O2 the
-  characterization test must assert `status.json` actually reaches a
-  terminal state.
+- **Seams that do not exist:** none are needed to reach the branch — no
+  new seam was required. What was missing was any way to make the branch's
+  own behaviour *observable in isolation*; the characterization test
+  therefore asserts `status.json` actually reaches a terminal state, which
+  also refuted O2.
 - **Reachable from a test without modifying the class? Yes** (H1
-  confirmed).
+  confirmed), and **now tested**:
+  `interruptedWaitInWaitForPersistsCancelledTerminalRecordAndReleasesLockAndSlot`.
 
 ### 13d — do the capture-and-keep blocks survive a collapse?
 
@@ -922,7 +930,7 @@ the whole terminal tail, not the capture fragment alone.
 | # | Verdict | Basis |
 |---|---|---|
 | **H1** | **CONFIRMED** | `process.waitFor()` (line 156) is the only `InterruptedException` source in the try; `launcher` and the returned `Process` are test-owned; a `Process` whose `waitFor()` throws lands execution in `catch (InterruptedException)` with no production change (given `processView.find(pid)` is made to succeed — real backing process or injected fake `ProcessView`). See §13c. |
-| **H2** | **CONFIRMED** | The early return runs on the internal, non-injectable `worker` pool (line 56) and its guard (line 118) precedes every injectable collaborator. Deterministic reach needs a new seam — an injectable `ExecutorService`. A test calling `cancel()` after `start()` returns is racing an idle pool and would be flaky. See §13c. |
+| **H2** | **CONFIRMED, then addressed** | The early return runs on the `worker` pool and its guard precedes every injectable collaborator; a test calling `cancel()` after `start()` returns would race an idle pool and be flaky. Deterministic reach needed a new seam — an injectable `ExecutorService` — which was added (7-arg ctor, PR #37) and is used by `causeLatchedBeforeWorkerStartsReturnsCancelledWithNothingLaunched`. See §13c. |
 | **H3** | **CONFIRMED, with a sharpening** | The guard *is* load-bearing, but only on the narrow interleaving where the try-block `capture` (line 161) succeeds and `persistTerminal` (line 163) then throws a `RuntimeException`; there `capture(run)` at line 174 returns `null` (persisted status no longer `PENDING`) and the guard preserves the line-162 count — a plain `skippedTests = capture(run)` would persist `null`. **But** the test named for this (`secondCaptureCallInTheRuntimeExceptionPath…`) never reaches that interleaving: its fixture throws at line 160, before the try-block capture, so capture runs exactly once (in the catch) and the guard is a plain assignment there. The guard is currently unproven by tests. See §11 O1, logged as B11. Early-cause / normal / `InterruptedException` paths each only ever reach `capture` once, so a plain assignment would not regress *them*. |
 | **H4** | **CONFIRMED; NOT section A** | Malformed-format `runId` → `RUN_NOT_FOUND` from `get`/`cancel` (line 88), `INVALID_ARGUMENTS` from `summary`/`failureSummary`/`artifacts`/`readArtifact` (lines 186/195/206/215). Well-formed-but-unknown `runId` → `RUN_NOT_FOUND` from all six (`RunStore` → status file absent). Traced to `regression_get_test_run` / `regression_cancel_test_run` (`data` error `code`) and the four report/artifact tools. `docs/TOOLS.md` (lines 98-102, 187-189) documents `RUN_NOT_FOUND` for the report/artifact tools' bad `runId` and lists `INVALID_ARGUMENTS` only as "schema-level input rejection" — it documents **one** of the two codes and is silent on the app-layer `INVALID_ARGUMENTS`. **Not section A** ("Published behaviour returns a wrong or misleading answer"): `INVALID_ARGUMENTS` for syntactically invalid input is neither wrong nor misleading — arguably more precise than `RUN_NOT_FOUND`. The gap is that `docs/TOOLS.md` is incomplete. Logged as **D14** (closed by a one-line docs note, matching D12's shape). |
 | **H5** | **CONFIRMED** | The prologue of `summary` (185-190), `failureSummary` (194-199), `artifacts` (206-210), `readArtifact` (215-219) is character-identical apart from the trailing `store.summary(id)` / `store.failureSummary(id)` / `store.artifacts(id)` / `store.readArtifact(id, artifactId)`. Extract `requireTerminal(String id)`. The `RunId.valid` half duplicates `RunStore`'s own check (`readSummary` line 177, `terminalRecordForArtifacts` line 261); the `!terminal()` half does not (it guards "in-memory `Active` ahead of `status.json`"). See §11 O10. |
@@ -936,13 +944,12 @@ the whole terminal tail, not the capture fragment alone.
 
 ## What this dossier did NOT verify, and why
 
-- **O2 is not verified by execution.** Whether `Files.readString` /
-  `Files.writeString` inside `RunStore` actually throw
+- **O2 was not verified by execution when this dossier was written.**
+  Whether `Files.readString` / `Files.writeString` inside `RunStore` throw
   `ClosedByInterruptException` when the worker thread's interrupt flag is
-  set (path C) depends on JDK `FileChannel` interrupt semantics on the
-  runtime platform; this pass changed no code and ran no test. It is stated
-  as PLAUSIBLE. The B8 edit and the §12 characterization test for path C
-  are written to force the question.
+  set (path C) was stated as PLAUSIBLE, pending a test. The path-C
+  characterization test (`interruptedWaitInWaitFor…`, PR #36) has since
+  settled it: they do not — O2 is refuted (see O2).
 - **The full `RunStore` / `ReportCapture` / `SurefireSummaryParser` /
   `AllureResultParser` internals** were read only to the depth needed to
   trace what `TestRunCoordinator` observes from them (return types, thrown
@@ -957,9 +964,10 @@ the whole terminal tail, not the capture fragment alone.
 - **Timing / performance** of holding the monitor across capture (O3) — not
   measured; the "low impact" judgement rests on capture running strictly
   after `process.waitFor()` returns, which is structural, not benchmarked.
-- **`mvn` was run only as `validate`** (per this pass's instruction); the
-  276/0/0/5 `regression-mcp-server` suite result from earlier the same day
-  is taken as current since no production code changed.
+- **`mvn` was run only as `validate`** when this dossier was written (per
+  that pass's instruction); the 276/0/0/5 `regression-mcp-server` suite
+  result from earlier the same day was taken as current then. The suite has
+  since grown to 278/0/0/5 (two characterization tests added).
 - **The 3-arg constructor** was confirmed to have no in-tree caller by
   grep; a caller outside the repository (there is none for this module) was
   not ruled out.

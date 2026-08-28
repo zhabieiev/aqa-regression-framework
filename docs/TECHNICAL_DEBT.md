@@ -386,8 +386,8 @@ re-verification of `4d7c1214` itself) had not happened to occur first.
 
 ### B8. `TestRunCoordinator.execute()`'s early-cause return terminal path has no test coverage
 
-Module: regression-mcp-server | Cost: 1-2 passes — constructing a
-deterministic seam for the race is the hard part
+Module: regression-mcp-server | Cost: 1 pass — the deterministic seam now
+exists (see below); only the test itself remains
 
 **What**: `execute()` has four ways to reach `persistTerminal`: an
 early-cause return (the run was already cancelled before the worker
@@ -407,17 +407,31 @@ see below). The early-cause return still has zero coverage:
   force this exact ordering deterministically: every cancellation test
   cancels only after the launcher's `launch()` method has already been
   entered, which is necessarily after this branch's own check already
-  passed. The `worker` `ExecutorService` is hard-constructed in the
-  constructor and is not one of the injectable seams, so a test cannot
-  hold the worker between `worker.submit` and the body of `execute`.
+  passed. A test must be able to hold the worker between `worker.submit`
+  and the body of `execute`.
 
-**Why deferred**: identified during an inspection pass, not sought out as
-a scheduled fix; the gap needs its own deterministic seam — most likely
-an injectable worker `ExecutorService` (a package-private constructor
-parameter mirroring the existing `launcher`/`timeouts`/`processView`
-seams) so a test can pass a hold-until-released executor, or a
-`CountDownLatch`-gated executor test double mirroring the existing
-`ManualTimeoutScheduler` pattern.
+**Seam added 2026-08-28** (branch `refactor/coordinator-worker-seam`): the
+worker `ExecutorService` is now injectable through a new 7-arg
+package-private constructor
+(`TestRunCoordinator(Path, Supplier, MavenProcessLauncher, TimeoutScheduler, Function, ProcessView, ExecutorService)`),
+following the same widening-constructor chain as the existing
+`launcher`/`timeouts`/`runtimeLoader`/`processView` seams; the public
+constructor still supplies the identical default
+(`Executors.newFixedThreadPool(3, …"regression-mcp-run-worker")`), and
+`close()` shuts an injected executor down exactly as it does the default,
+so a caller passing one hands over its lifetime. A test can now inject a
+hold-until-released executor (e.g. a `CountDownLatch`-gated
+`ExecutorService`, mirroring the existing `ManualTimeoutScheduler`
+pattern). Only the characterization test itself remains: inject the held
+executor; `start()`; `cancel(runId)`; release; assert
+`get(runId).state() == CANCELLED`, `startedAt() == null`,
+`exitCode() == null`, the injected `MavenProcessLauncher` was never
+invoked, no owned processes persisted, `active` cleared,
+`acquireActiveLock()` succeeds afterward.
+
+**Why still open**: the seam pass deliberately added no test (its scope
+was the production seam only); the path-A characterization test is a
+separate pass.
 
 **Consequence**: a regression in the branch — for example, accidentally
 still attempting a launch when `cause` is already set — would pass the
@@ -452,12 +466,13 @@ says** — see item B11, which also qualifies item D10's claim that the
 `execute()`-side skipped-count guard "does have a dedicated test".
 
 **Location**: `regression-mcp-server/src/main/java/com/aqa/mcp/execution/TestRunCoordinator.java`
-(`execute`'s early-cause return);
+(`execute`'s early-cause return; the 7-arg constructor is the worker
+seam);
 `regression-mcp-server/src/test/java/com/aqa/mcp/execution/TestRunCoordinatorTest.java`
 (`interruptedWaitInWaitForPersistsCancelledTerminalRecordAndReleasesLockAndSlot`
 covers the `InterruptedException` path; no test covers the early-cause
 return);
-`regression-mcp-server/docs/classes/TestRunCoordinator.md` (§13c, §11 O2).
+`regression-mcp-server/docs/classes/TestRunCoordinator.md` (§3, §5, §13c, §11 O2).
 
 ### B9. `MavenRuntimeConfigurationLoader.load` has no dedicated direct test
 

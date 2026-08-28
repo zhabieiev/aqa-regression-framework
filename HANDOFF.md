@@ -121,7 +121,7 @@ start of a session; update it at the end of one, per `CLAUDE.md`'s
   directory (`regression-mcp-server/docs/classes/`) is now started: the
   first dossier is
   [`regression-mcp-server/docs/classes/TestRunCoordinator.md`](regression-mcp-server/docs/classes/TestRunCoordinator.md)
-  (open PR, not merged). The review order in `ARCHITECTURE.md` puts
+  (merged, PR #35). The review order in `ARCHITECTURE.md` puts
   `TestRunCoordinator` last-but-one deliberately — it was taken first this
   time by explicit instruction, ahead of the classes it depends on.
 - `regression-jhipster`'s Playwright trace-capture gap (traces written to
@@ -133,10 +133,42 @@ start of a session; update it at the end of one, per `CLAUDE.md`'s
 
 ## Most recent session
 
+2026-08-28 (later still) — injectable worker `ExecutorService` seam on
+`TestRunCoordinator`, branch `refactor/coordinator-worker-seam` (PR open,
+not merged as of this entry). PRs #35 (dossier) and #36 (the
+`InterruptedException` characterization test) both merged to `master`
+earlier this session — this branch is stacked on that merged state:
+
+Made `TestRunCoordinator`'s internal worker `ExecutorService` injectable
+for tests, and nothing else — the one authorized production change.
+Added a 7-arg package-private constructor
+`TestRunCoordinator(Path, Supplier, MavenProcessLauncher, TimeoutScheduler, Function, ProcessView, ExecutorService)`
+as the new field-initialising base ctor; the former base (6-arg) now
+delegates to it, supplying the unchanged default
+`Executors.newFixedThreadPool(3, …"regression-mcp-run-worker")`. This
+follows the exact widening-constructor chain the existing
+`launcher`/`timeouts`/`runtimeLoader`/`processView` seams use. The public
+2-arg constructor's signature and body are untouched; `recoverIfUnowned()`
+still runs last in construction, after the worker field is set. `close()`
+is unchanged and shuts down whatever executor the field holds, injected or
+default — **the seam's contract is that a caller passing an executor hands
+over its lifetime, so a shared or reused pool must not be injected.** No
+test was added this pass (that is a separate pass — the path-A
+characterization test B8 still needs). No POM or CI file touched.
+`mvn -pl regression-mcp-server -am test` measured on this branch: 277/0/0/5
+before the edit and 277/0/0/5 after — every existing caller (2-arg, 5-arg,
+6-arg) reaches the identical effective collaborators via the new chain.
+`mvn validate` from the root re-run clean. Updated
+`docs/classes/TestRunCoordinator.md` (§3 constructor list, §5 seam
+inventory, §13c path-A reachability), `docs/TECHNICAL_DEBT.md` B8 (seam
+exists, only the test remains), and `docs/ROADMAP.md` item 3 for
+consistency with B8. Two pre-existing dossier inaccuracies found during
+the re-read but out of this pass's scope are recorded verbatim in the
+session report appended to `output.log` for a later documentation pass.
+
 2026-08-28 (later) — characterization test for `TestRunCoordinator`'s
 `catch (InterruptedException)` terminal path, branch
-`test/coordinator-interrupted-path` (PR open, not merged as of this
-entry):
+`test/coordinator-interrupted-path` (merged, PR #36):
 
 Added one test to `TestRunCoordinatorTest`,
 `interruptedWaitInWaitForPersistsCancelledTerminalRecordAndReleasesLockAndSlot`,
@@ -169,7 +201,7 @@ new test recorded there; `docs/ROADMAP.md` item 3 and
 exactly this test). `mvn validate` from the root re-run clean.
 
 2026-08-28 — first per-class dossier: `TestRunCoordinator`, branch
-`docs/dossier-testruncoordinator` (PR open, not merged as of this entry):
+`docs/dossier-testruncoordinator` (merged, PR #35):
 
 Wrote `regression-mcp-server/docs/classes/TestRunCoordinator.md` from the
 tree (the full class plus every cited collaborator, test and doc), covering
@@ -575,8 +607,13 @@ MCP-executable module, on equal footing with `regression-nextjs-commerce`.
 ## Next step
 
 The per-class dossier directory (`regression-mcp-server/docs/classes/`) is
-started — `TestRunCoordinator.md` is the first, on an open PR. The concrete
-next step is to continue it following
+started — `TestRunCoordinator.md` is the first (merged, PR #35). Two
+follow-ups from it are also merged: PR #36 (the `InterruptedException`
+characterization test, which refuted concern O2) and — open, on branch
+`refactor/coordinator-worker-seam` — the injectable worker `ExecutorService`
+seam that makes `execute()`'s early-cause path reachable from a test (the
+path-A characterization test itself, `docs/TECHNICAL_DEBT.md` B8, is still
+unwritten). The concrete next step is to continue the dossier work following
 [`regression-mcp-server/docs/ARCHITECTURE.md`](regression-mcp-server/docs/ARCHITECTURE.md)'s
 own review order (Group 1's tier-0 leaves first — e.g. `RepositoryRoot`,
 `ModuleType`, `FailureArtifact` — through `RegressionMcpServer` last);

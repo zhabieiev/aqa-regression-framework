@@ -82,7 +82,8 @@ Every member, its callers, and whether it is reachable from an MCP tool.
 | `TestRunCoordinator(Path, Supplier<TestRunRequestValidator>)` | production 2-arg ctor; delegates to the 6-arg ctor with all real seams | `RegressionMcpServer.createServer` (line 75); `RegressionMcpServerContractTest` (5×, for description-only contracts) | — |
 | `TestRunCoordinator(Path, Supplier, MavenProcessLauncher)` | 3-arg test ctor | none in tree (superseded by the 5-arg) | — |
 | `TestRunCoordinator(Path, Supplier, MavenProcessLauncher, TimeoutScheduler, Function<Map,MavenRuntimeConfiguration>)` | 5-arg test ctor | `TestRunCoordinatorTest.coordinator(...)`, `CrossJvmLockTest`, the `secondCapture…` test | — |
-| `TestRunCoordinator(Path, Supplier, MavenProcessLauncher, TimeoutScheduler, Function, ProcessView)` | 6-arg test ctor (adds fake `ProcessView`) | `StaleRunRecoveryTest.coordinator(...)` | — |
+| `TestRunCoordinator(Path, Supplier, MavenProcessLauncher, TimeoutScheduler, Function, ProcessView)` | 6-arg test ctor (adds fake `ProcessView`); since the worker seam was added it delegates to the 7-arg ctor, supplying the default worker `Executors.newFixedThreadPool(3, …"regression-mcp-run-worker")` — it is no longer the field-initialising base | `StaleRunRecoveryTest.coordinator(...)` | — |
+| `TestRunCoordinator(Path, Supplier, MavenProcessLauncher, TimeoutScheduler, Function, ProcessView, ExecutorService worker)` | 7-arg test ctor (adds injectable worker `ExecutorService`); the field-initialising base ctor — every narrower ctor now reaches it. `close()` shuts this executor down like any other, so a caller passing one hands over its lifetime | none in tree yet (its purpose is the path-A characterization test B8 still needs) | — |
 | `RunSnapshot start(StartTestRunRequest, Map<String,String>)` | validate, lock, persist QUEUED, submit `execute` to the worker, return the QUEUED snapshot synchronously | `RegressionMcpServer.startTestRunTool` (line 110); `TestRunCoordinatorTest`, `StaleRunRecoveryTest`, `CrossJvmLockTest`, `RegressionMcpServerContractTest`, STDIO test (via `ControlledMcpServerMain`) | `regression_start_test_run` |
 | `RunSnapshot get(String id)` | in-memory `Active` snapshot if the id matches an active run, else `store.get(id)` | `RegressionMcpServer.runActionTool` (get branch, line 158); `cancel` (line 105); tests' `awaitState`/`awaitTerminal` | `regression_get_test_run` |
 | `RunSnapshot cancel(String id)` | set `run.cause = CANCELLED` (CAS), `terminate` the process if launched, return the current in-memory snapshot; delegates to `get(id)` for a non-active id | `RegressionMcpServer.runActionTool` (cancel branch, line 158); `close()` (line 374); tests | `regression_cancel_test_run` |
@@ -101,10 +102,13 @@ Every member, its callers, and whether it is reachable from an MCP tool.
   package-private, read-only seam with no production path, in the same
   category as the injectable `TimeoutScheduler`/`ProcessView` seams. No
   action recommended.
-- No public or package-private member has *zero* callers. The 3-arg
-  constructor has no caller in the tree but is not dead in the strict sense
-  — it is a documented overload sitting between the 2-arg and 5-arg forms;
-  worth deleting on the next touch, not worth a debt entry.
+- Two constructors have *zero* callers in the tree. The 3-arg constructor
+  is a documented overload sitting between the 2-arg and 5-arg forms; worth
+  deleting on the next touch, not worth a debt entry. The 7-arg constructor
+  is the new worker seam — uncalled only until the path-A characterization
+  test (B8) is written, its intended and sole purpose. Neither is dead in
+  the strict sense. Every other public and package-private member has at
+  least one caller.
 - All seven non-`close` public methods map 1:1 onto the seven
   execution/report MCP tools. `close()` is driven only by the shutdown
   hook and the stdin-EOF callback.
@@ -242,8 +246,8 @@ after `worker.shutdown()`.
 | `ProcessView` | `find(pid)`, `descendants(pid, max)`, `destroy(identity, forcibly, grace)` | **interface**, injectable; default `SystemProcessView` |
 | `Function<Map<String,String>, MavenRuntimeConfiguration>` | load the Maven runtime for a `start` | **functional**, injectable; default `MavenRuntimeConfigurationLoader::load` |
 | `Supplier<TestRunRequestValidator>` | fresh validator per `start` | **functional**, always supplied by the caller |
-| `ExecutorService worker` | runs `execute` + drainers | **concrete, hard-constructed** (line 56) — *not injectable* |
-| `ScheduledExecutorService ownershipObserver` | the 100 ms observer | **concrete, hard-constructed** (line 57) — *not injectable* |
+| `ExecutorService worker` | runs `execute` + drainers | **JDK interface, injectable** via the widest (7-arg) constructor; default `Executors.newFixedThreadPool(3, …"regression-mcp-run-worker")` supplied by the 6-arg ctor. `close()` shuts it down unconditionally (`shutdown` → 10 s `awaitTermination` → `shutdownNow`), so passing one in hands its lifetime to the coordinator — a shared or reused pool must not be injected |
+| `ScheduledExecutorService ownershipObserver` | the 100 ms observer | **concrete, hard-constructed** — *not injectable* |
 | `MavenInvocationFactory` (static `create`) | build the Classworlds command line | concrete static |
 | `ProcessOwnershipTracker` | `new` at lines 130 and 266 | **concrete, hard-constructed** |
 | `BoundedLogDrainer` | `new` at lines 136-137 | **concrete, hard-constructed** |
@@ -252,12 +256,14 @@ after `worker.shutdown()`.
 | `Process`, `ProcessHandle`, `ScheduledFuture`, `CompletableFuture` (via drainer) | JDK | — |
 
 **Injectable through a constructor:** `validator`, `launcher`, `timeouts`,
-`runtimeLoader`, `processView`.
-**Hard-constructed:** `store`, `worker`, `ownershipObserver`, and — per run
+`runtimeLoader`, `processView`, `worker` (the last via the 7-arg ctor only).
+**Hard-constructed:** `store`, `ownershipObserver`, and — per run
 — `ProcessOwnershipTracker`, `BoundedLogDrainer` ×2, `ReportCapture`.
 
-The two hard-constructed *executors* are the gap that makes §13c path A
-untestable.
+`ownershipObserver` remains hard-constructed. `worker` is now injectable
+(7-arg ctor), which is what makes §13c path A **reachable** from a test —
+a hold-until-released executor can delay `execute()` past a `cancel()`.
+The path is reachable, not yet tested (B8).
 
 ---
 
@@ -846,26 +852,28 @@ before the persist, or must save/restore it around the NIO).
 - **A test must control:** that the worker thread does not begin
   `execute(next)` until after `cancel(runId)` (or a fired timeout) has
   latched `run.cause`.
-- **Does the class give a test that control today? No.** The `worker`
-  `ExecutorService` is created internally (line 56) and is not a
-  constructor parameter — the four package-private constructors expose
-  `launcher`, `timeouts`, `runtimeLoader`, `processView` but not `worker`.
-  `start()` does `worker.submit(() -> execute(next))` and returns; a test
-  that then calls `cancel()` is racing an idle 3-thread pool that picks the
-  task up in microseconds. `cancel()` *is* callable at that point (`active`
-  is set at line 72, before `store.create` and `worker.submit`), but there
-  is no way to hold the worker.
+- **Does the class give a test that control today? Yes, since the worker
+  seam was added** — the 7-arg constructor takes the worker
+  `ExecutorService`. Before that seam existed the worker was created
+  internally and none of the constructors — the public 2-arg or the three
+  package-private test ctors exposing `launcher`, `timeouts`,
+  `runtimeLoader`, `processView` — took it. `start()` does
+  `worker.submit(() -> execute(next))` and returns; a test that then calls
+  `cancel()` is racing an idle 3-thread pool that picks the task up in
+  microseconds. `cancel()` *is* callable at that point (`active` is set
+  before `store.create` and `worker.submit`). With the seam a test can
+  inject a hold-until-released executor and hold the worker between
+  `worker.submit` and the body of `execute` for as long as it needs.
 - **Seams that exist and do not help:** `TimeoutScheduler` (can latch the
   cause via `fire()`, but cannot delay the worker); `MavenProcessLauncher`
-  (too late — line 118's check is before line 126's `launcher.launch`).
-- **Seams that do not exist:** an injectable worker `ExecutorService`; any
-  latch/hook between `worker.submit` and the body of `execute`.
-- **Reachable from a test without modifying the class? No.** Smallest
-  modification: add a package-private constructor parameter
-  `ExecutorService worker` (exactly like the existing `launcher`/`timeouts`
-  seams), letting a test pass a hold-until-released executor. This is a
-  finding, not work to do now. It matches B8's own suggested
-  "`CountDownLatch`-gated worker `ExecutorService` test double".
+  (too late — the early-cause check precedes `launcher.launch`).
+- **Seam that makes it reachable:** the injectable worker `ExecutorService`
+  (7-arg constructor). Inject a hold-until-released executor; `start()`;
+  `cancel(runId)`; release; assert the early-cause outcome.
+- **Reachable from a test without modifying the class? Yes**, as of the
+  worker seam. What remains is to write the test — it matches B8's own
+  suggested "`CountDownLatch`-gated worker `ExecutorService` test double".
+  The path is reachable, **not yet tested**.
 
 #### Path C (`InterruptedException` catch)
 

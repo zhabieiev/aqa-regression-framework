@@ -8,10 +8,15 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Callable;
 import java.util.concurrent.Delayed;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -413,6 +418,76 @@ class TestRunCoordinatorTest {
                 .isEqualTo(TestRunState.PASSED);
     }
 
+    /** Characterization of execute()'s early-cause return terminal path (path A): a cause is latched before the
+     * worker thread begins execute(), so the early check at the top of execute() returns before anything is
+     * launched. Reaching it deterministically needs the injectable worker ExecutorService added in PR #37 -- a
+     * GatedWorkerExecutor holds the submitted task in a real CountDownLatch barrier while the test calls cancel()
+     * to latch CANCELLED, then releases it. This records CURRENT behaviour: a run cancelled before launch reaches
+     * a clean CANCELLED terminal state with no process, startedAt/exitCode absent, and the lock released. */
+    @Test
+    void causeLatchedBeforeWorkerStartsReturnsCancelledWithNothingLaunched() throws Exception {
+        NeverLaunchingLauncher launcher = new NeverLaunchingLauncher();
+        GatedWorkerExecutor worker = new GatedWorkerExecutor();
+        TestRunCoordinator coordinator = new TestRunCoordinator(root, this::validator, launcher,
+                new ManualTimeoutScheduler(), ignored -> runtime(), new SystemProcessView(), worker);
+        coordinators.add(coordinator);
+
+        RunSnapshot queued = coordinator.start(request(), Map.of());
+        String id = queued.runId();
+
+        // the worker task is dequeued and parked in the barrier -- execute(next) has not run yet.
+        assertThat(worker.awaitHeldTaskParked(5, TimeUnit.SECONDS)).isTrue();
+        assertThat(coordinator.get(id).state()).isEqualTo(TestRunState.QUEUED);
+        assertThat(new RunStore(root).persisted(id).snapshot().state()).isEqualTo(TestRunState.QUEUED);
+        assertThat(launcher.launches()).isZero();
+
+        RunSnapshot cancelReturn = coordinator.cancel(id);
+        worker.markCancelReturned();
+        worker.releaseHeldTask();
+
+        RunSnapshot terminal = awaitTerminal(coordinator, id);
+        RunStore.PersistedRun persisted = new RunStore(root).persisted(id);
+
+        // STEP 2a ordering witness (clock-free, happens-before): when the held task was released, cancel() had
+        // already returned; cancel() latches run.cause as its first action, so execute()'s early-return check
+        // read a non-null cause.
+        assertThat(worker.cancelWasMarkedBeforeTaskRan()).isTrue();
+        assertThat(worker.heldTaskRan()).isTrue();
+        assertThat(cancelReturn.state()).isEqualTo(TestRunState.QUEUED);
+
+        // observable unique to path A: a terminal CANCELLED run with zero launches. Paths B and C structurally
+        // require a launched process; path D's default cause is ERROR, and reaching it with a pre-latched cause
+        // needs the cause set after the early-return check -- which this barrier prevents.
+        assertThat(launcher.launches()).isZero();
+        assertThat(persisted.ownedProcesses()).isEmpty();
+
+        assertThat(terminal.state()).isEqualTo(TestRunState.CANCELLED);
+        assertThat(terminal.reason()).isEqualTo("CANCELLED");
+        assertThat(terminal.startedAt()).isNull();
+        assertThat(terminal.finishedAt()).isNotNull();
+        assertThat(terminal.exitCode()).isNull();
+        assertThat(terminal.skippedTests()).isNull();
+
+        assertThat(persisted.snapshot().state()).isEqualTo(TestRunState.CANCELLED);
+        assertThat(persisted.snapshot()).isEqualTo(terminal);
+        assertThat(persisted.snapshot().startedAt()).isNull();
+        assertThat(persisted.snapshot().exitCode()).isNull();
+        // capture still runs and publishes; the empty staging directory makes it UNAVAILABLE.
+        assertThat(persisted.capture().status()).isEqualTo(CaptureStatus.UNAVAILABLE);
+
+        // the run's lock is released in execute()'s finally, so a direct acquisition succeeds.
+        try (RunStore.Lock ignored = new RunStore(root).acquireActiveLock()) {
+            assertThat(ignored).isNotNull();
+        }
+
+        // the injected executor is shut down by the coordinator's close(), and the held task, having been
+        // released before this point, ran to completion rather than being interrupted.
+        coordinator.close();
+        assertThat(worker.isShutdown()).isTrue();
+        assertThat(worker.isTerminated()).isTrue();
+        assertThat(worker.heldTaskInterrupted()).isFalse();
+    }
+
     private TestRunCoordinator coordinator(ControlledProcessLauncher launcher, TestRunCoordinator.TimeoutScheduler scheduler) {
         launchers.add(launcher);
         TestRunCoordinator coordinator = new TestRunCoordinator(root, this::validator, launcher, scheduler, ignored -> runtime());
@@ -629,6 +704,74 @@ class TestRunCoordinatorTest {
         @Override public boolean isAlive() { return delegate.isAlive(); }
         @Override public long pid() { return delegate.pid(); }
         @Override public ProcessHandle toHandle() { return delegate.toHandle(); }
+    }
+
+    /** A MavenProcessLauncher that must never be called on the early-cause path; if execute() ever reaches the
+     * launch it increments the counter and throws, failing the test loudly instead of starting a real process. */
+    private static final class NeverLaunchingLauncher implements MavenProcessLauncher {
+        private final AtomicInteger launches = new AtomicInteger();
+        @Override public Process launch(MavenInvocation invocation) {
+            launches.incrementAndGet();
+            throw new IllegalStateException("early-cause path must return before launching a process");
+        }
+        int launches() { return launches.get(); }
+    }
+
+    /** Worker ExecutorService (7-arg constructor seam) that holds the FIRST submitted task in a real
+     * CountDownLatch barrier until releaseHeldTask(). At the instant the held task is released it records whether
+     * the test had already marked cancel() as returned -- a clock-free happens-before witness that the cause was
+     * latched before the worker task began executing. Subsequent submissions pass straight through. */
+    private static final class GatedWorkerExecutor implements ExecutorService {
+        private final ExecutorService delegate = Executors.newCachedThreadPool(runnable -> {
+            Thread thread = new Thread(runnable, "gated-mcp-run-worker");
+            thread.setDaemon(true);
+            return thread;
+        });
+        private final CountDownLatch release = new CountDownLatch(1);
+        private final CountDownLatch heldTaskParked = new CountDownLatch(1);
+        private final AtomicBoolean firstTaskWrapped = new AtomicBoolean(false);
+        private final AtomicBoolean cancelMarked = new AtomicBoolean(false);
+        private final AtomicBoolean cancelMarkedWhenReleased = new AtomicBoolean(false);
+        private final AtomicBoolean heldTaskRan = new AtomicBoolean(false);
+        private final AtomicBoolean heldTaskInterrupted = new AtomicBoolean(false);
+
+        boolean awaitHeldTaskParked(long timeout, TimeUnit unit) throws InterruptedException { return heldTaskParked.await(timeout, unit); }
+        void markCancelReturned() { cancelMarked.set(true); }
+        void releaseHeldTask() { release.countDown(); }
+        boolean cancelWasMarkedBeforeTaskRan() { return cancelMarkedWhenReleased.get(); }
+        boolean heldTaskRan() { return heldTaskRan.get(); }
+        boolean heldTaskInterrupted() { return heldTaskInterrupted.get(); }
+
+        @Override public Future<?> submit(Runnable task) {
+            if (firstTaskWrapped.compareAndSet(false, true)) {
+                return delegate.submit(() -> {
+                    heldTaskParked.countDown();
+                    try {
+                        release.await();
+                    } catch (InterruptedException exception) {
+                        heldTaskInterrupted.set(true);
+                        Thread.currentThread().interrupt();
+                        return;
+                    }
+                    cancelMarkedWhenReleased.set(cancelMarked.get());
+                    heldTaskRan.set(true);
+                    task.run();
+                });
+            }
+            return delegate.submit(task);
+        }
+        @Override public void execute(Runnable command) { submit(command); }
+        @Override public void shutdown() { delegate.shutdown(); }
+        @Override public List<Runnable> shutdownNow() { return delegate.shutdownNow(); }
+        @Override public boolean isShutdown() { return delegate.isShutdown(); }
+        @Override public boolean isTerminated() { return delegate.isTerminated(); }
+        @Override public boolean awaitTermination(long timeout, TimeUnit unit) throws InterruptedException { return delegate.awaitTermination(timeout, unit); }
+        @Override public <T> Future<T> submit(Callable<T> task) { return delegate.submit(task); }
+        @Override public <T> Future<T> submit(Runnable task, T result) { return delegate.submit(task, result); }
+        @Override public <T> List<Future<T>> invokeAll(Collection<? extends Callable<T>> tasks) throws InterruptedException { return delegate.invokeAll(tasks); }
+        @Override public <T> List<Future<T>> invokeAll(Collection<? extends Callable<T>> tasks, long timeout, TimeUnit unit) throws InterruptedException { return delegate.invokeAll(tasks, timeout, unit); }
+        @Override public <T> T invokeAny(Collection<? extends Callable<T>> tasks) throws InterruptedException, java.util.concurrent.ExecutionException { return delegate.invokeAny(tasks); }
+        @Override public <T> T invokeAny(Collection<? extends Callable<T>> tasks, long timeout, TimeUnit unit) throws InterruptedException, java.util.concurrent.ExecutionException, java.util.concurrent.TimeoutException { return delegate.invokeAny(tasks, timeout, unit); }
     }
 
     private static final class TestFuture implements ScheduledFuture<Object> {

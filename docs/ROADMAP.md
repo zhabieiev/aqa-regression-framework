@@ -67,7 +67,7 @@ An inspection pass produced a full architecture map
 (`regression-mcp-server/docs/TEST_MAP.md`), anchored to commit
 `7107c49fa305dde53ac3d6d0e009da67d773d859`. The candidates below are that
 pass's prioritized output — planned work, not yet authorized. Corresponding
-debt items are catalogued in `docs/TECHNICAL_DEBT.md` (A3, B8-B10, C6,
+debt items are catalogued in `docs/TECHNICAL_DEBT.md` (A3, B9-B10, C6,
 D12-D13); this list is refactoring/improvement candidates, kept separate
 from that debt catalogue per this file's own scope.
 
@@ -85,20 +85,16 @@ from that debt catalogue per this file's own scope.
    (`secondCaptureCallInTheRuntimeExceptionPathDoesNotOverwriteTheFirstCallsSkippedCount`)
    already pins the merge-vs-overwrite behavior this extraction must
    preserve.
-3. **Add a characterization test for `TestRunCoordinator`'s last
-   untested terminal path** (`docs/TECHNICAL_DEBT.md` item B8): the
-   early-cause return. The `InterruptedException` catch was covered on
-   2026-08-28 by
-   `interruptedWaitInWaitForPersistsCancelledTerminalRecordAndReleasesLockAndSlot`
-   (which also refuted the dossier's O2 concern). The deterministic seam
-   this test needs — an injectable worker `ExecutorService` — was added
-   2026-08-28 (branch `refactor/coordinator-worker-seam`, 7-arg
-   constructor); a `CountDownLatch`-gated executor mirroring the
-   `ManualTimeoutScheduler` pattern is now all the test requires. Cost: 1
-   pass.
-   Risk: low by itself (adds a test, changes no production behavior), but
-   is a **hard prerequisite** for item 5 below, not merely recommended
-   first.
+3. **Characterization tests for `TestRunCoordinator`'s `execute()` terminal
+   paths — DONE (2026-08-28).** All four are now covered: normal
+   completion, the `RuntimeException` catch, the `InterruptedException`
+   catch (`interruptedWaitInWaitForPersistsCancelledTerminalRecordAndReleasesLockAndSlot`,
+   which also refuted the dossier's O2 concern), and the early-cause return
+   (`causeLatchedBeforeWorkerStartsReturnsCancelledWithNothingLaunched`, via
+   the injectable worker `ExecutorService` added on branch
+   `refactor/coordinator-worker-seam`). The formerly-tracking debt item was
+   retired. This was the **hard prerequisite** for item 6 below, which is
+   now de-gated.
 4. **Skip or cache `JavaSourceScanner.scan()` per module across validator
    calls** (`docs/TECHNICAL_DEBT.md` item B10). Cost: 2-3 passes. Risk:
    medium — needs a design decision (a new per-rule capability flag, or a
@@ -113,11 +109,10 @@ from that debt catalogue per this file's own scope.
    tool and one "`ModuleBoundariesTool` never emits `advisoryViolations`"
    assertion as part of this same pass.
 6. **Collapse `TestRunCoordinator`'s four `execute()` paths into one
-   terminal transition.** Cost: 3-4 passes, and explicitly gated on item 3
-   above — not merely "recommended first," a hard prerequisite, since two
-   of the four paths currently have no test proving what a consolidation
-   must preserve. Risk: high — this is the module's largest and most
-   structurally central class; a subtle behavioral change here affects
+   terminal transition.** Cost: 3-4 passes. Item 3 above (characterization
+   tests for all four terminal paths) was its hard prerequisite and is now
+   done, so this is de-gated. Risk: high — this is the module's largest and
+   most structurally central class; a subtle behavioral change here affects
    run-state correctness for every terminal run.
 
 **Design questions, not scheduled work** (see `docs/TECHNICAL_DEBT.md` for

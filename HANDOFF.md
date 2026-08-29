@@ -143,6 +143,71 @@ start of a session; update it at the end of one, per `CLAUDE.md`'s
 
 ## Most recent session
 
+2026-08-29 (latest) — `regression_list_scenarios`' error code for a broken
+`REGRESSION_ROOT` corrected, branch `fix/list-scenarios-repository-error`
+(PR open, not merged as of this entry). One production line changed, plus
+two pinned test assertions; no POM or CI file touched:
+
+**What was wrong.** `RegressionMcpServer.scenarioListTool`'s call handler
+reported `INVALID_ARGUMENTS` when `RepositoryRootResolver.resolve` failed
+at call time — i.e. for a broken `REGRESSION_ROOT` — while the sibling
+`RegressionMcpServer.featureListTool` reported `REPOSITORY_ERROR` for the
+identical condition. A client whose arguments were fine but whose
+repository root was misconfigured was told its arguments were invalid.
+
+**Mechanism.** `scenarioListTool`'s handler has two catch clauses on one
+try: `catch (RepositoryInspectionException)` then
+`catch (IllegalArgumentException)`. The second clause chose its code with
+`exception instanceof RepositoryInspectionException inspection ?
+inspection.code() : "INVALID_ARGUMENTS"`. That `instanceof` was dead:
+`RepositoryInspectionException` is `final`, extends
+`IllegalArgumentException`, and is already taken by the preceding clause,
+so it can never reach the second — the ternary always yielded
+`"INVALID_ARGUMENTS"`. The only throwable that actually reaches the second
+clause is a plain `IllegalArgumentException` from
+`RepositoryRootResolver.resolve`. The fix replaces the ternary with a
+plain `moduleErrorResult("REPOSITORY_ERROR", exception.getMessage())`,
+identical to `featureListTool`'s second clause.
+
+**Pre-fix codes were recorded before the change.** Driven through both
+handlers against a root that was valid when the tool specification was
+built and then made invalid at call time (its `pom.xml` deleted),
+`regression_list_features` returned `REPOSITORY_ERROR` and
+`regression_list_scenarios` returned `INVALID_ARGUMENTS`, both carrying
+the identical message `REGRESSION_ROOT must contain the root pom.xml.`.
+
+**Now pinned by test**, both in `RegressionMcpServerContractTest`:
+`bothListToolsReportABrokenRepositoryRootAsRepositoryError` asserts both
+tools return `REPOSITORY_ERROR` for a broken root;
+`listScenariosStillReportsABadArgumentAsInvalidArguments` asserts
+`scenarioListTool` still returns `INVALID_ARGUMENTS` for a genuinely bad
+argument set (an unknown key alongside a valid `module`), so a later fold
+of the two catch clauses into one cannot silently reclassify a bad
+argument as a repository failure. Each assertion was shown non-vacuous
+against a deliberately regressed handler before being kept.
+
+**`regression-mcp-server/docs/TOOLS.md` needed no edit.** It documents no
+per-tool error codes for `regression_list_features` or
+`regression_list_scenarios`, and its "Common error codes" section already
+defines `REPOSITORY_ERROR` as "a discovery tool's underlying
+`pom.xml`/module resolution failed for the current request only, not at
+server startup" — exactly this condition — and `INVALID_ARGUMENTS` as
+"schema-level input rejection", which a broken root is not.
+
+**Verification.** `mvn -pl regression-mcp-server -am test` on the branch:
+280 / 0 / 0 / 5 (was 278 / 0 / 0 / 5 on `master`; the +2 are this pass's
+new assertion plus the broken-root assertion added on the same branch a
+pass earlier). During this pass
+`TestRunCoordinatorTest.retainedChildIsRemovedWhenParentExitsBeforeCoordinatorCleanup`
+failed twice on back-to-back full-suite runs (`ownedProcesses()` size 1,
+expected ≥ 2) and then passed on a third, and passed every time in
+isolation; the same clean `master` tree ran 279 / 0 / 0 / 5 green in
+between. It spawns a real child process whose parent exits immediately and
+asserts on a process-tree scan observing both — a timing race under
+machine load, unrelated to this change (a different test class that runs
+earlier, no shared state), and a sibling of the race fixed earlier in
+commit `f4256fb`. Not investigated further in this pass.
+
 2026-08-28 (latest) — documentation reconciliation after the
 `TestRunCoordinator` terminal-path work, branch
 `docs/coordinator-arc-reconciliation` (PR open, not merged as of this

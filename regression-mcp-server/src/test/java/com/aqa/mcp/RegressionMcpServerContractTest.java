@@ -115,6 +115,22 @@ class RegressionMcpServerContractTest {
         return (String) error.get("code");
     }
 
+    /** The converse of {@link #bothListToolsReportABrokenRepositoryRootAsRepositoryError()}: a genuinely bad
+     * argument set (here an unknown key alongside a valid {@code module}) must still surface as
+     * INVALID_ARGUMENTS from scenarioListTool, not REPOSITORY_ERROR. moduleArgument raises this as a
+     * RepositoryInspectionException caught by the handler's FIRST catch clause; this pins that the two catch
+     * clauses stay distinct, so a later fold of the second into the first cannot silently reclassify a bad
+     * argument as a repository failure. */
+    @Test
+    void listScenariosStillReportsABadArgumentAsInvalidArguments() {
+        SyncToolSpecification scenarioList = RegressionMcpServer.scenarioListTool(validRoot());
+
+        CallToolResult result = scenarioList.callHandler().apply(null, new CallToolRequest(
+                RegressionMcpServer.LIST_SCENARIOS_TOOL_NAME, Map.of("module", "regression-nextjs-commerce", "bogus", "x")));
+
+        assertThat(errorCode(result)).isEqualTo("INVALID_ARGUMENTS");
+    }
+
     @Test
     void givesGetAndCancelTestRunToolsDistinctNonBlankDescriptions() {
         TestRunCoordinator coordinator = new TestRunCoordinator(validRoot().path(), () -> { throw new AssertionError("Description contract must not validate a run."); });

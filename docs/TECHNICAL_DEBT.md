@@ -1374,6 +1374,63 @@ tools" preamble and "Common error codes");
 `regression-mcp-server/docs/classes/TestRunCoordinator.md` (§7, hypothesis
 H4).
 
+### D15. `TestRunCoordinatorTest`'s process-tree ownership assertions have under-counted on two occasions, cause unestablished
+
+Module: regression-mcp-server | Cost: n/a
+
+**What**: two `TestRunCoordinatorTest` methods drive a real
+child/grandchild process tree and then assert that the run's persisted
+`OwnedProcessIdentity` set has at least a given size — the coordinator is
+expected to have observed and retained that many live processes before the
+assertion runs. On two separate occasions the observed size has been 1,
+below the asserted minimum:
+
+- **2026-08-17, CI** (`ubuntu-latest`, commit `f337b48c`, run
+  32036451902): `timeoutSchedulingFailureNeverPublishesRunningAndCleansProcessAndLock`
+  asserted `>= 3`, observed 1, and failed identically on two consecutive
+  attempts of the same commit. Catalogued in full as item **D2**, where it
+  is stated that the failure "is not characterized as a flake".
+- **2026-08-29, local** (Windows, branch
+  `fix/list-scenarios-repository-error`):
+  `retainedChildIsRemovedWhenParentExitsBeforeCoordinatorCleanup` asserted
+  `>= 2`, observed 1, on two consecutive back-to-back full-suite runs; it
+  then passed on a third full-suite run and on every run in isolation, and
+  the same tree with the branch's change stashed ran the suite green in
+  between. That change touches `RegressionMcpServer`, not the coordinator
+  or its tests, so the failure is independent of it. Recorded in
+  `HANDOFF.md`'s 2026-08-29 session entry.
+
+The two are different test methods in the same class asserting the same
+kind of quantity — the size of the persisted owned-process set — each
+observing 1 against a different expected minimum (`>= 3` and `>= 2`).
+
+**What is NOT established**: any cause, for either occasion. Whether the
+two share a cause; whether the asserted minimum encodes an assumption
+about process-tree depth or observation timing that does not always hold
+on a given runner or under load; whether either expected count is simply
+too tight — all open. Neither occasion has been reproduced on demand: D2's
+did not reproduce locally, and the 2026-08-29 one did not reproduce in
+isolation or on its third full-suite run.
+
+**This is an open question, not a scheduled fix.** No change to either
+test or to `TestRunCoordinator` is planned here.
+
+**What would settle it**: on the next occurrence, before any re-run,
+capture the full Surefire output, the exact assertion message including
+every captured `OwnedProcessIdentity` record, and the runner OS; then run
+the failing method with the observed process tree dumped at the point of
+assertion and compare that dump against a local run of the same method —
+the same diagnostic item D2 already calls for.
+
+**Location**: `regression-mcp-server/src/test/java/com/aqa/mcp/execution/TestRunCoordinatorTest.java`
+(`timeoutSchedulingFailureNeverPublishesRunningAndCleansProcessAndLock`,
+line 150 as of 2026-08-23;
+`retainedChildIsRemovedWhenParentExitsBeforeCoordinatorCleanup`, line 294
+as of 2026-08-29);
+`regression-mcp-server/src/main/java/com/aqa/mcp/execution/TestRunCoordinator.java`
+(`observe`, owned-process retention). Related: item **D2** (the 2026-08-17
+occasion, in full) and `HANDOFF.md`'s 2026-08-29 session entry.
+
 ## Where module-level debt lives
 
 This file covers cross-module, repository-level, and

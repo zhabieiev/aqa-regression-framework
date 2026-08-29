@@ -199,14 +199,19 @@ server startup" — exactly this condition — and `INVALID_ARGUMENTS` as
 new assertion plus the broken-root assertion added on the same branch a
 pass earlier). During this pass
 `TestRunCoordinatorTest.retainedChildIsRemovedWhenParentExitsBeforeCoordinatorCleanup`
-failed twice on back-to-back full-suite runs (`ownedProcesses()` size 1,
-expected ≥ 2) and then passed on a third, and passed every time in
-isolation; the same clean `master` tree ran 279 / 0 / 0 / 5 green in
-between. It spawns a real child process whose parent exits immediately and
-asserts on a process-tree scan observing both — a timing race under
-machine load, unrelated to this change (a different test class that runs
-earlier, no shared state), and a sibling of the race fixed earlier in
-commit `f4256fb`. Not investigated further in this pass.
+failed on two consecutive back-to-back full-suite runs — its assertion
+that the persisted run owns at least 2 processes (`ownedProcesses()`)
+observed 1 — then passed on a third full-suite run with this branch's
+changes present, and passed on every run in isolation; the stashed clean
+`master` tree ran 279 / 0 / 0 / 5 green in between. The one conclusion
+that follows is that the failure is independent of this branch's change,
+which touches `RegressionMcpServer` and not the coordinator or its tests.
+No cause was established. This is the second recorded occasion on which a
+`TestRunCoordinatorTest` process-tree ownership assertion has
+under-counted; the first is the 2026-08-17 CI failure catalogued as
+`docs/TECHNICAL_DEBT.md` item D2, which was explicitly judged at the time
+not to be a flake. The pair is now tracked as the open question
+`docs/TECHNICAL_DEBT.md` item D15.
 
 2026-08-28 (latest) — documentation reconciliation after the
 `TestRunCoordinator` terminal-path work, branch

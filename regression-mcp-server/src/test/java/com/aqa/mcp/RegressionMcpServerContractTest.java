@@ -88,6 +88,33 @@ class RegressionMcpServerContractTest {
                 .isEqualTo(RegressionMcpServer.LIST_SCENARIOS_TOOL_NAME);
     }
 
+    /** Both list handlers re-resolve REGRESSION_ROOT on every call, so a root that was valid when the tool
+     * specification was built and is broken at call time drives a plain IllegalArgumentException out of
+     * RepositoryRootResolver.resolve — the only exception that reaches each handler's final catch clause.
+     * That broken-repository condition must surface identically from both tools as REPOSITORY_ERROR. */
+    @Test
+    void bothListToolsReportABrokenRepositoryRootAsRepositoryError() throws Exception {
+        SyncToolSpecification featureList = RegressionMcpServer.featureListTool(validRoot());
+        SyncToolSpecification scenarioList = RegressionMcpServer.scenarioListTool(validRoot());
+        Files.delete(temporaryDirectory.resolve("pom.xml"));
+
+        CallToolResult featureResult = featureList.callHandler().apply(null, new CallToolRequest(
+                RegressionMcpServer.LIST_FEATURES_TOOL_NAME, Map.of("module", "regression-nextjs-commerce")));
+        CallToolResult scenarioResult = scenarioList.callHandler().apply(null, new CallToolRequest(
+                RegressionMcpServer.LIST_SCENARIOS_TOOL_NAME, Map.of("module", "regression-nextjs-commerce")));
+
+        assertThat(List.of(errorCode(featureResult), errorCode(scenarioResult)))
+                .as("[list_features code, list_scenarios code] for a broken REGRESSION_ROOT")
+                .containsExactly("REPOSITORY_ERROR", "REPOSITORY_ERROR");
+    }
+
+    private static String errorCode(CallToolResult result) {
+        assertThat(result.isError()).isTrue();
+        @SuppressWarnings("unchecked") Map<String, Object> structured = (Map<String, Object>) result.structuredContent();
+        @SuppressWarnings("unchecked") Map<String, Object> error = (Map<String, Object>) structured.get("error");
+        return (String) error.get("code");
+    }
+
     @Test
     void givesGetAndCancelTestRunToolsDistinctNonBlankDescriptions() {
         TestRunCoordinator coordinator = new TestRunCoordinator(validRoot().path(), () -> { throw new AssertionError("Description contract must not validate a run."); });

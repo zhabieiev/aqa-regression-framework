@@ -244,7 +244,7 @@ public final class RegressionMcpServer {
                     } catch (RepositoryInspectionException exception) {
                         return moduleErrorResult(exception.code(), exception.getMessage());
                     } catch (IllegalArgumentException exception) {
-                        return moduleErrorResult(exception instanceof RepositoryInspectionException inspection ? inspection.code() : "INVALID_ARGUMENTS", exception.getMessage());
+                        return moduleErrorResult("REPOSITORY_ERROR", exception.getMessage());
                     }
                 }).build();
     }

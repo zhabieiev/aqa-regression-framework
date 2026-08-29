@@ -127,7 +127,13 @@ start of a session; update it at the end of one, per `CLAUDE.md`'s
   [`regression-mcp-server/docs/classes/TestRunCoordinator.md`](regression-mcp-server/docs/classes/TestRunCoordinator.md)
   (merged, PR #35). The review order in `ARCHITECTURE.md` puts
   `TestRunCoordinator` last-but-one deliberately — it was taken first this
-  time by explicit instruction, ahead of the classes it depends on.
+  time by explicit instruction, ahead of the classes it depends on. Its
+  three follow-up PRs (all merged) — #36 (the `InterruptedException`
+  characterization test, which refuted the dossier's concern O2), #37 (the
+  injectable worker `ExecutorService` seam), #38 (the early-cause
+  characterization test) — mean all four of `execute()`'s terminal paths are
+  covered; the dossier, `ARCHITECTURE.md` and `TEST_MAP.md` were reconciled
+  to match.
 - `regression-jhipster`'s Playwright trace-capture gap (traces written to
   `target/playwright/traces/` are never surfaced through the MCP server) is
   now logged as item C2 in `docs/TECHNICAL_DEBT.md`, rather than only noted
@@ -137,10 +143,36 @@ start of a session; update it at the end of one, per `CLAUDE.md`'s
 
 ## Most recent session
 
-2026-08-28 (latest) — characterization test for `TestRunCoordinator`'s
+2026-08-28 (latest) — documentation reconciliation after the
+`TestRunCoordinator` terminal-path work, branch
+`docs/coordinator-arc-reconciliation` (PR open, not merged as of this
+entry). Documentation only — no production, test, POM or CI file touched:
+
+Reconciled every committed document against the tree after PRs #36-#38.
+The correction list was re-derived from source, not trusted from the
+working-log P1-P11 list. Corrected: `docs/classes/TestRunCoordinator.md`
+(§2 non-injectable-executors claim; §3 5-arg and 7-arg caller lists and the
+zero-caller finding; §4 `worker` "not injectable" and "pool size 3
+hard-coded"; §5 "not yet tested"; §8 `@Test` count 19→21 and the "two
+paths zero coverage" cell and the "two of four ... material gaps"
+sentence; §9/§10/§13a O2 caveats; §11 O2 rewritten as raised-then-refuted;
+§12 verdict premises; §13b blockers; §13c heading and the Path A/C
+"reachable but not tested" bullets; hypotheses H2; the "what this dossier
+did NOT verify" O2 and test-count bullets; §1 line count 418→425), plus
+`regression-mcp-server/docs/ARCHITECTURE.md` Group 7,
+`regression-mcp-server/docs/TEST_MAP.md`, `docs/ROADMAP.md`,
+`docs/TECHNICAL_DEBT.md` (item D9's "pre-A2" markers; the numbering-scheme
+example list) and `regression-mcp-server/README.md` (an "item A2"
+reference). Zero citations of retired B8/A2/B1 remain in live documentation.
+`mvn validate` from the root: BUILD SUCCESS. Suite figure unchanged at
+278/0/0/5 (no code touched). Dossier internal line numbers in §13 shifted
++7 from the 7-arg constructor and were left as accepted rot per the
+dossier's own line-numbers-are-secondary policy.
+
+2026-08-28 (earlier) — characterization test for `TestRunCoordinator`'s
 early-cause return terminal path, branch `test/coordinator-early-cause-path`
-(PR open, not merged as of this entry). Stacked on PR #37 (the injectable
-worker `ExecutorService` seam), merged to `master` earlier this session:
+(merged, PR #38). Stacked on PR #37 (the injectable worker `ExecutorService`
+seam), merged to `master` earlier this session:
 
 Added one test to `TestRunCoordinatorTest`,
 `causeLatchedBeforeWorkerStartsReturnsCancelledWithNothingLaunched`, plus
@@ -648,16 +680,30 @@ MCP-executable module, on equal footing with `regression-nextjs-commerce`.
 ## Next step
 
 The per-class dossier directory (`regression-mcp-server/docs/classes/`) is
-started — `TestRunCoordinator.md` is the first (merged, PR #35). Two
-follow-ups are merged (PR #36 the `InterruptedException` characterization
-test, which refuted concern O2; PR #37 the injectable worker
-`ExecutorService` seam) and one is open on branch
-`test/coordinator-early-cause-path` (the early-cause characterization test).
-All four of `TestRunCoordinator.execute()`'s terminal paths are now
-covered and the debt item that tracked the gap (B8) is retired. The
-dossier itself still carries pending corrections (recorded in `output.log`,
-extended each pass) — a separate documentation pass, not yet scheduled.
-The concrete next step is to continue the dossier work following
+started — `TestRunCoordinator.md` is the first (merged, PR #35), with three
+merged follow-ups (PR #36 the `InterruptedException` characterization test,
+which refuted concern O2; PR #37 the injectable worker `ExecutorService`
+seam; PR #38 the early-cause characterization test) and this
+documentation-reconciliation pass. All four of
+`TestRunCoordinator.execute()`'s terminal paths are now covered, the debt
+item that tracked the gap (B8) is retired, and the dossier / `ARCHITECTURE.md`
+/ `TEST_MAP.md` are reconciled to the tree.
+
+The real remaining `TestRunCoordinator` work, none of it yet scheduled:
+- **`docs/TECHNICAL_DEBT.md` item B11** — the `execute()`-side
+  `skippedTests` preservation guard is unproven by any test;
+  `secondCaptureCallInTheRuntimeExceptionPath…` is named for it but does not
+  reach the interleaving. Needs a fixture that makes `persistTerminal`'s
+  first `RunStore.update` throw once after a successful try-block `capture`.
+- **The `requireTerminal(id)` extraction** (dossier §11 O10 / H5) — the
+  four report/artifact methods share a character-identical guard prologue
+  (`RunId.valid` + in-memory-`Active` non-terminal check); extract it.
+- **The four-`execute()`-path collapse into one terminal transition**
+  (dossier §13b, `docs/ROADMAP.md` item 6) — now unblocked by the two new
+  path tests; still gated on B11 (the guard test a collapse must preserve)
+  and remains high-risk given the class's centrality.
+
+The other concrete next step is to continue the dossier work following
 [`regression-mcp-server/docs/ARCHITECTURE.md`](regression-mcp-server/docs/ARCHITECTURE.md)'s
 own review order (Group 1's tier-0 leaves first — e.g. `RepositoryRoot`,
 `ModuleType`, `FailureArtifact` — through `RegressionMcpServer` last);
@@ -704,6 +750,6 @@ scenario" (see `docs/ROADMAP.md`'s "regression-petstore-api" section and
 Trade-offs" for the current gap).
 
 `docs/TECHNICAL_DEBT.md` now carries a Cost estimate per item; among items
-with a filled-in estimate, B1 was the cheapest alongside B7 and was fixed
-and removed from the catalogue — B7 remains the cheapest open item, and
-its scheduling is not asserted here.
+with a filled-in estimate, B7 (no branch protection on `master`; Cost: 0
+passes, one repository setting) is the cheapest open item, and its
+scheduling is not asserted here.

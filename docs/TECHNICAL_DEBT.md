@@ -21,8 +21,8 @@ what action they call for:
   observation or verification when the triggering event occurs, not by
   proactive work. Each item states what to capture when that happens.
 
-Each item's identifier is its section letter plus a number (A1, A2, B1,
-B2, ...), assigned in the order items appear in this file. New items are
+Each item's identifier is its section letter plus a number (`A1`, `A3`,
+`B2`, `B3`, ...), assigned in the order items appear in this file. New items are
 appended within their section; existing identifiers are never reused, even
 after the item they named is deleted. Because a deleted identifier is
 never reused, anything outside this file that cites an item by identifier
@@ -1092,8 +1092,9 @@ Module: regression-mcp-server | Cost: n/a
 
 **What**: `ReportCaptureTest.executionRecordsRemainReadableAndAreNotUpgradedWhenTheirStatusChanges`
 proves backward compatibility with a hand-written, hardcoded literal JSON
-string that encodes the pre-A2 `RunSnapshot` shape and stays frozen in
-source text regardless of what `RunSnapshot` looks like today.
+string that encodes the `RunSnapshot` shape from before `skippedTests` was
+added and stays frozen in source text regardless of what `RunSnapshot`
+looks like today.
 `SurefireSummaryStoreTest.readsOnlyPublishedIndexAndRejectsMissingDigestMismatchWrongRunAndActiveOrLegacyRuns`
 appears to test the same kind of thing, but its `old` fixture
 (`SurefireSummaryStoreTest.java:35` as of 2026-08-25) is not a literal — it
@@ -1102,11 +1103,11 @@ constructed via this same file's own local `snapshot(TestRunState)`
 builder, line 61 as of 2026-08-25) through a live `JsonMapper` with no
 `NON_NULL` inclusion configured. Because that builder must track
 `RunSnapshot`'s current arity (it gained a trailing `null` for
-`skippedTests` during A2), this fixture's serialized JSON now includes
-`"skippedTests":null` — a field that did not exist in the actual pre-A2
-persisted shape it is meant to represent. It tracks the CURRENT record
-shape, not the historical one, and will continue doing so for every future
-`RunSnapshot` field addition.
+`skippedTests` when that field was added), this fixture's serialized JSON
+now includes `"skippedTests":null` — a field that did not exist in the
+actual pre-`skippedTests` persisted shape it is meant to represent. It
+tracks the CURRENT record shape, not the historical one, and will continue
+doing so for every future `RunSnapshot` field addition.
 
 This does not currently affect the test's own pass/fail outcome: the test
 only exercises this fixture to prove `store.summary(legacy.runId())`

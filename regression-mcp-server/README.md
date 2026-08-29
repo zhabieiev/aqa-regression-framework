@@ -164,8 +164,8 @@ client-supplied `@cart` becomes `(@cart) and not @wip`.
 A run snapshot's `skippedTests` field is present only once a Surefire report
 has been parsed for that run; an absent key means the count is unavailable
 (no report was ever captured, or none has been parsed yet), while a present
-`0` means a report was parsed and no tests were skipped. This closes the gap
-`../docs/TECHNICAL_DEBT.md` used to track as item A2: a `regression_start_test_run`
+`0` means a report was parsed and no tests were skipped. This closes a gap
+`../docs/TECHNICAL_DEBT.md` used to track (in a since-removed item): a `regression_start_test_run`
 call with a `tags` expression that matches nothing still terminates as
 `PASSED` (Cucumber ran zero scenarios, so the Maven process still exits 0),
 but a client no longer has to make a second tool call to notice — a `PASSED`

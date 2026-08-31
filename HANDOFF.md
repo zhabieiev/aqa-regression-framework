@@ -13,12 +13,13 @@ start of a session; update it at the end of one, per `CLAUDE.md`'s
   measured; they are point-in-time, not a standing guarantee — re-run
   rather than trust a figure once its date is more than a few sessions
   old:
-  - `mvn -pl regression-mcp-server -am test` — Tests run: 278, Failures: 0,
-    Errors: 0, Skipped: 5 (measured 2026-08-28, after adding two
-    characterization tests to `TestRunCoordinatorTest` — one for the
-    `InterruptedException` terminal path, one for the early-cause return;
-    was 276 on 2026-08-27, which superseded the earlier 272 and 275
-    figures). All 5 skips are environment-conditional:
+  - `mvn -pl regression-mcp-server -am test` — Tests run: 280, Failures: 0,
+    Errors: 0, Skipped: 5 (measured 2026-08-31 on `master` at `18064cf`,
+    identical before and after the `ToolSchemas` extraction; the 278
+    figure measured 2026-08-28 predates the
+    `fix/list-scenarios-repository-error` merge, which added two contract
+    assertions, and 276/272/275 are older still). All 5 skips are
+    environment-conditional:
     each is a symlink-escape defence test
     (`ReportCaptureTest.rejectsSymlinkEscapesAndCleansOwnedStaging`,
     `RunStoreTest.symlinkedStatusTargetIsRejectedWithoutFollowingIt`,
@@ -143,7 +144,62 @@ start of a session; update it at the end of one, per `CLAUDE.md`'s
 
 ## Most recent session
 
-2026-08-29 (latest) — `regression_list_scenarios`' error code for a broken
+2026-08-31 (latest) — the 18 JSON Schema builder methods extracted from
+`RegressionMcpServer` into a new class `ToolSchemas`, branch
+`refactor/extract-tool-schemas` (PR open, not merged as of this entry).
+Two source files plus three documentation files touched; no POM or CI
+file touched:
+
+**Provenance.** Two read-only inspection passes preceded the extraction.
+They established that no code outside
+`regression-mcp-server/src/main/java/com/aqa/mcp/RegressionMcpServer.java`
+calls any of the 18 builders, by grepping the builder names in six forms
+across the whole repository: qualified call (`RegressionMcpServer.<name>`),
+bare call or declaration (`<name>(`), method reference
+(`RegressionMcpServer::`), static import
+(`import static com.aqa.mcp.RegressionMcpServer`), string literal
+(`"<name>"`), and reflection (`getDeclaredMethod`, `getMethod(`,
+`.class.getDeclared`). Every genuine call site is inside
+`RegressionMcpServer`; the apparent `inputSchema` / `outputSchema` hits
+elsewhere are the three `com.aqa.mcp.validation` tool classes' own
+same-named private methods and the MCP SDK `Tool` accessors the contract
+tests read.
+
+**The change.** `regression-mcp-server/src/main/java/com/aqa/mcp/ToolSchemas.java`
+(new, 139 lines) — `final class ToolSchemas` in package `com.aqa.mcp` (not
+a sub-package: `moduleListOutputSchema` needs the package-private
+`ModuleType.schemaValues()`), private constructor, all 18 method bodies
+transplanted byte-for-byte. Eleven methods widened `private` →
+package-private because `RegressionMcpServer` now calls them across the
+class boundary; four stay `private` (the internal helpers
+`structuredOutputSchema`, `stringArray`, `artifactSchema`,
+`artifactSchemaProperties`); three (`inputSchema`, `outputSchema`,
+`moduleListOutputSchema`) were already package-private with no caller that
+required it and keep that visibility. `RegressionMcpServer.java` lost the
+119-line block (547 → 427 lines) and gained an explicit `ToolSchemas.`
+qualifier at each of 20 call sites — a static import was avoided so the
+call sites stay greppable, which the two inspection passes depended on.
+
+**No behaviour and no schema body changed.** The builders produce the same
+maps; `Tool.Builder` serialises them into the same `tools/list` response.
+
+**Verification.** `mvn -pl regression-mcp-server -am test` on `master` at
+`18064cf` before any edit: 280 / 0 / 0 / 5, BUILD SUCCESS (first run
+failed `TestRunCoordinatorTest.retainedChildIsRemovedWhenParentExitsBeforeCoordinatorCleanup`
+— the D15 recurrence, `docs/TECHNICAL_DEBT.md` — green on a single
+re-run). After the extraction, identical: 280 / 0 / 0 / 5, BUILD SUCCESS,
+same five environment-conditional skips by name. `mvn validate` green.
+`grep -F "ToolSchemas."` over `RegressionMcpServer.java` returns exactly
+20 lines.
+
+**New dossier.** `regression-mcp-server/docs/classes/ToolSchemas.md`,
+matching the `TestRunCoordinator.md` conventions — it carries the
+visibility analysis, the accepted-cost note that package-private no longer
+implies a test seam for these eleven methods, the `ModuleType` package
+constraint, the name-collision false positives, and the search-form
+boundary from the inspection passes.
+
+2026-08-29 — `regression_list_scenarios`' error code for a broken
 `REGRESSION_ROOT` corrected, branch `fix/list-scenarios-repository-error`
 (PR open, not merged as of this entry). One production line changed, plus
 two pinned test assertions; no POM or CI file touched:

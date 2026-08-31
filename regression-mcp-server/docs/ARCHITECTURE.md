@@ -1,7 +1,7 @@
 # Architecture
 
 This document maps `regression-mcp-server`'s internal structure: what each
-package owns, how its 66 production classes depend on one another, how a
+package owns, how its 67 production classes depend on one another, how a
 request actually flows through the system, what survives a restart, where
 untrusted data enters, and what has to change to extend it. It is written
 for a fresh agent — any vendor, no conversation history — picking up
@@ -83,18 +83,19 @@ or bare `com.aqa.mcp`, and no file in `validation` imports
 
 ## Class inventory
 
-66 classes across three packages. Tier = dependency depth (tier 0
+67 classes across three packages. Tier = dependency depth (tier 0
 references no other module class; tier N references only classes of tier
 < N). Fan-in = number of other module classes that reference it
 (excluding the class's own file). Bucket: **S**chema-visible (a change can
 alter client-facing JSON), **B**ehaviour-visible (cannot alter JSON shape
 but can alter what a client observes), **I**nternal (neither).
 
-### com.aqa.mcp (root) — 10 classes
+### com.aqa.mcp (root) — 11 classes
 
 | Class | Kind | Purpose | Tier | Fan-in | Bucket |
 |---|---|---|---|---|---|
 | `RegressionMcpServer` | entry point | Builds the server, registers all 14 tools, maps domain objects to JSON-RPC | 6 | 0 (composition root) | S |
+| `ToolSchemas` | static utility | Builds the closed input/output JSON Schemas for all 14 tools; extracted from `RegressionMcpServer` | 1 | 1 | S |
 | `RepositoryRootResolver` | static utility | Resolves/validates `REGRESSION_ROOT` | 1 | 1 | I |
 | `RepositoryRoot` | record | Immutable resolved root path | 0 | 6 | I |
 | `ModuleList` (+`ModuleDescriptor`) | record | Parses the root pom.xml's declared modules, classifies each | 2 | 3 | S |
@@ -467,9 +468,11 @@ busiest type in the module), `SourceUnit`* (hub), `Violation`* (hub),
 `ValidationException`* (hub), `ValidationScopeRequest`,
 `ValidatedValidationScope`.
 
-**Group 2 — tier 1 (18 classes)**: `RepositoryRootResolver` (pairs with
+**Group 2 — tier 1 (19 classes)**: `RepositoryRootResolver` (pairs with
 `RepositoryRoot`), `ModuleTypeClassifier`, `FrameworkOverview`,
-`ArtifactContent` (pairs with `FailureArtifact`), `PublishedReportIndex`,
+`ToolSchemas` (root-package, schema authoring extracted from
+`RegressionMcpServer`; dossier `docs/classes/ToolSchemas.md` already
+written), `ArtifactContent` (pairs with `FailureArtifact`), `PublishedReportIndex`,
 `OwnedProcessIdentity` (pairs with `ObservedProcess` — neither
 comprehensible alone), `MavenRuntimeConfiguration`, `SurefireSummaryParser`,
 `AllureResultParser`, `ExecutionProfileRegistry`, `ValidatedTestRunRequest`,

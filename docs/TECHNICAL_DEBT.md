@@ -170,6 +170,38 @@ external test target — exactly what `openWorldHint` exists to flag.
 "Read-only" line); `regression-mcp-server/src/test/java/com/aqa/mcp/RegressionMcpServerStdioIntegrationTest.java`
 (`assertExecutionToolContracts`).
 
+### A4. `RegressionMcpServer.java` carries an unused `import java.nio.file.Path;` that no configured tooling detects
+
+Module: regression-mcp-server | Cost: trivial
+
+**What**: `regression-mcp-server/src/main/java/com/aqa/mcp/RegressionMcpServer.java`
+declares `import java.nio.file.Path;`. The simple name `Path` appears
+nowhere else in the file — a `grep -nE "\bPath\b"` over the file returns
+only the import line itself. The import is dead.
+
+It did **not** become unused through the `ToolSchemas` extraction: the
+pre-extraction file at `master` (`git show 18064cf:regression-mcp-server/src/main/java/com/aqa/mcp/RegressionMcpServer.java`)
+also carries `import java.nio.file.Path;` with no other `Path` token, so
+it was already unused at `18064cf` and for some unknown span before that.
+The 18 methods moved into `ToolSchemas` used only `Map`, `List`,
+fully-qualified `java.util.LinkedHashMap`, and `ModuleType`.
+
+**Why nothing has caught it**: this reactor configures no Checkstyle, PMD,
+or Spotless plugin in any `pom.xml`, so no build step flags an unused
+import, and `javac` does not warn about one. It surfaced only through a
+manual import-by-import audit during the `ToolSchemas` extraction review.
+
+**Action — accept as tolerable for now**: a dead import has no runtime, no
+compile-time, and no security effect. Remove it opportunistically the next
+time `RegressionMcpServer.java` is edited for another reason — a one-line
+deletion covered by the module's existing compile, needing no separate
+verification. It was deliberately left out of the `refactor/extract-tool-schemas`
+change so that an unrelated one-liner did not enter that diff.
+
+**Location**: `regression-mcp-server/src/main/java/com/aqa/mcp/RegressionMcpServer.java`,
+the `import java.nio.file.Path;` line (line 5 as of 2026-08-31). No
+Checkstyle / PMD / Spotless configuration exists in any reactor `pom.xml`.
+
 ## B. Debt
 
 The fix is understood and was deferred. Action: schedule.
@@ -1374,7 +1406,7 @@ tools" preamble and "Common error codes");
 `regression-mcp-server/docs/classes/TestRunCoordinator.md` (§7, hypothesis
 H4).
 
-### D15. `TestRunCoordinatorTest`'s process-tree ownership assertions have under-counted on two occasions, cause unestablished
+### D15. `TestRunCoordinatorTest`'s process-tree ownership assertions have under-counted on three occasions across two methods, cause unestablished
 
 Module: regression-mcp-server | Cost: n/a
 
@@ -1382,8 +1414,8 @@ Module: regression-mcp-server | Cost: n/a
 child/grandchild process tree and then assert that the run's persisted
 `OwnedProcessIdentity` set has at least a given size — the coordinator is
 expected to have observed and retained that many live processes before the
-assertion runs. On two separate occasions the observed size has been 1,
-below the asserted minimum:
+assertion runs. On three separate occasions the observed size has been 1,
+below the asserted minimum; one method has now produced two of the three:
 
 - **2026-08-17, CI** (`ubuntu-latest`, commit `f337b48c`, run
   32036451902): `timeoutSchedulingFailureNeverPublishesRunningAndCleansProcessAndLock`
@@ -1399,37 +1431,73 @@ below the asserted minimum:
   between. That change touches `RegressionMcpServer`, not the coordinator
   or its tests, so the failure is independent of it. Recorded in
   `HANDOFF.md`'s 2026-08-29 session entry.
+- **2026-08-31, local** (Windows, extraction of the `ToolSchemas` class):
+  the same method,
+  `retainedChildIsRemovedWhenParentExitsBeforeCoordinatorCleanup`, asserted
+  `>= 2`, observed 1, on the first full-suite run against an unmodified
+  `master` tree; a single re-run of the identical command was green at
+  280 / 0 / 0 / 5. The raw assertion output was captured before the re-run
+  — the first occurrence for which the captured `OwnedProcessIdentity`
+  records exist rather than only the assertion text:
+  ```
+  Expecting size of:
+    [OwnedProcessIdentity[pid=115560, startInstant=2026-08-31T10:56:39.788Z, parentPid=16200, depth=4, observedAt=2026-08-31T10:56:40.124425100Z]]
+  to be greater than or equal to 2 but was 1
+  ```
+  A single record survived; its `depth=4` places it four levels below the
+  observation root. The change under test touched only `RegressionMcpServer`
+  and the new `ToolSchemas` class, not the coordinator or its tests, and the
+  failure was on the pre-edit tree, so it is independent of that change.
+  Recorded in `HANDOFF.md`'s 2026-08-31 session entry.
 
-The two are different test methods in the same class asserting the same
-kind of quantity — the size of the persisted owned-process set — each
-observing 1 against a different expected minimum (`>= 3` and `>= 2`).
+Across the three: two methods in the same class asserting the same kind of
+quantity — the size of the persisted owned-process set — each observing
+exactly 1 against its expected minimum (`>= 3` for
+`timeoutSchedulingFailureNeverPublishesRunningAndCleansProcessAndLock`,
+`>= 2` for `retainedChildIsRemovedWhenParentExitsBeforeCoordinatorCleanup`).
+`retainedChildIsRemovedWhenParentExitsBeforeCoordinatorCleanup` has now
+under-counted twice, both times to 1, both on Windows, both clearing on a
+re-run — a repeatable shape, if not yet a repeatable trigger.
 
-**What is NOT established**: any cause, for either occasion. Whether the
-two share a cause; whether the asserted minimum encodes an assumption
-about process-tree depth or observation timing that does not always hold
-on a given runner or under load; whether either expected count is simply
-too tight — all open. Neither occasion has been reproduced on demand: D2's
-did not reproduce locally, and the 2026-08-29 one did not reproduce in
-isolation or on its third full-suite run.
+**What is NOT established**: any cause, for any occasion. Whether the three
+share a cause; whether the asserted minimum encodes an assumption about
+process-tree depth or observation timing that does not always hold on a
+given runner or under load; whether an expected count is simply too tight —
+all open. No occasion has been reproduced on demand: D2's did not reproduce
+locally, and neither 2026-08-29 nor 2026-08-31 reproduced in isolation or
+on a re-run.
 
-**This is an open question, not a scheduled fix.** No change to either
-test or to `TestRunCoordinator` is planned here.
+**The item's character has changed: from an open question awaiting a
+second data point to a recurring failure with a partial reproduction
+pattern and no established cause.** One method has failed twice with an
+identical signature (observed 1, Windows, clears on re-run); the captured
+`OwnedProcessIdentity` record from 2026-08-31 is the first concrete
+artefact. It remains an open question, not a scheduled fix — no change to
+either test or to `TestRunCoordinator` is proposed here, and no cause is
+asserted.
 
-**What would settle it**: on the next occurrence, before any re-run,
-capture the full Surefire output, the exact assertion message including
-every captured `OwnedProcessIdentity` record, and the runner OS; then run
-the failing method with the observed process tree dumped at the point of
-assertion and compare that dump against a local run of the same method —
-the same diagnostic item D2 already calls for.
+**What would settle it**: the 2026-08-31 occasion captured the assertion
+message and its surviving `OwnedProcessIdentity` record before the re-run;
+what is still missing on every occasion is a dump of the full observed
+process tree *at the point of assertion*, compared against the same dump
+from a passing run of the same method — the diagnostic item D2 already
+calls for. The next occurrence of
+`retainedChildIsRemovedWhenParentExitsBeforeCoordinatorCleanup`
+specifically, given it has now failed twice with the same signature, is
+the one worth instrumenting.
 
-**Location**: `regression-mcp-server/src/test/java/com/aqa/mcp/execution/TestRunCoordinatorTest.java`
-(`timeoutSchedulingFailureNeverPublishesRunningAndCleansProcessAndLock`,
-line 150 as of 2026-08-23;
-`retainedChildIsRemovedWhenParentExitsBeforeCoordinatorCleanup`, line 294
-as of 2026-08-29);
-`regression-mcp-server/src/main/java/com/aqa/mcp/execution/TestRunCoordinator.java`
-(`observe`, owned-process retention). Related: item **D2** (the 2026-08-17
-occasion, in full) and `HANDOFF.md`'s 2026-08-29 session entry.
+**Location**: the two asserting methods in
+`regression-mcp-server/src/test/java/com/aqa/mcp/execution/TestRunCoordinatorTest.java`
+— `timeoutSchedulingFailureNeverPublishesRunningAndCleansProcessAndLock`,
+whose check is
+`assertThat(persisted.ownedProcesses()).hasSizeGreaterThanOrEqualTo(3);`,
+and `retainedChildIsRemovedWhenParentExitsBeforeCoordinatorCleanup`, whose
+check is
+`assertThat(new RunStore(root).persisted(run.runId()).ownedProcesses()).hasSizeGreaterThanOrEqualTo(2);`.
+The retention path under test is `TestRunCoordinator.observe` in
+`regression-mcp-server/src/main/java/com/aqa/mcp/execution/TestRunCoordinator.java`.
+Related: item **D2** (the 2026-08-17 occasion, in full) and `HANDOFF.md`'s
+2026-08-29 and 2026-08-31 session entries.
 
 ## Where module-level debt lives
 

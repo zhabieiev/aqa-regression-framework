@@ -99,15 +99,19 @@ start of a session; update it at the end of one, per `CLAUDE.md`'s
   solely to feed it) was removed; it never actually ran under any real
   invocation.
 - Known debt and open questions: see [`docs/TECHNICAL_DEBT.md`](docs/TECHNICAL_DEBT.md)
-  (34 items as of 2026-08-31, counted directly from the file's own `###`
+  (33 items as of 2026-09-01, counted directly from the file's own `###`
   headers rather than trusted from this bullet's own prior figure — this
   bullet had drifted to "20 items as of 2026-08-25" when the file actually
   held 23 at that date, a staleness caught and corrected during the
   2026-08-27 session below; its "32 as of 2026-08-28" figure held until
   **D15** and **A4** were both added on the `refactor/extract-tool-schemas`
-  branch (2026-08-31). Item **B8** — the two untested
+  branch (2026-08-31), reaching 34. Item **B8** — the two untested
   `TestRunCoordinator.execute()` terminal paths — was retired on 2026-08-28
-  once characterization tests covered both (its identifier is not reused).
+  once characterization tests covered both (its identifier is not reused);
+  item **A4** — the unused `import java.nio.file.Path;` — was retired on
+  2026-09-01 when the import was removed on the
+  `refactor/merge-error-result` branch (its identifier is not reused
+  either).
   Grouped into four sections by the
   action each calls for — A. Defects: fix, or accept with a stated reason;
   B. Debt: schedule; C. Accepted characteristics: no action, each with a
@@ -146,7 +150,67 @@ start of a session; update it at the end of one, per `CLAUDE.md`'s
 
 ## Most recent session
 
-2026-08-31 (latest) — the 18 JSON Schema builder methods extracted from
+2026-09-01 (latest) — the two private static error-envelope helpers in
+`RegressionMcpServer` merged into one, branch `refactor/merge-error-result`
+(PR open, not merged as of this entry). One source file changed in the
+first commit, two documentation files in the second; no POM or CI file
+touched:
+
+**Provenance.** A read-only inspection pass preceded the change. It
+established that `moduleErrorResult` (declared with the real body) and
+`errorResult` (a three-line alias whose entire body was
+`return moduleErrorResult(code, message);`) were identical in behaviour;
+that the module had 19 `errorResult(` and 9 `moduleErrorResult(` grep
+matches, reconciling exactly (12 + 7 call statements, plus the two
+declarations and the one alias-body call); that no test in
+`regression-mcp-server/src/test` names either method; and that the
+`{status:"error", error:{code, message}}` envelope shape is declared once,
+in `ToolSchemas.structuredOutputSchema`'s `failure` branch, and attached
+as the `outputSchema` of every read-only tool.
+
+**The change.** `moduleErrorResult` was renamed to `errorResult` (body,
+position, visibility, modifiers, signature otherwise untouched) and the
+old three-line `errorResult` alias deleted; the seven call sites that
+named `moduleErrorResult` (three in `listModulesTool`, two in
+`featureListTool`, two in `scenarioListTool`) now call `errorResult`. The
+twelve pre-existing `errorResult` call sites were untouched. `git diff`:
+one file, +8 / −13, fully mechanical (7 renamed call sites, 1 renamed
+declaration signature, the 4-line alias-plus-blank, and the import below).
+
+**Why the name `errorResult`.** It is the name the three
+`com.aqa.mcp.validation` tool classes (`ArchitectureTool`,
+`FrameworkConventionsTool`, `ModuleBoundariesTool`) already use for the
+same envelope, and it keeps the catch-clause quoted verbatim in
+`regression-mcp-server/docs/classes/TestRunCoordinator.md`
+(`catch (ExecutionPlanningException e) { return errorResult(e.code(), e.getMessage()); }`)
+accurate with no doc edit. `HANDOFF.md`'s 2026-08-29 entry below still
+quotes `moduleErrorResult(...)` in its dated account of that session and
+is deliberately left as-is — it records what the code was at that time.
+
+**A4 closed and retired.** The unused `import java.nio.file.Path;` in
+`RegressionMcpServer.java` (the `Path` type is referenced nowhere in the
+file; the only other `Path` token is the string literal `"relativePath"`)
+was removed in the same first commit — the opportunistic removal that
+item A4 called for. A4 was deleted from `docs/TECHNICAL_DEBT.md` and its
+identifier retired, not reused; the file now holds 33 items (A 2, B 9,
+C 7, D 15), and the item-count bullet under "Current state" above was
+updated 34 → 33.
+
+**Verification.** `mvn -pl regression-mcp-server -am test`: the first
+full-suite run failed
+`TestRunCoordinatorTest.retainedChildIsRemovedWhenParentExitsBeforeCoordinatorCleanup`
+(asserted `>= 2` owned processes, observed 1) — a fourth occurrence of the
+D15 pattern (`docs/TECHNICAL_DEBT.md`), Windows, and like the 2026-08-29
+and 2026-08-31 occasions it cleared without intervention: the same test
+passed in isolation on the pre-edit tree, and two subsequent full-suite
+runs with the change applied were both 280 / 0 / 0 / 5, BUILD SUCCESS,
+with the same five environment-conditional symlink skips by name. The
+failing test touches neither `errorResult`/`moduleErrorResult` nor the
+removed import. D15 itself was not edited this session (inspection scope);
+a future pass may add this as its fourth catalogued occasion. `mvn
+validate` green after the documentation commit.
+
+2026-08-31 — the 18 JSON Schema builder methods extracted from
 `RegressionMcpServer` into a new class `ToolSchemas`, branch
 `refactor/extract-tool-schemas` (PR open, not merged as of this entry).
 Two source files plus three documentation files touched; no POM or CI

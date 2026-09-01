@@ -151,10 +151,9 @@ start of a session; update it at the end of one, per `CLAUDE.md`'s
 ## Most recent session
 
 2026-09-01 (latest) — the two private static error-envelope helpers in
-`RegressionMcpServer` merged into one, branch `refactor/merge-error-result`
-(PR open, not merged as of this entry). One source file changed in the
-first commit, two documentation files in the second; no POM or CI file
-touched:
+`RegressionMcpServer` merged into one, branch `refactor/merge-error-result`,
+PR #43. One source file changed in the first commit, two documentation
+files in the second; no POM or CI file touched:
 
 **Provenance.** A read-only inspection pass preceded the change. It
 established that `moduleErrorResult` (declared with the real body) and
@@ -189,8 +188,9 @@ is deliberately left as-is — it records what the code was at that time.
 
 **A4 closed and retired.** The unused `import java.nio.file.Path;` in
 `RegressionMcpServer.java` (the `Path` type is referenced nowhere in the
-file; the only other `Path` token is the string literal `"relativePath"`)
-was removed in the same first commit — the opportunistic removal that
+file; the only other `Path` tokens are the string literal `"relativePath"`
+and the `artifact.relativePath()` call beside it on the same line) was
+removed in the same first commit — the opportunistic removal that
 item A4 called for. A4 was deleted from `docs/TECHNICAL_DEBT.md` and its
 identifier retired, not reused; the file now holds 33 items (A 2, B 9,
 C 7, D 15), and the item-count bullet under "Current state" above was

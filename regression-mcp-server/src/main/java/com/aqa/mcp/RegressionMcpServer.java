@@ -2,7 +2,6 @@ package com.aqa.mcp;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 
@@ -191,17 +190,17 @@ public final class RegressionMcpServer {
                         .build())
                 .callHandler((exchange, request) -> {
                     if (request.arguments() != null && !request.arguments().isEmpty()) {
-                        return moduleErrorResult("INVALID_ARGUMENTS", "This tool does not accept arguments.");
+                        return errorResult("INVALID_ARGUMENTS", "This tool does not accept arguments.");
                     }
                     try {
                         return successResult(ModuleList.forRoot(
                                 RepositoryRootResolver.resolve(repositoryRoot.path())).asToolOutput());
                     }
                     catch (RepositoryInspectionException exception) {
-                        return moduleErrorResult(exception.code(), exception.getMessage());
+                        return errorResult(exception.code(), exception.getMessage());
                     }
                     catch (IllegalArgumentException exception) {
-                        return moduleErrorResult("REPOSITORY_ERROR", exception.getMessage());
+                        return errorResult("REPOSITORY_ERROR", exception.getMessage());
                     }
                 })
                 .build();
@@ -219,9 +218,9 @@ public final class RegressionMcpServer {
                                 RepositoryRootResolver.resolve(repositoryRoot.path()), module);
                         return successResult(featureOutput(discovery));
                     } catch (RepositoryInspectionException exception) {
-                        return moduleErrorResult(exception.code(), exception.getMessage());
+                        return errorResult(exception.code(), exception.getMessage());
                     } catch (IllegalArgumentException exception) {
-                        return moduleErrorResult("REPOSITORY_ERROR", exception.getMessage());
+                        return errorResult("REPOSITORY_ERROR", exception.getMessage());
                     }
                 }).build();
     }
@@ -242,9 +241,9 @@ public final class RegressionMcpServer {
                                 .map(RegressionMcpServer::scenarioOutput).toList();
                         return successResult(Map.of("status", "ok", "data", Map.of("module", module, "scenarios", scenarios)));
                     } catch (RepositoryInspectionException exception) {
-                        return moduleErrorResult(exception.code(), exception.getMessage());
+                        return errorResult(exception.code(), exception.getMessage());
                     } catch (IllegalArgumentException exception) {
-                        return moduleErrorResult("REPOSITORY_ERROR", exception.getMessage());
+                        return errorResult("REPOSITORY_ERROR", exception.getMessage());
                     }
                 }).build();
     }
@@ -410,7 +409,7 @@ public final class RegressionMcpServer {
         }
     }
 
-    private static CallToolResult moduleErrorResult(String code, String message) {
+    private static CallToolResult errorResult(String code, String message) {
         Map<String, Object> output = Map.of(
                 "status", "error",
                 "error", Map.of("code", code, "message", message));
@@ -419,9 +418,5 @@ public final class RegressionMcpServer {
                 .structuredContent(output)
                 .isError(true)
                 .build();
-    }
-
-    private static CallToolResult errorResult(String code, String message) {
-        return moduleErrorResult(code, message);
     }
 }

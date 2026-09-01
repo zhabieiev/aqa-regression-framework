@@ -170,38 +170,6 @@ external test target — exactly what `openWorldHint` exists to flag.
 "Read-only" line); `regression-mcp-server/src/test/java/com/aqa/mcp/RegressionMcpServerStdioIntegrationTest.java`
 (`assertExecutionToolContracts`).
 
-### A4. `RegressionMcpServer.java` carries an unused `import java.nio.file.Path;` that no configured tooling detects
-
-Module: regression-mcp-server | Cost: trivial
-
-**What**: `regression-mcp-server/src/main/java/com/aqa/mcp/RegressionMcpServer.java`
-declares `import java.nio.file.Path;`. The simple name `Path` appears
-nowhere else in the file — a `grep -nE "\bPath\b"` over the file returns
-only the import line itself. The import is dead.
-
-It did **not** become unused through the `ToolSchemas` extraction: the
-pre-extraction file at `master` (`git show 18064cf:regression-mcp-server/src/main/java/com/aqa/mcp/RegressionMcpServer.java`)
-also carries `import java.nio.file.Path;` with no other `Path` token, so
-it was already unused at `18064cf` and for some unknown span before that.
-The 18 methods moved into `ToolSchemas` used only `Map`, `List`,
-fully-qualified `java.util.LinkedHashMap`, and `ModuleType`.
-
-**Why nothing has caught it**: this reactor configures no Checkstyle, PMD,
-or Spotless plugin in any `pom.xml`, so no build step flags an unused
-import, and `javac` does not warn about one. It surfaced only through a
-manual import-by-import audit during the `ToolSchemas` extraction review.
-
-**Action — accept as tolerable for now**: a dead import has no runtime, no
-compile-time, and no security effect. Remove it opportunistically the next
-time `RegressionMcpServer.java` is edited for another reason — a one-line
-deletion covered by the module's existing compile, needing no separate
-verification. It was deliberately left out of the `refactor/extract-tool-schemas`
-change so that an unrelated one-liner did not enter that diff.
-
-**Location**: `regression-mcp-server/src/main/java/com/aqa/mcp/RegressionMcpServer.java`,
-the `import java.nio.file.Path;` line (line 5 as of 2026-08-31). No
-Checkstyle / PMD / Spotless configuration exists in any reactor `pom.xml`.
-
 ## B. Debt
 
 The fix is understood and was deferred. Action: schedule.

@@ -155,6 +155,55 @@ start of a session; update it at the end of one, per `CLAUDE.md`'s
 
 ## Most recent session
 
+2026-09-08 — corrected drifting live claims across the doc set, branch
+`docs/live-claims-cleanup`, PR #49. Four files in the first commit
+(`HANDOFF.md`, `docs/ROADMAP.md`, `docs/TECHNICAL_DEBT.md`,
+`regression-mcp-server/docs/ARCHITECTURE.md`) and `HANDOFF.md` again in
+this one; no production source, test, POM, or CI file touched.
+
+**Class count.** The "## Current state" architecture-map bullet said
+"66-class inventory"; `find regression-mcp-server/src/main/java -name
+'*.java'` returns 67 (root 11, execution 35, validation 21), and
+`ARCHITECTURE.md`'s "Class inventory" section already says 67. The number
+was removed rather than corrected in place — a count kept away from the
+file that owns it is what drifted — and the bullet now points at
+`ARCHITECTURE.md`'s own figure.
+
+**Anchor claim.** `ARCHITECTURE.md`'s "Anchor commit" line implied the
+whole document was frozen at `7107c49f`. Verified stale: `ToolSchemas.java`
+did not exist at that commit and the tree held 66 `.java` files there, not
+the 67 the document now describes. One line was reworded to state what it
+means — maintained against `master`, last fully verified at that commit
+(2026-08-27), reconciled piecemeal since — with no other `ARCHITECTURE.md`
+line touched (its substantive re-verification is a later pass's). The
+hard-coded `7107c49f` hash in the live sections of `HANDOFF.md` and
+`docs/ROADMAP.md` was replaced with a structural pointer to that baseline
+note; the two occurrences inside dated `HANDOFF.md` entries were left as
+history.
+
+**Candidate 2 body.** `docs/ROADMAP.md`'s capture-guard-extraction
+candidate said the block is "duplicated at all four call sites inside
+`execute()`/`recoverIfUnowned()`". Re-checked: all four sites are in
+`execute()`; `recoverIfUnowned` has a fifth, differently-shaped occurrence
+(a `captured != null ? captured : snapshot.skippedTests()` ternary passed
+inline to `replaceWithReason`, over a `String runId` and a `RunSnapshot`,
+with no `Active run` and no `Integer` local), which the proposed
+`captureOrKeep(Active run, Integer current)` signature does not fit. The
+body now records the execute()-only-versus-generalised choice as open; the
+Risk field is unchanged.
+
+**D10 Location.** `docs/TECHNICAL_DEBT.md` item D10's Location field cited
+`execute()` line numbers that had rotted; they were replaced with a
+structural citation (the method plus the statement form), consistent with
+the file's citation rule. Nothing else in D10, and no item counter,
+changed.
+
+**"(latest)" marker.** Removed from the one dated entry that carried it.
+The newest entry is already the topmost, so the marker was a live claim
+inside a dated entry that every later pass had to reach back and maintain.
+
+`mvn validate`: BUILD SUCCESS.
+
 2026-09-08 — reconciled `docs/ROADMAP.md` against `docs/TECHNICAL_DEBT.md`
 item B11 and logged a rejected refactor, branch
 `docs/roadmap-risk-and-decisions`, PR #48. Only `docs/ROADMAP.md` changed

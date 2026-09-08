@@ -539,6 +539,19 @@ every successful tool response passes through — the eight one-argument
 bounded-response methods call it directly — so the corruption affected
 every successful tool response, not two of them, and nothing failed.
 
+The two halves of this item rest on different, unequal grounds. For the
+**success path** the ground is that executed experiment: a real
+divergence was introduced into the shared helper and the suite stayed
+green. For the **error envelope** — built by `RegressionMcpServer.errorResult`,
+which the experiment never touched — there is no experiment; the ground
+is only the absence of any test-tree reference to a response's text
+representation (`CallToolResult.content()`, `TextContent`, a `content[]`
+text node, a `"text"` field), by which every error-response assertion too
+is seen to go against `structuredContent` / `isError` alone. Absence of a
+matching reference is weaker evidence than an executed experiment: it
+rules out an assertion written in one of the searched forms, not one
+written some other way.
+
 **Why it matters now**: before the single-serialization change,
 `successResult` derived both representations inside itself from the same
 map, so they could not disagree — their agreement was guaranteed by
@@ -549,11 +562,13 @@ pass text serialized from the same map they hand to `structuredContent`,
 so nothing is wrong today. This is a missing guard against a future
 caller, not a defect.
 
-**Fix**: one assertion in
-`RegressionMcpServerStdioIntegrationTest`, on a response it already drives
-to a terminal success — parse the `content` text block and assert it
+**Fix**: assertions in `RegressionMcpServerStdioIntegrationTest`, on
+responses it already drives — parse the `content` text block and assert it
 equals the `structuredContent` node. Compare the two as parsed JSON trees,
 not as raw strings, so object key order cannot make the assertion flaky.
+Because the success envelope and the error envelope are built by different
+helpers (`successResult` versus `errorResult`), closing this likely needs
+the check on both a successful response and an error response, not one.
 
 **Location**:
 `regression-mcp-server/src/main/java/com/aqa/mcp/RegressionMcpServer.java`

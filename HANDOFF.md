@@ -155,6 +155,53 @@ start of a session; update it at the end of one, per `CLAUDE.md`'s
 
 ## Most recent session
 
+2026-09-08 — refreshed mechanical staleness in the `regression-mcp-server`
+doc set and logged the deferred structural revision, branch
+`docs/dossier-number-refresh`, PR #50. Four files in the first commit
+(`docs/TECHNICAL_DEBT.md`, `regression-mcp-server/docs/TEST_MAP.md`, and
+the two class dossiers `TestRunCoordinator.md` and `ToolSchemas.md`) and
+`HANDOFF.md` in this one; no production source, test, POM, or CI file
+touched. `regression-mcp-server/docs/ARCHITECTURE.md` needed no change.
+
+**Numbers checked against the tree first, then corrected only where
+stale.** Corrected: `ToolSchemas.md`'s `RegressionMcpServer.java` line
+count (427 → "427 when this dossier was written; 428 now", after the
+two-argument `successResult` overload); `TestRunCoordinator.md`'s suite
+figure (278/0/0/5 → 280/0/0/5). Left as already-correct: `TEST_MAP.md`'s
+48/42/6 file split and the 448/457 rule-set-test line counts;
+`TestRunCoordinator.md`'s own 425-line and 21-`@Test` counts;
+`ToolSchemas.md`'s 139-line count; `ARCHITECTURE.md`'s 67-class count, its
+11/35/21 per-package counts, and its review-order groups
+(24/19/10/6/3/3/1/1, which sum to 67).
+
+**Retired-identifier citation made self-contained.** `TestRunCoordinator.md`'s
+commit-walk entry for `75adf49` quoted that commit's subject, which names
+the retired item A2; the passage now glosses A2 in the dossier's own words
+(a run whose Cucumber tag expression matched nothing terminating as
+`PASSED` with no visible signal, since retired) so a reader need not look
+it up. The surrounding structural claim about that commit does not depend
+on A2 and was left as-is.
+
+**B13 cross-reference added** to `TEST_MAP.md`'s
+`RegressionMcpServerStdioIntegrationTest` row — `regression_get_failure_summary`'s
+`catch (ExecutionPlanningException)` is entered by no test — in the same
+form the row already uses for item A3.
+
+**The substantive revision was deferred**, and is logged as new
+`docs/TECHNICAL_DEBT.md` section-B item **B14**: `ARCHITECTURE.md`,
+`TEST_MAP.md` and the two dossiers have had their numbers reconciled
+piecemeal but their substance — dependency map, tier/fan-in/bucket
+assignments, "what would pass unnoticed" judgements, the dossiers'
+structural claims — never re-verified against `master` since the
+2026-08-27 baseline `ARCHITECTURE.md` still names. B14 records the drift
+already visible (bare `execute()` line numbers in `TestRunCoordinator.md`
+shifted since the class grew from 418 to 425 lines; the bare
+`docs/TOOLS.md` path in `TEST_MAP.md` and `TestRunCoordinator.md`),
+requires the revision to move `ARCHITECTURE.md`'s baseline note forward,
+and carries a 3-4-pass cost estimate.
+
+`mvn validate`: BUILD SUCCESS.
+
 2026-09-08 — corrected drifting live claims across the doc set, branch
 `docs/live-claims-cleanup`, PR #49. Four files in the first commit
 (`HANDOFF.md`, `docs/ROADMAP.md`, `docs/TECHNICAL_DEBT.md`,

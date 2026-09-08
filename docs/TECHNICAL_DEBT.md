@@ -21,8 +21,8 @@ what action they call for:
   observation or verification when the triggering event occurs, not by
   proactive work. Each item states what to capture when that happens.
 
-Counted from this file's own `###` item headers, there are 35 items: 2 in
-section A, 11 in B, 7 in C, and 15 in D.
+Counted from this file's own `###` item headers, there are 36 items: 2 in
+section A, 12 in B, 7 in C, and 15 in D.
 
 Each item's identifier is its section letter plus a number (`A1`, `A3`,
 `B2`, `B3`, ...), assigned in the order items appear in this file. New items are
@@ -664,6 +664,89 @@ the `runId` argument helper);
 `assertExecutionToolContracts`);
 `regression-mcp-server/src/test/java/com/aqa/mcp/RegressionMcpServerContractTest.java`
 (`exposesTheClosedReadOnlyFailureSummaryContract`).
+
+### B14. `ARCHITECTURE.md`, `TEST_MAP.md` and the class dossiers are unverified against `master` past their baseline
+
+Module: regression-mcp-server | Cost: 3-4 passes
+
+**What**: `regression-mcp-server/docs/ARCHITECTURE.md`'s baseline note
+says of the whole document: "Structural claims below were last fully
+verified at commit `7107c49fa305dde53ac3d6d0e009da67d773d859` (2026-08-27,
+CI-green) and are reconciled piecemeal after later merges."
+`regression-mcp-server/docs/TEST_MAP.md` and the two class dossiers
+(`regression-mcp-server/docs/classes/TestRunCoordinator.md`,
+`regression-mcp-server/docs/classes/ToolSchemas.md`) share that baseline
+— each opens "Read against the tree, not against `ARCHITECTURE.md`'s
+summary or any prior report." Since 2026-08-27 the module has taken about
+a dozen merges — the `ToolSchemas` extraction, the `moduleErrorResult` /
+`errorResult` merge, the single-serialization change, the
+B11 / B12 / B13 / D10 documentation arc — and none of these four documents
+has had its substance re-checked against the tree. Only numbers have been
+reconciled, piecemeal, by whichever pass noticed them.
+
+**Reconciled versus not**: current as of this item's creation — the class
+count (67), the per-package counts (11 / 35 / 21), the review-order group
+sizes (24 / 19 / 10 / 6 / 3 / 3 / 1 / 1, which sum to 67), every test-file
+and test-method count checked, and the `.java` line counts quoted in both
+dossiers. NOT re-verified — the dependency map (which class references
+which, the "pairs with" bundlings), the tier / fan-in / bucket
+assignments, `TEST_MAP.md`'s "what would pass unnoticed" column
+judgements, and every structural claim in the two dossiers
+(`TestRunCoordinator.md`'s §11 observations, §13 path walkthroughs and
+hypothesis table; `ToolSchemas.md`'s schema-invariance and visibility
+analysis).
+
+**Evidence that some of it has drifted, noticed while checking numbers,
+not fixed**:
+- `TestRunCoordinator.md` cites `execute()` and its collaborators by bare
+  line number through §11, §13 and the hypothesis table — for example O1's
+  "line 174" and "lines 162 / 169 / 175", H3's "line 160 / 161 / 162 /
+  163" — against a `TestRunCoordinator.java` that has grown from 418 to
+  425 lines since the dossier was written. The guarded-assignment sites
+  are now near lines 127 / 169 / 176 / 182 and the `RuntimeException`-catch
+  `capture(run)` near line 181, so most of those bare numbers are shifted
+  by roughly +7, and the dossier's own stated convention ("line numbers
+  are given only where a claim needs one, with the line of code quoted
+  beside it") is not consistently followed.
+- `TEST_MAP.md`'s `RegressionMcpServerStdioIntegrationTest` row and
+  `TestRunCoordinator.md` (§11 O6, hypothesis H4, and elsewhere) use the
+  bare path `docs/TOOLS.md` where the file is
+  `regression-mcp-server/docs/TOOLS.md` — the same shorthand corrected in
+  `docs/TECHNICAL_DEBT.md` and `docs/ROADMAP.md` by earlier passes.
+
+**Fix**: a class-by-class re-verification of `ARCHITECTURE.md` against the
+tree (dependency direction, tier and fan-in, bucket, the review-order
+groups), a re-read of `TEST_MAP.md`'s "what would pass unnoticed" column
+against the current tests, and a re-verification of both dossiers'
+structural claims and line-number citations. The revision **must also move
+`ARCHITECTURE.md`'s baseline note forward** to the commit it re-verifies
+against: the note has no mechanism forcing its own update, which is how it
+went stale between 2026-08-27 and now — numbers were reconciled, the
+baseline was not.
+
+**Cost**: 3-4 passes, and it is my estimate, not a measurement. One pass
+for `ARCHITECTURE.md` (67 classes, but most inventory rows are one line
+and the dependency direction is already test-enforced by
+`ReadOnlyProductionBoundaryTest` / ARCH-002 for the parts that matter);
+one for `TEST_MAP.md` (48 rows, each a judgement call about what a test
+would miss); one to two for the dossiers, since each is long and
+`TestRunCoordinator.md` in particular is dense with structural claims and
+line citations. Splitting by document keeps each pass reviewable and lets
+the baseline note move forward once, at the end.
+
+**Relationship to the 2026-09-08 documentation passes**: those passes
+corrected the class count, the anchor claim, the dossier line counts and
+the retired-identifier citation — the mechanical half. This item is the
+substantive half they deliberately deferred.
+
+**Location**:
+`regression-mcp-server/docs/ARCHITECTURE.md` (the baseline note, the class
+inventory, the review order);
+`regression-mcp-server/docs/TEST_MAP.md` (every row's "what would pass
+unnoticed" column);
+`regression-mcp-server/docs/classes/TestRunCoordinator.md`,
+`regression-mcp-server/docs/classes/ToolSchemas.md` (all structural claims
+and line-number citations).
 
 ## C. Accepted characteristics
 

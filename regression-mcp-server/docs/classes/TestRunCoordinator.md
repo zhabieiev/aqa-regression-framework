@@ -35,7 +35,9 @@ constructor was added) plus every file cited below.
   tools") — added `summary`, `failureSummary`, `artifacts`, `readArtifact`
   and their shared in-memory-terminal guard.
 - `75adf49` (2026-08-25, "Add RunSnapshot.skippedTests; close
-  TECHNICAL_DEBT.md item A2") — **the last substantive change**: `capture`
+  TECHNICAL_DEBT.md item A2" — that item, a run whose Cucumber tag
+  expression matched nothing terminating as `PASSED` with no visible
+  signal, has since been retired) — **the last substantive change**: `capture`
   changed from `void` to `Integer`, `persistTerminal` gained a
   `skippedTests` parameter, and the guarded assignment
   `Integer captured = capture(run); if (captured != null) skippedTests = captured;`
@@ -967,7 +969,8 @@ the whole terminal tail, not the capture fragment alone.
 - **`mvn` was run only as `validate`** when this dossier was written (per
   that pass's instruction); the 276/0/0/5 `regression-mcp-server` suite
   result from earlier the same day was taken as current then. The suite has
-  since grown to 278/0/0/5 (two characterization tests added).
+  since grown to 280/0/0/5 (characterization tests, then later contract
+  assertions, added).
 - **The 3-arg constructor** was confirmed to have no in-tree caller by
   grep; a caller outside the repository (there is none for this module) was
   not ruled out.

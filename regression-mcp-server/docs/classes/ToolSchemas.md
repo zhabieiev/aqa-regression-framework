@@ -9,7 +9,8 @@ Source read in full this pass:
 `regression-mcp-server/src/main/java/com/aqa/mcp/ToolSchemas.java` (139 lines,
 `wc -l`),
 `regression-mcp-server/src/main/java/com/aqa/mcp/RegressionMcpServer.java`
-(427 lines), `regression-mcp-server/src/main/java/com/aqa/mcp/ModuleType.java`,
+(427 lines when this dossier was written; 428 now),
+`regression-mcp-server/src/main/java/com/aqa/mcp/ModuleType.java`,
 `regression-mcp-server/src/test/java/com/aqa/mcp/RegressionMcpServerContractTest.java`,
 `regression-mcp-server/src/test/java/com/aqa/mcp/RegressionMcpServerStdioIntegrationTest.java`,
 and `regression-mcp-server/src/test/java/com/aqa/mcp/ReadOnlyProductionBoundaryTest.java`.

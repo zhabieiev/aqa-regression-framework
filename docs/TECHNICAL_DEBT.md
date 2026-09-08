@@ -588,8 +588,8 @@ Module: regression-mcp-server | Cost: 1 pass
 body in a single `try` whose one `catch (ExecutionPlanningException
 exception)` clause returns `errorResult(exception.code(),
 exception.getMessage())`. No test drives `regression_get_failure_summary`
-into that catch. Its five sibling report, run-status and execution handlers
-each have their `catch (ExecutionPlanningException)` reached by
+into that catch. Every other report, run-status and execution tool has
+its `catch (ExecutionPlanningException)` reached by
 `RegressionMcpServerStdioIntegrationTest`: `regression_get_test_summary`
 (`RUN_NOT_TERMINAL`, `NOT_FOUND`), `regression_get_test_run` and
 `regression_cancel_test_run` (which share `runActionTool`, reached with
@@ -638,8 +638,10 @@ surface under these searches.
 **Fix**: add one or two `assertStructuredError` assertions to
 `RegressionMcpServerStdioIntegrationTest` — a `regression_get_failure_summary`
 `tools/call` with a malformed `runId` asserting `INVALID_ARGUMENTS`, and
-one with `run-0…0` asserting `RUN_NOT_FOUND` — next to the existing
-`regression_get_failure_artifacts` foreign-`runId` assertion in
+one with `run-00000000000000000000000000000000` (`run-` followed by 32 hex
+zeros — well-formed per `RunId.valid`, matching no run) asserting
+`RUN_NOT_FOUND` — next to the existing `regression_get_failure_artifacts`
+foreign-`runId` assertion in
 `servesFailureArtifactToolsForARealFailingRunAndRejectsForeignRequests`.
 
 **Relationship to B12 and D14**: B12 is about the textual representation of

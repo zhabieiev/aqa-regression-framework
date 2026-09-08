@@ -124,13 +124,16 @@ start of a session; update it at the end of one, per `CLAUDE.md`'s
   maintained with their own modules' READMEs, not duplicated in that file.
 - `regression-mcp-server` now has a committed architecture map and test
   map: [`regression-mcp-server/docs/ARCHITECTURE.md`](regression-mcp-server/docs/ARCHITECTURE.md)
-  (layer map, 66-class inventory with tier/fan-in/contract-exposure bucket
-  per class, three flow walkthroughs, lifecycle/ownership, data model,
-  boundary/trust surface, extension points, and a leaves-first/hubs-last
-  review order) and [`regression-mcp-server/docs/TEST_MAP.md`](regression-mcp-server/docs/TEST_MAP.md)
+  (layer map, a class inventory — its count and per-package breakdown
+  stated in `ARCHITECTURE.md` itself — with tier/fan-in/contract-exposure
+  bucket per class, three flow walkthroughs, lifecycle/ownership, data
+  model, boundary/trust surface, extension points, and a
+  leaves-first/hubs-last review order) and
+  [`regression-mcp-server/docs/TEST_MAP.md`](regression-mcp-server/docs/TEST_MAP.md)
   (every test file's type, what it pins, and — the load-bearing column —
-  what change would pass the whole suite unnoticed), both anchored to
-  commit `7107c49fa305dde53ac3d6d0e009da67d773d859`. The per-class dossier
+  what change would pass the whole suite unnoticed), both maintained
+  against `master` — see `ARCHITECTURE.md`'s baseline note for the commit
+  they were last fully verified against. The per-class dossier
   directory (`regression-mcp-server/docs/classes/`) is now started: the
   first dossier is
   [`regression-mcp-server/docs/classes/TestRunCoordinator.md`](regression-mcp-server/docs/classes/TestRunCoordinator.md)
@@ -207,7 +210,7 @@ unchanged.
 
 `mvn validate`: BUILD SUCCESS.
 
-2026-09-08 (latest) — reconciled `docs/TECHNICAL_DEBT.md`'s D10/B11
+2026-09-08 — reconciled `docs/TECHNICAL_DEBT.md`'s D10/B11
 contradiction, added section-B item **B13**, and corrected the
 `docs/TOOLS.md` path shorthand, branch `docs/debt-d10-b13-paths`, PR #47.
 Only `docs/TECHNICAL_DEBT.md` changed in the first commit and `HANDOFF.md`

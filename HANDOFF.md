@@ -152,7 +152,39 @@ start of a session; update it at the end of one, per `CLAUDE.md`'s
 
 ## Most recent session
 
-2026-09-08 (latest) — removed the redundant response serialization in
+2026-09-08 (latest) — logged `docs/TECHNICAL_DEBT.md` section-B item
+**B12**, branch `docs/text-representation-untested`. One file changed in
+the first commit (`docs/TECHNICAL_DEBT.md`), `HANDOFF.md` in the second;
+no production source, test, POM, or CI file touched.
+
+**B12: no test asserts anything about a tool response's text
+representation.** Every MCP tool response `RegressionMcpServer` builds
+carries its payload twice — as the `structuredContent` object and as a
+JSON string in the `content` text block (`successResult` for a success,
+`errorResult` for the error envelope) — and no `regression-mcp-server`
+test makes any assertion about the text block. Every response assertion in
+the module reads `structuredContent` or `isError`
+(`RegressionMcpServerStdioIntegrationTest` via
+`.path("result").path("structuredContent")…`,
+`RegressionMcpServerContractTest` and the validator `*ToolTest` classes
+via `result.structuredContent()`). The evidence is the 2026-09-08
+single-serialization pass: corrupting the shared two-argument
+`successResult` overload so the text block disagreed with
+`structuredContent` left the full suite green at 280 / 0 / 0 / 5, and that
+overload is the one helper every successful response passes through.
+Before that pass `successResult` built both representations from the same
+map so they could not diverge; the two-argument overload takes the text as
+a caller-supplied parameter, so their agreement is now a caller
+responsibility. Both current callers pass text from the same map they hand
+to `structuredContent`, so B12 is a missing guard, not a defect. Cost:
+1 pass — one tree-compare assertion added to the existing STDIO
+integration test. The identifier is the next free one in section B (B1 and
+B8 are retired and not reused). The introductory item count went 33 → 34
+(B 9 → 10).
+
+`mvn validate`: BUILD SUCCESS.
+
+2026-09-08 — removed the redundant response serialization in
 `RegressionMcpServer.failureSummaryResult` and
 `RegressionMcpServer.readArtifactResult`, branch
 `refactor/single-serialization-bounded-results`. One source file changed

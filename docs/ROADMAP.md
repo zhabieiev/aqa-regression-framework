@@ -378,6 +378,51 @@ unrelated reason, which would remove the cross-package obstacle and let one
 helper serve both the execution and validation call sites. Absent either,
 the blocks stay inline.
 
+### AI-attribution trailers in historical commit messages will not be scrubbed
+
+**Current state.** 35 commits reachable from `master`, dated 2026-08-17 to
+2026-08-29, carry a `Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>`
+trailer in their message — for example `75adf49`
+("Add RunSnapshot.skippedTests; close TECHNICAL_DEBT.md item A2"). All of
+them predate `d37c919` (2026-08-29, "Forbid AI attribution lines in
+commits, PRs, and committed files"), the commit that added `CLAUDE.md`'s
+attribution rule; none exists after it. No committed *file* carries such a
+trailer — re-verified by `git grep` over `git ls-files`, whose only hit is
+the `CLAUDE.md` rule itself, which names the forbidden forms in order to
+forbid them.
+
+**Decision.** The 35 historical commit messages will not be rewritten. This
+is a recorded decision, not pending work.
+
+**Reasons:**
+- They are all merged into `master`. Stripping them means a `git rebase`
+  or `filter-repo` across published history and a force-push of `master` —
+  every clone and every open branch would then have to reset.
+- Committed documents cite 37 distinct commit hashes by abbreviation
+  (`HANDOFF.md`'s session log carries most of them; `docs/ROADMAP.md`,
+  `docs/TECHNICAL_DEBT.md` and the `regression-mcp-server` docs the rest).
+  A rewrite turns every one into a dangling reference. The tag
+  `regression-mcp-server-v1.0.0` points at `367fe27`, one of the affected
+  commits, and `367fe27` is itself cited in the docs.
+- The trailers predate the rule and mislead nobody: they sit in message
+  metadata, not in any file a fresh clone builds or ships, and the rule
+  that now forbids them is in the tree.
+- The only precedent for a rewrite here is branch-local: `d37c919`'s own
+  message records that PR #40's three commits were rewritten and
+  force-pushed *before* they reached `master`. That is a pre-merge branch
+  fix, not a rewrite of published history.
+
+**Scope of the prohibition, going forward.** `CLAUDE.md`'s rule applies to
+every new commit message, PR title, PR body, and committed file. This
+decision is only about not retroactively rewriting the commits that
+predate it.
+
+**Conditions for revisiting**, so a future reader knows what would flip the
+answer: a policy requirement that published history carry no such trailer
+(a compliance or contribution-terms constraint, not a preference); or the
+repository being re-rooted for an unrelated reason, at which point the
+rewrite costs nothing extra. Absent either, the history stays as it is.
+
 ## Where things live
 
 **Scope: this section documents only `regression-mcp-server`'s internal

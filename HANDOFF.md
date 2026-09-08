@@ -155,6 +155,48 @@ start of a session; update it at the end of one, per `CLAUDE.md`'s
 
 ## Most recent session
 
+2026-09-08 — closed the documentation arc: added a `## Documentation
+upkeep` section to `CLAUDE.md` and recorded the historical-trailer decision
+in `docs/ROADMAP.md`'s "## Decisions", branch
+`docs/upkeep-rule-and-history-decision`, PR #51. Two files in the first
+commit (`CLAUDE.md`, `docs/ROADMAP.md`) and `HANDOFF.md` in this one; no
+production source, test, POM, CI, or `docs/TECHNICAL_DEBT.md` file touched,
+and no debt item added or removed.
+
+**`CLAUDE.md` `## Documentation upkeep`.** Seven rules, each codifying a
+failure seen in this repo's own doc set during the arc: one fact lives in
+one file and others reference it; reference a PR by number only and never
+its status; no live marker inside a dated entry; cite structurally, not by
+line number; write paths in full from the repository root; a stated
+baseline or "last verified" line is moved forward by whatever pass
+re-verifies the document; grep before finishing to prove a touched count
+is asserted once. A closing sentence states the section does not widen any
+task's authorized file scope. Placed after "Verification and handoff",
+before "Regression MCP server"; overlap with the existing HANDOFF-update,
+`output.log`, structural-citation and inspection-scope rules was checked
+and the new text extends or references them rather than restating them.
+
+**`docs/ROADMAP.md` decision.** 35 commits reachable from `master`
+(2026-08-17 to 2026-08-29) carry a `Co-Authored-By` trailer, all predating
+`d37c919`, the commit that added the attribution rule; no committed file
+carries one (`git grep` over `git ls-files`). They will not be rewritten:
+they are merged into `master`, the committed docs cite 37 distinct commit
+hashes that a rewrite would dangle, the `regression-mcp-server-v1.0.0` tag
+points at one of the affected commits, and the trailers predate the rule
+and mislead nobody. The prohibition stands for new commits and files.
+
+**Housekeeping.** The stray empty local branch
+`docs/strip-attribution-strings`, left by the prior no-findings
+attribution pass and never pushed, was deleted with `git branch -d`.
+
+This entry is the first written under the new `## Documentation upkeep`
+rule and follows it: it names PR #51 by number without asserting its
+status, carries no `(latest)` marker, points at the debt catalogue's owner
+file without restating its count, and uses structural references
+throughout.
+
+`mvn validate`: BUILD SUCCESS.
+
 2026-09-08 — refreshed mechanical staleness in the `regression-mcp-server`
 doc set and logged the deferred structural revision, branch
 `docs/dossier-number-refresh`, PR #50. Four files in the first commit

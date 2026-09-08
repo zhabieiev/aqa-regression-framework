@@ -62,6 +62,18 @@ treat it as binding regardless of how you were pointed at it.
 - `output.log` at the repository root is the single local, gitignored working log. Agents append their reports to it; it is not repository content. It is cleared periodically by the user, so it is not an archive and nothing should depend on its history. It must never be cited as the location of findings in `HANDOFF.md`, `CLAUDE.md`, or any other committed document, because a fresh clone will not have it — substantive findings go directly into the committed document.
 - Do not record which AI tool produced a change anywhere in the project's own record. Keep out of commit messages, PR titles, PR bodies, and every committed file: co-author trailers naming a model (such as a `Co-Authored-By:` line for an assistant), links or identifiers pointing at an agent or tool session, and "generated with" footers or emoji badges. Repository history and pull requests exist to record what changed and why, not which tool typed it. Some agent harnesses append these lines by default, so actively suppress them and re-check your own commit messages and PR text before finishing rather than assuming none were added. This does not restrict ordinary prose that names an AI tool where the tool is the subject — for example `regression-mcp-server/README.md` listing MCP clients, or this file addressing AI coding agents.
 
+## Documentation upkeep
+
+- One fact, one file. A number or claim lives in the file that owns the thing it describes; every other file references it rather than restating it. A count lives in the file it counts. This generalises the `output.log` rule above: a committed document points at where a fact lives, it does not copy it somewhere it will drift.
+- Reference a pull request by number only. Never write the status of a PR into a document — "open", "merged", "not merged as of this entry" and every variant goes permanently stale the moment the PR merges.
+- Do not embed a live marker in a dated entry. A "(latest)" or "newest entry" marker forces every later pass to reach back and edit a previous entry to move it, and the newest entry is already the topmost one, so the marker earns nothing.
+- Cite structurally — class, method, field, workflow step, section heading — not by line number. Line numbers rot silently as unrelated edits shift a file; a named target does not. Where a line number is unavoidable, quote the code beside it so the drift is visible.
+- Write every path in full from the repository root. A shortened path that happens to resolve from one directory (`docs/TOOLS.md` for `regression-mcp-server/docs/TOOLS.md`) is wrong read from anywhere else.
+- A document that states a baseline commit, an anchor, or a "last verified" point must have that line moved forward by whatever pass re-verifies the document against the tree. A baseline that nothing forces forward goes stale while the numbers around it are kept current — that is how it drifted before.
+- Before finishing, grep the tracked files to prove that any count or single-source claim you added or changed is asserted exactly once. If a second assertion exists, one of them is wrong.
+
+This section does not widen any task's authorized file scope. An inspection pass still makes no edits (see the inspection rule under "Verification and handoff"); a pass authorized to edit one file does not gain permission to edit another because it has drifted. A drifted fact outside the current scope is reported, not fixed.
+
 ## Regression MCP server
 
 - Keep `regression-mcp-server` isolated from `regression-core` and every product module.

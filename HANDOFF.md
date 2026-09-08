@@ -153,9 +153,9 @@ start of a session; update it at the end of one, per `CLAUDE.md`'s
 ## Most recent session
 
 2026-09-08 (latest) — logged `docs/TECHNICAL_DEBT.md` section-B item
-**B12**, branch `docs/text-representation-untested`. One file changed in
-the first commit (`docs/TECHNICAL_DEBT.md`), `HANDOFF.md` in the second;
-no production source, test, POM, or CI file touched.
+**B12**, branch `docs/text-representation-untested`. Only
+`docs/TECHNICAL_DEBT.md` and `HANDOFF.md` changed, across the branch's
+commits; no production source, test, POM, or CI file touched.
 
 **B12: no test asserts anything about a tool response's text
 representation.** Every MCP tool response `RegressionMcpServer` builds
@@ -177,10 +177,24 @@ map so they could not diverge; the two-argument overload takes the text as
 a caller-supplied parameter, so their agreement is now a caller
 responsibility. Both current callers pass text from the same map they hand
 to `structuredContent`, so B12 is a missing guard, not a defect. Cost:
-1 pass — one tree-compare assertion added to the existing STDIO
-integration test. The identifier is the next free one in section B (B1 and
-B8 are retired and not reused). The introductory item count went 33 → 34
-(B 9 → 10).
+1 pass — a tree-compare assertion on both a successful and an error
+response, added to the existing STDIO integration test. The identifier is
+the next free one in section B (B1 and B8 are retired and not reused). The
+introductory item count went 33 → 34 (B 9 → 10).
+
+A follow-up commit on the same branch sharpened B12's Evidence field to
+separate the two grounds the item rests on. The success-path claim is
+backed by an executed experiment — the corrupted shared two-argument
+`successResult` overload, full suite green. The error-envelope claim is
+not: `RegressionMcpServer.errorResult` was never part of that experiment,
+and the ground there is only the absence of any test-tree reference to a
+response's text representation (`CallToolResult.content()`, `TextContent`,
+a `content[]` text node, a `"text"` field), which is weaker evidence than
+an executed experiment. The Fix field now notes that closing B12 likely
+needs the tree-compare on both a successful and an error response, since
+the two envelopes are built by different helpers (`successResult` versus
+`errorResult`); the Cost estimate is unchanged at 1 pass, and What, Why,
+Location and the item count were not touched.
 
 `mvn validate`: BUILD SUCCESS.
 

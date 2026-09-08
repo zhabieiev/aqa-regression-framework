@@ -21,8 +21,8 @@ what action they call for:
   observation or verification when the triggering event occurs, not by
   proactive work. Each item states what to capture when that happens.
 
-Counted from this file's own `###` item headers, there are 34 items: 2 in
-section A, 10 in B, 7 in C, and 15 in D.
+Counted from this file's own `###` item headers, there are 35 items: 2 in
+section A, 11 in B, 7 in C, and 15 in D.
 
 Each item's identifier is its section letter plus a number (`A1`, `A3`,
 `B2`, `B3`, ...), assigned in the order items appear in this file. New items are
@@ -135,7 +135,7 @@ miss detail that was actually cut off.
 `record`; lines 27-28, 32, 71, 75, 105-119 as of 2026-08-23);
 `regression-mcp-server/docs/SESSION_DEMO.md`.
 
-### A3. `docs/TOOLS.md` documents `regression_start_test_run` as "not open-world," contradicting the code
+### A3. `regression-mcp-server/docs/TOOLS.md` documents `regression_start_test_run` as "not open-world," contradicting the code
 
 Module: regression-mcp-server | Cost: 1 pass
 
@@ -150,9 +150,9 @@ idempotent, boolean openWorld)` maps its fourth parameter directly to
 `openWorldHint(true)`, not `false`. Cross-checked against
 `regression_cancel_test_run`'s own call, `executionAnnotations(false,
 true, true, false)`, whose fourth argument correctly matches its own
-docs/TOOLS.md line ("not open-world") — confirming this is specifically a
-`start`-tool documentation error, not a misreading of the parameter
-order.
+`regression-mcp-server/docs/TOOLS.md` line ("not open-world") — confirming
+this is specifically a `start`-tool documentation error, not a misreading
+of the parameter order.
 
 `RegressionMcpServerStdioIntegrationTest.assertExecutionToolContracts`
 independently confirms the code's value is intentional, not accidental:
@@ -484,14 +484,15 @@ status is no longer `PENDING`, and the guard keeps the earlier count.
 Replacing it with `skippedTests = capture(run)` would persist `null` and
 lose the count there, and the whole suite would still pass.
 
-**Relationship to D10**: D10 (the recovery-path sibling) states the
-`execute()`-side guard "does have a dedicated test … which forces a real
-capture to succeed once, forces a second (necessarily null-returning)
-capture call, and asserts …". That description does not match the control
-flow above; this item is the correction. The early-cause, normal-completion
-and `InterruptedException` paths each only ever call `capture` once, so a
-plain assignment would not regress them — only the `RuntimeException` path
-after a successful try-block capture.
+**Relationship to D10**: D10 (the recovery-path sibling) covers the
+analogous guard in `recoverIfUnowned`. D10 defers to this item for the
+`execute()`-side guard rather than characterising its coverage itself,
+because the test named for that guard
+(`secondCaptureCallInTheRuntimeExceptionPathDoesNotOverwriteTheFirstCallsSkippedCount`)
+does not reach the interleaving, as traced above. The early-cause,
+normal-completion and `InterruptedException` paths each only ever call
+`capture` once, so a plain assignment would not regress them — only the
+`RuntimeException` path after a successful try-block capture.
 
 **Fix**: a fixture that makes `persistTerminal`'s first `RunStore.update`
 throw exactly once (e.g. a wrapping `RunStore`/`AtomicMover`), leaving
@@ -578,6 +579,89 @@ and `structuredContent` from the same payload);
 and `regression-mcp-server/src/test/java/com/aqa/mcp/RegressionMcpServerContractTest.java`
 (every response assertion reads `structuredContent` / `isError`, none the
 text block).
+
+### B13. The `failureSummaryTool` error path is not entered by any test
+
+Module: regression-mcp-server | Cost: 1 pass
+
+**What**: `RegressionMcpServer.failureSummaryTool`'s call handler wraps its
+body in a single `try` whose one `catch (ExecutionPlanningException
+exception)` clause returns `errorResult(exception.code(),
+exception.getMessage())`. No test drives `regression_get_failure_summary`
+into that catch. Its five sibling report, run-status and execution handlers
+each have their `catch (ExecutionPlanningException)` reached by
+`RegressionMcpServerStdioIntegrationTest`: `regression_get_test_summary`
+(`RUN_NOT_TERMINAL`, `NOT_FOUND`), `regression_get_test_run` and
+`regression_cancel_test_run` (which share `runActionTool`, reached with
+`RUN_NOT_FOUND`), `regression_get_failure_artifacts` (`RUN_NOT_FOUND`),
+`regression_read_failure_artifact` (`NOT_FOUND`), and
+`regression_start_test_run` (`INVALID_TIMEOUT`, `RUN_ALREADY_ACTIVE`).
+`regression_get_failure_summary` is the one report or run-status tool with
+no error-envelope assertion anywhere.
+
+**Evidence**: `regression-mcp-server/src/test` was searched for the tool
+name string `regression_get_failure_summary`, the handler method name
+`failureSummaryTool`, the `GET_FAILURE_SUMMARY_TOOL_NAME` constant, and the
+bare token `failureSummary`. Three references reach this tool. (1)
+`RegressionMcpServerContractTest.exposesTheClosedReadOnlyFailureSummaryContract`
+builds the `SyncToolSpecification` and asserts its name, input schema and
+four annotation booleans, but never invokes the call handler — its
+coordinator supplier throws an `AssertionError` if consulted. (2)
+`RegressionMcpServerStdioIntegrationTest.servesFailureArtifactToolsForARealFailingRunAndRejectsForeignRequests`
+calls the tool once over real STDIO with the `runId` of a genuine terminal
+failing run and asserts a success envelope
+(`result.structuredContent.data.failureRecords` has size 1). (3) the same
+file's `assertExecutionToolContracts` lists `GET_FAILURE_SUMMARY_TOOL_NAME`
+in a `containsExactlyInAnyOrder` over names harvested from a `tools/list`
+response — a name-presence check, not a `tools/call`. The `failureSummary`
+hits in `ReportCaptureTest` and `SurefireSummaryStoreTest` are
+`RunStore.failureSummary`, a different method. No reference asserts an
+error envelope from this tool.
+
+Two schema-valid inputs reach the catch, both already exercised against
+sibling tools in the same STDIO test. A `runId` that is a string but not
+`run-<32 hex>` fails `RunId.valid` inside
+`TestRunCoordinator.failureSummary` and raises
+`ExecutionPlanningException("INVALID_ARGUMENTS", "runId has an invalid
+format.")` — the malformed-`runId` path item D14 describes for these four
+report/artifact tools. A well-formed but unknown `runId` reaches
+`RUN_NOT_FOUND` via `RunStore.failureSummary`. Both pass the closed input
+schema (`additionalProperties: false`, `runId` a required string), so
+neither is stopped before the handler runs.
+
+The basis is grep over the test tree plus reading each hit. Absence of a
+match excludes an error-envelope assertion written in one of the searched
+forms, not one written some other way — a test reaching the catch through
+an unnamed helper, a parameterised case, or a loop over tool names need not
+surface under these searches.
+
+**Fix**: add one or two `assertStructuredError` assertions to
+`RegressionMcpServerStdioIntegrationTest` — a `regression_get_failure_summary`
+`tools/call` with a malformed `runId` asserting `INVALID_ARGUMENTS`, and
+one with `run-0…0` asserting `RUN_NOT_FOUND` — next to the existing
+`regression_get_failure_artifacts` foreign-`runId` assertion in
+`servesFailureArtifactToolsForARealFailingRunAndRejectsForeignRequests`.
+
+**Relationship to B12 and D14**: B12 is about the textual representation of
+a response (the `content` text block versus `structuredContent`) going
+unasserted for every tool; B13 is about one handler's error branch never
+being executed by a test at all. D14 is about the code returning
+`INVALID_ARGUMENTS` rather than `RUN_NOT_FOUND` for a malformed `runId`
+from these tools, and `regression-mcp-server/docs/TOOLS.md` not documenting
+it; B13 relies on D14's established input as proof the catch is reachable,
+and adds only that no test drives it there.
+
+**Location**:
+`regression-mcp-server/src/main/java/com/aqa/mcp/RegressionMcpServer.java`
+(`failureSummaryTool` and its `catch (ExecutionPlanningException)` clause;
+the `runId` argument helper);
+`regression-mcp-server/src/main/java/com/aqa/mcp/execution/TestRunCoordinator.java`
+(`failureSummary`, the `RunId.valid` and terminal-state guards);
+`regression-mcp-server/src/test/java/com/aqa/mcp/RegressionMcpServerStdioIntegrationTest.java`
+(`servesFailureArtifactToolsForARealFailingRunAndRejectsForeignRequests`,
+`assertExecutionToolContracts`);
+`regression-mcp-server/src/test/java/com/aqa/mcp/RegressionMcpServerContractTest.java`
+(`exposesTheClosedReadOnlyFailureSummaryContract`).
 
 ## C. Accepted characteristics
 
@@ -1231,15 +1315,13 @@ certainly non-null when that test's `TestRunCoordinator` is constructed,
 yet nothing checks what value ends up on the resulting `RunSnapshot`. The
 branch executes under existing coverage, but its *value* is unverified.
 
-The equivalent guard in `execute()`
-(`TestRunCoordinator.java:119-120,161-162,168-169,174-175` as of
-2026-08-25: `Integer captured = capture(run); if (captured != null)
-skippedTests = captured;`, at all four call sites) does have a dedicated
-test —
-`TestRunCoordinatorTest.secondCaptureCallInTheRuntimeExceptionPathDoesNotOverwriteTheFirstCallsSkippedCount`
-— which forces a real capture to succeed once, forces a second (necessarily
-null-returning) capture call, and asserts the final persisted
-`skippedTests` still reflects the first call's value.
+The analogous overwrite guard in `execute()` — `if (captured != null)
+skippedTests = captured;` at its four `capture(run)` call sites — is the
+subject of item **B11**. B11 establishes that the test named for it,
+`TestRunCoordinatorTest.secondCaptureCallInTheRuntimeExceptionPathDoesNotOverwriteTheFirstCallsSkippedCount`,
+does not reach the interleaving that would exercise it, so the
+`execute()`-side guard is unproven for the same reason this one is. B11
+owns that question; this item is only about the `recoverIfUnowned` sibling.
 
 **Open question**: whether `recoverIfUnowned`'s branch is reachable with a
 genuinely non-null `captured` value in practice at all. For a run orphaned
@@ -1254,11 +1336,12 @@ can make it non-null under a controlled, hand-written fixture.
 
 **Closed by observation, not work**: add an assertion on `skippedTests` to
 `restartPublishesValidatedStagedCaptureBeforeItsTerminalRecoveryState` (or a
-new test alongside it) mirroring the `TestRunCoordinatorTest` assertion
-above, and separately, when a genuine server-restart recovery is next
-observed against a run that was actually mid-Surefire-execution, record
-whether the staging directory left behind anything `ReportCapture` could
-parse.
+new test alongside it) that the persisted `skippedTests` reflects the
+captured count — the value assertion B11 proposes for the `execute()`-side
+guard, applied to the recovery path — and separately, when a genuine
+server-restart recovery is next observed against a run that was actually
+mid-Surefire-execution, record whether the staging directory left behind
+anything `ReportCapture` could parse.
 
 **Location**: `regression-mcp-server/src/main/java/com/aqa/mcp/execution/TestRunCoordinator.java`
 (`recoverIfUnowned`, lines 272 and 275 as of 2026-08-25; `execute`'s four
@@ -1267,8 +1350,8 @@ guarded call sites, lines 119-120, 161-162, 168-169, 174-175 as of
 `regression-mcp-server/src/test/java/com/aqa/mcp/execution/StaleRunRecoveryTest.java`
 (`restartPublishesValidatedStagedCaptureBeforeItsTerminalRecoveryState`);
 `regression-mcp-server/src/test/java/com/aqa/mcp/execution/TestRunCoordinatorTest.java`
-(`secondCaptureCallInTheRuntimeExceptionPathDoesNotOverwriteTheFirstCallsSkippedCount`,
-the comparable, existing execute()-side test).
+(`secondCaptureCallInTheRuntimeExceptionPathDoesNotOverwriteTheFirstCallsSkippedCount`
+— see item B11 for why it does not exercise the `execute()`-side guard).
 
 ### D11. Four `StaticJavaParser`-based test fixtures may depend on another test class's `ThreadLocal` mutation
 
@@ -1344,9 +1427,9 @@ without a design decision first.
 
 **Closed by observation, not work**: either wire `truncated` to something
 real (a design decision, not a mechanical fix) or document it in
-`docs/TOOLS.md` as reserved/currently-always-false, matching how item D6
-already documents the sibling gap ("no scanned-source-count signal") for
-`ArchitectureTool`'s output.
+`regression-mcp-server/docs/TOOLS.md` as reserved/currently-always-false,
+matching how item D6 already documents the sibling gap ("no
+scanned-source-count signal") for `ArchitectureTool`'s output.
 
 **Location**: `regression-mcp-server/src/main/java/com/aqa/mcp/validation/ModuleBoundariesTool.java`,
 `FrameworkConventionsTool.java`, `ArchitectureTool.java` (each `evaluate`
@@ -1393,7 +1476,7 @@ under the same review discipline as today's two hardcoded entries.
 `regression-mcp-server/src/test/java/com/aqa/mcp/execution/MavenInvocationFactoryTest.java`
 (neither test varies `environment`).
 
-### D14. A malformed `runId` returns `INVALID_ARGUMENTS` from the report/artifact tools but `RUN_NOT_FOUND` from the run-status tools, and `docs/TOOLS.md` documents only one
+### D14. A malformed `runId` returns `INVALID_ARGUMENTS` from the report/artifact tools but `RUN_NOT_FOUND` from the run-status tools, and `regression-mcp-server/docs/TOOLS.md` documents only one
 
 Module: regression-mcp-server | Cost: n/a
 
@@ -1426,12 +1509,13 @@ actually produces from them.
 **Not a section-A defect**: `INVALID_ARGUMENTS` for a syntactically
 invalid id is neither wrong nor misleading — it is arguably more precise
 than `RUN_NOT_FOUND` (it distinguishes "you sent a malformed id" from
-"no such run"). The gap is that `docs/TOOLS.md` is incomplete about it,
-not that the server returns a wrong answer.
+"no such run"). The gap is that `regression-mcp-server/docs/TOOLS.md` is
+incomplete about it, not that the server returns a wrong answer.
 
 **Closed by observation, not work**: add one sentence to
-`docs/TOOLS.md` noting that a `runId` failing the `run-<32 hex>` format
-check returns `INVALID_ARGUMENTS` from the four report/artifact tools
+`regression-mcp-server/docs/TOOLS.md` noting that a `runId` failing the
+`run-<32 hex>` format check returns `INVALID_ARGUMENTS` from the four
+report/artifact tools
 (and `RUN_NOT_FOUND` from `regression_get_test_run` /
 `regression_cancel_test_run`), while a well-formed-but-unknown `runId`
 returns `RUN_NOT_FOUND` from all six — matching how item D12 proposes to

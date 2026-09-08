@@ -73,7 +73,7 @@ from that debt catalogue per this file's own scope.
 
 **Ranked by cost (ascending):**
 
-1. **Fix `docs/TOOLS.md`'s `openWorldHint` claim for `regression_start_test_run`**
+1. **Fix `regression-mcp-server/docs/TOOLS.md`'s `openWorldHint` claim for `regression_start_test_run`**
    (closes `docs/TECHNICAL_DEBT.md` item A3). Cost: 1 pass. Risk: none —
    documentation-only.
 2. **`TestRunCoordinator` capture-guard extraction**: the 2-line "capture,
@@ -81,10 +81,16 @@ from that debt catalogue per this file's own scope.
    (captured != null) skippedTests = captured;`) is duplicated at all four
    call sites inside `execute()`/`recoverIfUnowned()`. Extract a private
    helper (`captureOrKeep(Active run, Integer current)`); each call site
-   collapses to one line. Cost: 1 pass. Risk: low — an existing test
-   (`secondCaptureCallInTheRuntimeExceptionPathDoesNotOverwriteTheFirstCallsSkippedCount`)
-   already pins the merge-vs-overwrite behavior this extraction must
-   preserve.
+   collapses to one line. Cost: 1 pass. Risk: currently unprotected — no
+   test pins the merge-vs-overwrite behaviour this extraction must preserve.
+   `secondCaptureCallInTheRuntimeExceptionPathDoesNotOverwriteTheFirstCallsSkippedCount`
+   is named for it but, as `docs/TECHNICAL_DEBT.md` item B11 establishes,
+   never reaches that interleaving — its fixture throws from `exitValue()`
+   before the first `capture(run)`, so the guard there runs only as a plain
+   assignment. B11's fix (a fixture forcing `persistTerminal`'s first
+   `RunStore.update` to throw once) is a precondition: until it exists,
+   replacing the guard with `skippedTests = capture(run)` would pass the
+   whole suite unnoticed.
 3. **Characterization tests for `TestRunCoordinator`'s `execute()` terminal
    paths — DONE (2026-08-28).** All four are now covered: normal
    completion, the `RuntimeException` catch, the `InterruptedException`
@@ -124,10 +130,17 @@ rule beyond ARCH-002's cycle-only coverage (C6); whether
 defense regardless of registry contents (D13).
 
 **Not proposed as candidates**, and why: splitting `RegressionMcpServer.java`
-for cohesion (a full per-tool decomposition found no B3-style duplicated
-method bodies — the file's size is 11 tools' worth of breadth, each
-costing 3-50 lines of genuinely tool-specific code once shared envelope
-helpers are reused, not repetition); anything in `PublicDiagnosticSanitizer`
+for cohesion (a per-tool decomposition found the file's size to be
+11 tools' worth of breadth — 3-50 lines each of genuinely tool-specific
+code once the shared envelope helpers are reused, not repetition — with one
+B3-style exception: `failureSummaryResult` and `readArtifactResult` have
+structurally identical bounded-response bodies differing only in the method
+name, the size-limit constant (`MAX_FAILURE_SUMMARY_RESPONSE_BYTES` vs
+`MAX_ARTIFACT_READ_RESPONSE_BYTES`) and the paired error code and message
+(`REPORT_MALFORMED` vs `ARTIFACT_TOO_LARGE`), and collapse to one
+parameterised helper — but at roughly nine lines each that pair is too
+small to carry a decomposition of the file on its own); anything in
+`PublicDiagnosticSanitizer`
 (security-critical, no defect found, changing it needs its own
 negative-case-test justification pass, not a drive-by); merging the three
 rule-*set* files (`ArchitectureRules`/`FrameworkConventionRules`/
@@ -287,6 +300,72 @@ reasoning; it is not repeated here.
 **Conditions for revisiting**: the same as that record's — the module
 targeting an owned Petstore instance instead of the public sandbox, and
 the delete-failure fallback cleanup being implemented.
+
+### The repeated `catch (ExecutionPlanningException)` blocks get no shared helper
+
+**Current state.** `RegressionMcpServer` has six
+`catch (ExecutionPlanningException)` blocks — in `startTestRunTool`,
+`testSummaryTool`, `failureSummaryTool`, `failureArtifactsTool`,
+`readFailureArtifactTool`, and the shared `runActionTool` (which backs both
+`regression_get_test_run` and `regression_cancel_test_run`). All six are
+identical apart from the exception variable name (`e` in two, `exception`
+in four): each body is
+`return errorResult(<var>.code(), <var>.getMessage());`. This was
+considered as a decomposition candidate; it was never written into the
+ranked list above.
+
+**Decision.** No shared catch helper will be extracted. This is a recorded
+decision, not pending work.
+
+**Reasons:**
+- It cannot be a plain Extract Method. Each catch body is already one
+  minimal call to `errorResult`; the repetition is the surrounding
+  `try { <tool-specific body> } catch (ExecutionPlanningException e) { … }`
+  scaffold, and the try bodies all differ (a different coordinator call and
+  a different success wrapping per tool). Factoring the scaffold out needs a
+  higher-order method — `guarded(Supplier<CallToolResult> body)` — with each
+  handler's try body wrapped in a `Supplier` lambda and passed in: a new
+  functional-interface indirection at every call site, not a mechanical
+  extraction.
+- The line-count payoff is roughly nil. Six one-line catch clauses would be
+  replaced by a ~4-line helper plus a `guarded(() -> { … })` wrapper at each
+  of the six sites — a net change of a line or two either way, with the
+  handlers made slightly less direct to read.
+- The deduplication would be half-done. The three `com.aqa.mcp.validation`
+  tool classes carry the identical catch shape for `ValidationException`
+  (`catch (ValidationException exception) { return errorResult(exception.code(), exception.getMessage()); }`
+  in each of `ModuleBoundariesTool`, `FrameworkConventionsTool`,
+  `ArchitectureTool`). `ExecutionPlanningException` and `ValidationException`
+  are both `final`, both extend `IllegalArgumentException` directly, and
+  each declares its own `code()` with no shared supertype or interface; and
+  `errorResult` is a different method in `com.aqa.mcp` than in
+  `com.aqa.mcp.validation`. A helper could not span both packages without
+  either adding a common `code()`-bearing interface to two exception
+  classes or passing the accessors in as function arguments, so the result
+  would be two near-identical helpers in two packages.
+- It is disjoint from `docs/TECHNICAL_DEBT.md` item B3. B3 covers the
+  thirteen near-identical *methods* the three `com.aqa.mcp.validation` tool
+  classes each reimplement (`evaluate`, `parseRequest`, `reportOutput`,
+  `moduleResultOutput`, `violationOutput`, `inputSchema`, `violationSchema`,
+  `moduleResultSchema`, `outputSchema`, `readOnlyAnnotations`,
+  `successResult`, `errorResult`, `serialize`); it names only those three
+  classes and says nothing about `RegressionMcpServer` or its catch blocks.
+  Closing B3 would leave `RegressionMcpServer`'s six blocks untouched.
+- Elsewhere in the module the same exception is caught for unrelated
+  purposes, so there is no larger pattern to unify: `RunStore` has four
+  `catch (ExecutionPlanningException exception) { throw exception; }`
+  rethrow filters (each sits ahead of a broader `catch (IOException …)` so
+  an already-classified exception passes through unwrapped), and
+  `TestRunCoordinator.recoverIfUnowned` has one that branches on
+  `exception.code()` and sets a recovery flag.
+
+**Conditions for revisiting.** A seventh or eighth
+`catch (ExecutionPlanningException)` handler added to `RegressionMcpServer`
+with the same one-line body would move the balance; so would introducing a
+shared `code()`-bearing interface for the two exception types for an
+unrelated reason, which would remove the cross-package obstacle and let one
+helper serve both the execution and validation call sites. Absent either,
+the blocks stay inline.
 
 ## Where things live
 

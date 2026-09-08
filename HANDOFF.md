@@ -152,6 +152,61 @@ start of a session; update it at the end of one, per `CLAUDE.md`'s
 
 ## Most recent session
 
+2026-09-08 — reconciled `docs/ROADMAP.md` against `docs/TECHNICAL_DEBT.md`
+item B11 and logged a rejected refactor, branch
+`docs/roadmap-risk-and-decisions`, PR #48. Only `docs/ROADMAP.md` changed
+in the first commit and `HANDOFF.md` in this one; no production source,
+test, POM, or CI file touched.
+
+**Candidate-2 Risk field corrected.** The `regression-mcp-server` ranked
+candidate for extracting `TestRunCoordinator`'s skipped-count capture guard
+rated its risk "low" on the strength of
+`TestRunCoordinatorTest.secondCaptureCallInTheRuntimeExceptionPathDoesNotOverwriteTheFirstCallsSkippedCount`
+pinning the merge-vs-overwrite behaviour. Re-traced against the current
+`TestRunCoordinator.execute` and the
+`SingleSkippedTestReportThenExitValueFailureOnceLauncher` /
+`ExitValueFailsOnceProcess` fixture: the fixture throws from the first
+`process.exitValue()` call, which computes `terminal` before the try-block
+`capture(run)`, so the `catch (RuntimeException)` block's `capture(run)` is
+the first and only capture and the guard runs as a plain assignment — the
+interleaving is never exercised, as `docs/TECHNICAL_DEBT.md` item B11
+establishes. The whole test tree was searched for any other test pinning
+the behaviour; none does. The Risk field now states that the refactor is
+currently unprotected and that B11's fix is a precondition.
+
+**Rejected refactor recorded.** `docs/ROADMAP.md`'s "## Decisions" section
+gained a record for a shared helper for `RegressionMcpServer`'s six
+`catch (ExecutionPlanningException)` blocks — considered and rejected. No
+ROADMAP candidate had proposed it, so it is written as a
+considered-and-rejected refactor, not the closing of a listed candidate.
+The reasoning, verified this pass: the six blocks are identical apart from
+the exception variable name; extraction needs a `Supplier`-based
+higher-order method, not a plain Extract Method; the net line-count effect
+is roughly nil; the three `com.aqa.mcp.validation` tool classes carry the
+same shape for `ValidationException`, and the two exception types share no
+`code()`-bearing supertype across their two packages, so a helper would be
+half-done; it is disjoint from `docs/TECHNICAL_DEBT.md` item B3 (which
+covers duplicated methods in the validator classes only); and `RunStore`'s
+four rethrow-filter catches and `recoverIfUnowned`'s `code()`-branching
+catch are unrelated.
+
+**Duplicated-bodies claim fixed.** ROADMAP's "not proposed as candidates"
+paragraph asserted a per-tool decomposition found no B3-style duplicated
+method bodies; `RegressionMcpServer.failureSummaryResult` and
+`readArtifactResult` are in fact a duplicated bounded-response pair,
+structurally identical apart from the method name, the size-limit constant,
+and the two error code/message strings. The sentence now names the pair and
+its differences, kept as an exception too small to change the "not
+proposed" verdict.
+
+**Path shorthand.** The ranked list's bare `docs/TOOLS.md` was corrected to
+`regression-mcp-server/docs/TOOLS.md`. The `docs/TOOLS.md` inside the
+"Where things live" ASCII tree is tree-relative (the tree is rooted at
+`regression-mcp-server/` and every sibling entry is bare) and was left
+unchanged.
+
+`mvn validate`: BUILD SUCCESS.
+
 2026-09-08 (latest) — reconciled `docs/TECHNICAL_DEBT.md`'s D10/B11
 contradiction, added section-B item **B13**, and corrected the
 `docs/TOOLS.md` path shorthand, branch `docs/debt-d10-b13-paths`, PR #47.

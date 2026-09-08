@@ -64,9 +64,10 @@ module/area; each module's own README carries more detail where noted.
 
 An inspection pass produced a full architecture map
 (`regression-mcp-server/docs/ARCHITECTURE.md`) and test-suite map
-(`regression-mcp-server/docs/TEST_MAP.md`), anchored to commit
-`7107c49fa305dde53ac3d6d0e009da67d773d859`. The candidates below are that
-pass's prioritized output — planned work, not yet authorized. Corresponding
+(`regression-mcp-server/docs/TEST_MAP.md`); see `ARCHITECTURE.md`'s
+baseline note for the commit they were last fully verified against. The
+candidates below are that pass's prioritized output — planned work, not
+yet authorized. Corresponding
 debt items are catalogued in `docs/TECHNICAL_DEBT.md` (A3, B9-B10, C6,
 D12-D13); this list is refactoring/improvement candidates, kept separate
 from that debt catalogue per this file's own scope.
@@ -76,12 +77,22 @@ from that debt catalogue per this file's own scope.
 1. **Fix `regression-mcp-server/docs/TOOLS.md`'s `openWorldHint` claim for `regression_start_test_run`**
    (closes `docs/TECHNICAL_DEBT.md` item A3). Cost: 1 pass. Risk: none —
    documentation-only.
-2. **`TestRunCoordinator` capture-guard extraction**: the 2-line "capture,
-   then keep-if-non-null" block (`Integer captured = capture(run); if
-   (captured != null) skippedTests = captured;`) is duplicated at all four
-   call sites inside `execute()`/`recoverIfUnowned()`. Extract a private
-   helper (`captureOrKeep(Active run, Integer current)`); each call site
-   collapses to one line. Cost: 1 pass. Risk: currently unprotected — no
+2. **`TestRunCoordinator` capture-guard extraction**: the two-statement
+   "capture, then keep-if-non-null" block (`Integer captured =
+   capture(run); if (captured != null) skippedTests = captured;`) appears
+   at four sites, all inside `execute()` — the early-cause branch, the
+   normal-completion path, and the `InterruptedException` and
+   `RuntimeException` catches. Extract a private helper
+   (`captureOrKeep(Active run, Integer current)`); each site collapses to
+   one line. `recoverIfUnowned` has a fifth, analogous occurrence that
+   differs in both shape and inputs — a `captured != null ? captured :
+   snapshot.skippedTests()` ternary passed inline as a `replaceWithReason`
+   argument, over a `String runId` and a `RunSnapshot`, with no `Active
+   run` and no `Integer` local — so the proposed signature does not fit it
+   as written. Open choice for the implementing pass: scope the helper to
+   `execute()` only, or generalise it (over a `runId` plus a fallback
+   `Integer`) to cover `recoverIfUnowned` too.
+   Cost: 1 pass. Risk: currently unprotected — no
    test pins the merge-vs-overwrite behaviour this extraction must preserve.
    `secondCaptureCallInTheRuntimeExceptionPathDoesNotOverwriteTheFirstCallsSkippedCount`
    is named for it but, as `docs/TECHNICAL_DEBT.md` item B11 establishes,

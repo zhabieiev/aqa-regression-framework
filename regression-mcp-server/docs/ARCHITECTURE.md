@@ -7,8 +7,9 @@ untrusted data enters, and what has to change to extend it. It is written
 for a fresh agent — any vendor, no conversation history — picking up
 inspection or refactoring work on this module.
 
-**Anchor commit**: `7107c49fa305dde53ac3d6d0e009da67d773d859` (branch
-`master`), confirmed CI-green via `gh run list --commit`. This document
+**Maintained against `master`.** Structural claims below were last fully
+verified at commit `7107c49fa305dde53ac3d6d0e009da67d773d859` (2026-08-27,
+CI-green) and are reconciled piecemeal after later merges. This document
 prefers structural claims ("X depends on Y only through the nested
 interface Z") over line numbers, because line numbers rot silently while
 structural claims survive refactoring — `docs/TECHNICAL_DEBT.md` item A1's

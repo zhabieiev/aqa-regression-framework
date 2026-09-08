@@ -1346,9 +1346,11 @@ mid-Surefire-execution, record whether the staging directory left behind
 anything `ReportCapture` could parse.
 
 **Location**: `regression-mcp-server/src/main/java/com/aqa/mcp/execution/TestRunCoordinator.java`
-(`recoverIfUnowned`, lines 272 and 275 as of 2026-08-25; `execute`'s four
-guarded call sites, lines 119-120, 161-162, 168-169, 174-175 as of
-2026-08-25);
+(`recoverIfUnowned`, its `Integer captured = capture(snapshot.runId());`
+statement and the `captured != null ? captured : snapshot.skippedTests()`
+argument it passes to `replaceWithReason`; `execute`'s four `Integer
+captured = capture(run); if (captured != null) skippedTests = captured;`
+guarded call sites);
 `regression-mcp-server/src/test/java/com/aqa/mcp/execution/StaleRunRecoveryTest.java`
 (`restartPublishesValidatedStagedCaptureBeforeItsTerminalRecoveryState`);
 `regression-mcp-server/src/test/java/com/aqa/mcp/execution/TestRunCoordinatorTest.java`

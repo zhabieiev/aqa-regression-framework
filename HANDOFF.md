@@ -152,7 +152,60 @@ start of a session; update it at the end of one, per `CLAUDE.md`'s
 
 ## Most recent session
 
-2026-09-08 (latest) — logged `docs/TECHNICAL_DEBT.md` section-B item
+2026-09-08 (latest) — reconciled `docs/TECHNICAL_DEBT.md`'s D10/B11
+contradiction, added section-B item **B13**, and corrected the
+`docs/TOOLS.md` path shorthand, branch `docs/debt-d10-b13-paths`, PR #47.
+Only `docs/TECHNICAL_DEBT.md` changed in the first commit and `HANDOFF.md`
+in this one; no production source, test, POM, or CI file touched.
+
+**D10 / B11 reconciled.** D10 (`recoverIfUnowned`'s skipped-count guard is
+untested) had carried a passage asserting that the analogous
+`execute()`-side guard "does have a dedicated test", and describing what
+that test does. Item B11 already establishes the opposite: the test named
+for it,
+`TestRunCoordinatorTest.secondCaptureCallInTheRuntimeExceptionPathDoesNotOverwriteTheFirstCallsSkippedCount`,
+throws from the first `process.exitValue()` call — which computes
+`terminal` before the try-block `capture(run)` runs — so the
+`catch (RuntimeException)` block's `capture(run)` is the first and only
+capture and `if (captured != null)` executes as a plain assignment; the
+guard interleaving is never reached. Re-traced against the current
+`TestRunCoordinator.execute` and the
+`SingleSkippedTestReportThenExitValueFailureOnceLauncher` /
+`ExitValueFailsOnceProcess` fixture this pass. D10's passage was removed;
+D10 now defers to B11 for the `execute()`-side guard and keeps only its
+own `recoverIfUnowned` question, and B11's "Relationship to D10" was
+reworded to read correctly against the trimmed D10.
+
+**B13 added** to section B: no test drives `regression_get_failure_summary`
+into its `catch (ExecutionPlanningException)`. `regression-mcp-server/src/test`
+was searched for the tool name, the `failureSummaryTool` handler method,
+the `GET_FAILURE_SUMMARY_TOOL_NAME` constant and the bare `failureSummary`
+token; the only handler invocation is one success-envelope assertion in
+`RegressionMcpServerStdioIntegrationTest.servesFailureArtifactToolsForARealFailingRunAndRejectsForeignRequests`,
+alongside a contract-only spec test
+(`RegressionMcpServerContractTest.exposesTheClosedReadOnlyFailureSummaryContract`)
+that never calls the handler. The five sibling report / run-status /
+execution handlers each have their catch reached by that STDIO test. The
+catch is reachable through the closed schema — a schema-valid `runId` that
+is not `run-<32 hex>` raises `INVALID_ARGUMENTS` (the malformed-`runId`
+path item D14 describes) and a well-formed but unknown `runId` raises
+`RUN_NOT_FOUND`, both already exercised against sibling tools — so B13's
+Cost is 1 pass.
+
+**Path shorthand.** Six bare `docs/TOOLS.md` references in items A3, D12
+and D14 were corrected to `regression-mcp-server/docs/TOOLS.md`; there is
+no repository-root `docs/TOOLS.md`. The same shorthand remains in
+`docs/ROADMAP.md` (two occurrences, one inside a `regression-mcp-server/`-
+rooted tree) and in three dated `HANDOFF.md` entries, left for later
+passes.
+
+The introductory item counter in `docs/TECHNICAL_DEBT.md` was updated for
+the new section-B item; that count and its per-section breakdown continue
+to live only in that file's introductory prose.
+
+`mvn validate`: BUILD SUCCESS.
+
+2026-09-08 — logged `docs/TECHNICAL_DEBT.md` section-B item
 **B12**, branch `docs/text-representation-untested`. Only
 `docs/TECHNICAL_DEBT.md` and `HANDOFF.md` changed, across the branch's
 commits; no production source, test, POM, or CI file touched.

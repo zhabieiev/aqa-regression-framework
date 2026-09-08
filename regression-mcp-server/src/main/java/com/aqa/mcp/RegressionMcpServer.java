@@ -347,10 +347,11 @@ public final class RegressionMcpServer {
     private static CallToolResult failureSummaryResult(Map<String, Object> data) {
         Map<String, Object> output = Map.of("status", "ok", "data", data);
         try {
-            if (serialize(output).getBytes(java.nio.charset.StandardCharsets.UTF_8).length > MAX_FAILURE_SUMMARY_RESPONSE_BYTES) {
+            String serialized = serialize(output);
+            if (serialized.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > MAX_FAILURE_SUMMARY_RESPONSE_BYTES) {
                 return errorResult("REPORT_MALFORMED", "The published failure summary exceeds its bounded response contract.");
             }
-            return successResult(output);
+            return successResult(output, serialized);
         } catch (RuntimeException exception) { return errorResult("REPORT_MALFORMED", "The published failure summary cannot be represented safely."); }
     }
     private static Map<String, Object> stepOutput(SurefireSummary.Step step) {
@@ -372,10 +373,11 @@ public final class RegressionMcpServer {
     private static CallToolResult readArtifactResult(Map<String, Object> data) {
         Map<String, Object> output = Map.of("status", "ok", "data", data);
         try {
-            if (serialize(output).getBytes(java.nio.charset.StandardCharsets.UTF_8).length > MAX_ARTIFACT_READ_RESPONSE_BYTES) {
+            String serialized = serialize(output);
+            if (serialized.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > MAX_ARTIFACT_READ_RESPONSE_BYTES) {
                 return errorResult("ARTIFACT_TOO_LARGE", "The requested artifact exceeds its bounded response contract.");
             }
-            return successResult(output);
+            return successResult(output, serialized);
         } catch (RuntimeException exception) { return errorResult("ARTIFACT_TOO_LARGE", "The requested artifact cannot be represented safely."); }
     }
 
@@ -393,8 +395,12 @@ public final class RegressionMcpServer {
     }
 
     private static CallToolResult successResult(Map<String, Object> output) {
+        return successResult(output, serialize(output));
+    }
+
+    private static CallToolResult successResult(Map<String, Object> output, String serialized) {
         return CallToolResult.builder()
-                .content(List.of(TextContent.builder(serialize(output)).build()))
+                .content(List.of(TextContent.builder(serialized).build()))
                 .structuredContent(output)
                 .isError(false)
                 .build();

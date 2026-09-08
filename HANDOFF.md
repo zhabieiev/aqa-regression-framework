@@ -99,8 +99,10 @@ start of a session; update it at the end of one, per `CLAUDE.md`'s
   solely to feed it) was removed; it never actually ran under any real
   invocation.
 - Known debt and open questions: see [`docs/TECHNICAL_DEBT.md`](docs/TECHNICAL_DEBT.md)
-  (33 items as of 2026-09-01, counted directly from the file's own `###`
-  headers rather than trusted from this bullet's own prior figure — this
+  (the item count and its per-section breakdown are stated in that file's
+  own introductory prose now, counted from its own `###` headers; this
+  bullet no longer carries a figure, because a count kept here — in a
+  different file from the thing it counts — has drifted before: this
   bullet had drifted to "20 items as of 2026-08-25" when the file actually
   held 23 at that date, a staleness caught and corrected during the
   2026-08-27 session below; its "32 as of 2026-08-28" figure held until
@@ -150,7 +152,39 @@ start of a session; update it at the end of one, per `CLAUDE.md`'s
 
 ## Most recent session
 
-2026-09-01 (latest) — the two private static error-envelope helpers in
+2026-09-08 (latest) — two documentation corrections left open by the
+error-result merge arc, branch `docs/d15-fourth-occasion-and-item-count`.
+Two files changed, `docs/TECHNICAL_DEBT.md` and `HANDOFF.md`; no source,
+POM, test, or CI file touched:
+
+**D15's fourth occasion, catalogued.** The 2026-09-01 under-count of
+`TestRunCoordinatorTest.retainedChildIsRemovedWhenParentExitsBeforeCoordinatorCleanup`
+(asserted `>= 2` owned processes, observed 1; local Windows, branch
+`refactor/merge-error-result`) had been recorded only in that session's
+entry below, with a note that a later pass might add it to the catalogue.
+It is now the fourth bullet in item **D15**, in the same shape as the
+other three, and every occasion count in the item was updated to match
+(four occasions; the one method now three of the four). The change under
+test that day was a pure identifier rename plus an unused-import deletion
+with no path to process-tree observation, and the failure cleared without
+intervention across two subsequent green full-suite runs — so this adds an
+observation without re-diagnosing: D15's characterization, its Cost line,
+and its "cause unestablished, no fix scheduled" conclusion are unchanged.
+
+**The catalogue's item count moved into the catalogue.** That count had
+lived only in this file's "Known debt and open questions" bullet, a
+different file from the one it counts, which let the two drift silently —
+and it had, twice before, as that bullet's own drift history records. A
+single dateless statement of the total and the per-section breakdown
+(33 items: 2 A, 9 B, 7 C, 15 D), said to be counted from the file's own
+`###` headers, now sits in `docs/TECHNICAL_DEBT.md`'s introductory prose.
+The HANDOFF bullet now points at the catalogue as the place the count is
+stated and carries no figure of its own; its retirement notes for B8 and
+A4, its four-section explanation, and its drift history are kept.
+
+`mvn validate`: BUILD SUCCESS.
+
+2026-09-01 — the two private static error-envelope helpers in
 `RegressionMcpServer` merged into one, branch `refactor/merge-error-result`,
 PR #43. One source file changed in the first commit, two documentation
 files in the second; no POM or CI file touched:

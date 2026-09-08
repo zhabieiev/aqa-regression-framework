@@ -21,6 +21,9 @@ what action they call for:
   observation or verification when the triggering event occurs, not by
   proactive work. Each item states what to capture when that happens.
 
+Counted from this file's own `###` item headers, there are 33 items: 2 in
+section A, 9 in B, 7 in C, and 15 in D.
+
 Each item's identifier is its section letter plus a number (`A1`, `A3`,
 `B2`, `B3`, ...), assigned in the order items appear in this file. New items are
 appended within their section; existing identifiers are never reused, even
@@ -1374,7 +1377,7 @@ tools" preamble and "Common error codes");
 `regression-mcp-server/docs/classes/TestRunCoordinator.md` (§7, hypothesis
 H4).
 
-### D15. `TestRunCoordinatorTest`'s process-tree ownership assertions have under-counted on three occasions across two methods, cause unestablished
+### D15. `TestRunCoordinatorTest`'s process-tree ownership assertions have under-counted on four occasions across two methods, cause unestablished
 
 Module: regression-mcp-server | Cost: n/a
 
@@ -1382,8 +1385,8 @@ Module: regression-mcp-server | Cost: n/a
 child/grandchild process tree and then assert that the run's persisted
 `OwnedProcessIdentity` set has at least a given size — the coordinator is
 expected to have observed and retained that many live processes before the
-assertion runs. On three separate occasions the observed size has been 1,
-below the asserted minimum; one method has now produced two of the three:
+assertion runs. On four separate occasions the observed size has been 1,
+below the asserted minimum; one method has now produced three of the four:
 
 - **2026-08-17, CI** (`ubuntu-latest`, commit `f337b48c`, run
   32036451902): `timeoutSchedulingFailureNeverPublishesRunningAndCleansProcessAndLock`
@@ -1417,28 +1420,38 @@ below the asserted minimum; one method has now produced two of the three:
   and the new `ToolSchemas` class, not the coordinator or its tests, and the
   failure was on the pre-edit tree, so it is independent of that change.
   Recorded in `HANDOFF.md`'s 2026-08-31 session entry.
+- **2026-09-01, local** (Windows, branch `refactor/merge-error-result`):
+  the same method,
+  `retainedChildIsRemovedWhenParentExitsBeforeCoordinatorCleanup`, asserted
+  `>= 2`, observed 1, on the first full-suite run. It cleared without
+  intervention: the same test passed in isolation on the pre-edit tree, and
+  two subsequent full-suite runs with the change applied were both
+  280 / 0 / 0 / 5. The change under test was a pure identifier rename plus
+  an unused-import deletion, with no path to process-tree observation, so
+  the failure is independent of it. Recorded in `HANDOFF.md`'s 2026-09-01
+  session entry.
 
-Across the three: two methods in the same class asserting the same kind of
+Across the four: two methods in the same class asserting the same kind of
 quantity — the size of the persisted owned-process set — each observing
 exactly 1 against its expected minimum (`>= 3` for
 `timeoutSchedulingFailureNeverPublishesRunningAndCleansProcessAndLock`,
 `>= 2` for `retainedChildIsRemovedWhenParentExitsBeforeCoordinatorCleanup`).
 `retainedChildIsRemovedWhenParentExitsBeforeCoordinatorCleanup` has now
-under-counted twice, both times to 1, both on Windows, both clearing on a
-re-run — a repeatable shape, if not yet a repeatable trigger.
+under-counted three times, all three to 1, all on Windows, all clearing on
+a re-run — a repeatable shape, if not yet a repeatable trigger.
 
-**What is NOT established**: any cause, for any occasion. Whether the three
+**What is NOT established**: any cause, for any occasion. Whether the four
 share a cause; whether the asserted minimum encodes an assumption about
 process-tree depth or observation timing that does not always hold on a
 given runner or under load; whether an expected count is simply too tight —
 all open. No occasion has been reproduced on demand: D2's did not reproduce
-locally, and neither 2026-08-29 nor 2026-08-31 reproduced in isolation or
-on a re-run.
+locally, and none of 2026-08-29, 2026-08-31, or 2026-09-01 reproduced in
+isolation or on a re-run.
 
 **The item's character has changed: from an open question awaiting a
 second data point to a recurring failure with a partial reproduction
-pattern and no established cause.** One method has failed twice with an
-identical signature (observed 1, Windows, clears on re-run); the captured
+pattern and no established cause.** One method has failed three times with
+an identical signature (observed 1, Windows, clears on re-run); the captured
 `OwnedProcessIdentity` record from 2026-08-31 is the first concrete
 artefact. It remains an open question, not a scheduled fix — no change to
 either test or to `TestRunCoordinator` is proposed here, and no cause is
@@ -1451,8 +1464,8 @@ process tree *at the point of assertion*, compared against the same dump
 from a passing run of the same method — the diagnostic item D2 already
 calls for. The next occurrence of
 `retainedChildIsRemovedWhenParentExitsBeforeCoordinatorCleanup`
-specifically, given it has now failed twice with the same signature, is
-the one worth instrumenting.
+specifically, given it has now failed three times with the same signature,
+is the one worth instrumenting.
 
 **Location**: the two asserting methods in
 `regression-mcp-server/src/test/java/com/aqa/mcp/execution/TestRunCoordinatorTest.java`
@@ -1465,7 +1478,7 @@ check is
 The retention path under test is `TestRunCoordinator.observe` in
 `regression-mcp-server/src/main/java/com/aqa/mcp/execution/TestRunCoordinator.java`.
 Related: item **D2** (the 2026-08-17 occasion, in full) and `HANDOFF.md`'s
-2026-08-29 and 2026-08-31 session entries.
+2026-08-29, 2026-08-31, and 2026-09-01 session entries.
 
 ## Where module-level debt lives
 

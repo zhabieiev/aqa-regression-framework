@@ -152,7 +152,57 @@ start of a session; update it at the end of one, per `CLAUDE.md`'s
 
 ## Most recent session
 
-2026-09-08 (latest) — two documentation corrections left open by the
+2026-09-08 (latest) — removed the redundant response serialization in
+`RegressionMcpServer.failureSummaryResult` and
+`RegressionMcpServer.readArtifactResult`, branch
+`refactor/single-serialization-bounded-results`. One source file changed
+(`regression-mcp-server/src/main/java/com/aqa/mcp/RegressionMcpServer.java`)
+in the first commit, `HANDOFF.md` in the second; no POM, test, or CI file
+touched:
+
+**What changed and why.** Each of the two bounded-response methods
+serialized the response map twice on every successful call: once in the
+method itself to measure the payload's UTF-8 byte length against its limit
+constant, then again inside `successResult` to build the `TextContent`
+string. A new two-argument `successResult(Map, String)` overload now takes
+the already-serialized text; the one-argument `successResult` delegates to
+it by calling `serialize` itself, so every other caller is unaffected.
+Each method now hoists `serialize(output)` into a local, checks the byte
+length of that local, and passes the same local to the overload — one
+`serialize` call per successful call instead of two.
+
+**Scope of the redundancy.** It was exactly one extra `serialize` per
+method per successful call, not the "triple serialization" an earlier
+inspection note had floated. Within `RegressionMcpServer` the count goes
+from two to one; a further serialization of `structuredContent` still
+happens inside the MCP SDK when it writes the JSON-RPC frame, and that one
+is the actual wire write, untouched here.
+
+**No behaviour change.** No error code, error message, limit constant,
+catch structure, or success/error envelope shape changes. The
+`structuredContent(output)` argument is unchanged, so a successful
+response still carries the payload in both `content[0].text` and
+`structuredContent` — this pass does not deduplicate that.
+
+**Test-coverage finding (STEP 5, stated as it came out).** The change
+makes it newly possible for `content[0].text` to disagree with
+`structuredContent`. To check whether the suite would catch that, the new
+overload was temporarily edited to prefix a character to the `TextContent`
+string while leaving `structuredContent` correct, and
+`mvn -pl regression-mcp-server -am test` was re-run: **no test failed**
+(280 / 0 / 0 / 5, BUILD SUCCESS). `RegressionMcpServerContractTest` and
+`RegressionMcpServerStdioIntegrationTest` both assert only against the
+`structuredContent` view of a response; nothing parses `content[0].text`
+and compares the two. No test was added in this pass — the finding is
+recorded, not acted on.
+
+**Verification.** `mvn -pl regression-mcp-server -am test`: 280 / 0 / 0 / 5,
+BUILD SUCCESS, before and after the change, with the same five
+environment-conditional Windows symlink-permission skips by name. The
+temporary corruption was reverted and `git diff` confirmed only the
+intended change remained before committing.
+
+2026-09-08 — two documentation corrections left open by the
 error-result merge arc, branch `docs/d15-fourth-occasion-and-item-count`.
 Two files changed, `docs/TECHNICAL_DEBT.md` and `HANDOFF.md`; no source,
 POM, test, or CI file touched:

@@ -21,8 +21,8 @@ what action they call for:
   observation or verification when the triggering event occurs, not by
   proactive work. Each item states what to capture when that happens.
 
-Counted from this file's own `###` item headers, there are 33 items: 2 in
-section A, 9 in B, 7 in C, and 15 in D.
+Counted from this file's own `###` item headers, there are 34 items: 2 in
+section A, 10 in B, 7 in C, and 15 in D.
 
 Each item's identifier is its section letter plus a number (`A1`, `A3`,
 `B2`, `B3`, ...), assigned in the order items appear in this file. New items are
@@ -507,6 +507,77 @@ null) skippedTests = captured;` sites and `persistTerminal`);
 (`secondCaptureCallInTheRuntimeExceptionPathDoesNotOverwriteTheFirstCallsSkippedCount`
 and its `ExitValueFailsOnceProcess` fixture);
 `regression-mcp-server/docs/classes/TestRunCoordinator.md` (§11 O1, §13).
+
+### B12. No test asserts anything about a tool response's text representation
+
+Module: regression-mcp-server | Cost: 1 pass
+
+**What**: every MCP tool response `RegressionMcpServer` builds carries its
+payload in two places — the `structuredContent` object and a JSON string
+in the `content` text block. `RegressionMcpServer.successResult` sets both
+for a successful call and `RegressionMcpServer.errorResult` does the same
+for the error envelope. No test in `regression-mcp-server/src/test` makes
+any assertion about the text block. Every response assertion in the module
+reads the structured representation only:
+`RegressionMcpServerStdioIntegrationTest` through
+`response.path("result").path("structuredContent")…` and
+`.path("result").path("isError")`, and `RegressionMcpServerContractTest`
+and the three validator `*ToolTest` classes through
+`result.structuredContent()` and `result.isError()`. This is module-wide;
+it is not specific to `failureSummaryResult` / `readArtifactResult`.
+
+**Evidence**: on 2026-09-08, while implementing the single-serialization
+change on branch `refactor/single-serialization-bounded-results`, the
+shared two-argument
+`RegressionMcpServer.successResult(Map<String,Object>, String)` overload
+was temporarily edited so the text it placed in the `content` block
+disagreed with the `structuredContent` object it set from the same call.
+`mvn -pl regression-mcp-server -am test` then ran 280 tests, 0 failures,
+0 errors, 5 skipped and stayed green. That overload is the single helper
+every successful tool response passes through — the eight one-argument
+`successResult` call sites reach it by delegation and the two
+bounded-response methods call it directly — so the corruption affected
+every successful tool response, not two of them, and nothing failed.
+
+The two halves of this item rest on different, unequal grounds. For the
+**success path** the ground is that executed experiment: a real
+divergence was introduced into the shared helper and the suite stayed
+green. For the **error envelope** — built by `RegressionMcpServer.errorResult`,
+which the experiment never touched — there is no experiment; the ground
+is only the absence of any test-tree reference to a response's text
+representation (`CallToolResult.content()`, `TextContent`, a `content[]`
+text node, a `"text"` field), by which every error-response assertion too
+is seen to go against `structuredContent` / `isError` alone. Absence of a
+matching reference is weaker evidence than an executed experiment: it
+rules out an assertion written in one of the searched forms, not one
+written some other way.
+
+**Why it matters now**: before the single-serialization change,
+`successResult` derived both representations inside itself from the same
+map, so they could not disagree — their agreement was guaranteed by
+construction. The two-argument overload introduced there takes the text as
+a caller-supplied parameter, so the agreement is now maintained by the
+caller. Both current callers (`failureSummaryResult`, `readArtifactResult`)
+pass text serialized from the same map they hand to `structuredContent`,
+so nothing is wrong today. This is a missing guard against a future
+caller, not a defect.
+
+**Fix**: assertions in `RegressionMcpServerStdioIntegrationTest`, on
+responses it already drives — parse the `content` text block and assert it
+equals the `structuredContent` node. Compare the two as parsed JSON trees,
+not as raw strings, so object key order cannot make the assertion flaky.
+Because the success envelope and the error envelope are built by different
+helpers (`successResult` versus `errorResult`), closing this likely needs
+the check on both a successful response and an error response, not one.
+
+**Location**:
+`regression-mcp-server/src/main/java/com/aqa/mcp/RegressionMcpServer.java`
+(`successResult`, both overloads, and `errorResult` — each sets `content`
+and `structuredContent` from the same payload);
+`regression-mcp-server/src/test/java/com/aqa/mcp/RegressionMcpServerStdioIntegrationTest.java`
+and `regression-mcp-server/src/test/java/com/aqa/mcp/RegressionMcpServerContractTest.java`
+(every response assertion reads `structuredContent` / `isError`, none the
+text block).
 
 ## C. Accepted characteristics
 

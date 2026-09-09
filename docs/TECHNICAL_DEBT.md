@@ -21,11 +21,11 @@ what action they call for:
   observation or verification when the triggering event occurs, not by
   proactive work. Each item states what to capture when that happens.
 
-Counted from this file's own `###` item headers, there are 36 items: 2 in
-section A, 12 in B, 7 in C, and 15 in D.
+Counted from this file's own `###` item headers, there are 34 items: 1 in
+section A, 12 in B, 7 in C, and 14 in D.
 
-Each item's identifier is its section letter plus a number (`A1`, `A3`,
-`B2`, `B3`, ...), assigned in the order items appear in this file. New items are
+Each item's identifier is its section letter plus a number (`A1`, `B2`,
+`B3`, ...), assigned in the order items appear in this file. New items are
 appended within their section; existing identifiers are never reused, even
 after the item they named is deleted. Because a deleted identifier is
 never reused, anything outside this file that cites an item by identifier
@@ -134,44 +134,6 @@ miss detail that was actually cut off.
 (`MAX_SUITES`, `MAX_TESTCASES`, `MAX_FAILURE_DETAIL_BYTES`, `parse`,
 `record`; lines 27-28, 32, 71, 75, 105-119 as of 2026-08-23);
 `regression-mcp-server/docs/SESSION_DEMO.md`.
-
-### A3. `regression-mcp-server/docs/TOOLS.md` documents `regression_start_test_run` as "not open-world," contradicting the code
-
-Module: regression-mcp-server | Cost: 1 pass
-
-**What**: `regression-mcp-server/docs/TOOLS.md` states, for
-`regression_start_test_run`: "Read-only: no (execution/destructive/
-non-idempotent/not open-world per its `ToolAnnotations`)." The code sets
-the opposite value. `RegressionMcpServer.startTestRunTool` builds its
-annotations via `executionAnnotations(false, true, false, true)`, and
-`executionAnnotations(boolean readOnly, boolean destructive, boolean
-idempotent, boolean openWorld)` maps its fourth parameter directly to
-`.openWorldHint(openWorld)` — so `regression_start_test_run` is built with
-`openWorldHint(true)`, not `false`. Cross-checked against
-`regression_cancel_test_run`'s own call, `executionAnnotations(false,
-true, true, false)`, whose fourth argument correctly matches its own
-`regression-mcp-server/docs/TOOLS.md` line ("not open-world") — confirming
-this is specifically a `start`-tool documentation error, not a misreading
-of the parameter order.
-
-`RegressionMcpServerStdioIntegrationTest.assertExecutionToolContracts`
-independently confirms the code's value is intentional, not accidental:
-it asserts `openWorldHint` is `true` for `regression_start_test_run`, and
-this assertion currently passes. `RegressionMcpServerContractTest` — the
-lighter-weight, non-STDIO contract test file — never invokes
-`startTestRunTool` at all, so it does not (and could not) catch this
-divergence; only the heavier STDIO test does.
-
-**Why the code, not the doc, is likely correct**: `openWorldHint(true)` is
-the semantically appropriate value for a tool that launches a Maven
-process touching the filesystem and, for both registered profiles, a live
-external test target — exactly what `openWorldHint` exists to flag.
-
-**Location**: `regression-mcp-server/src/main/java/com/aqa/mcp/RegressionMcpServer.java`
-(`startTestRunTool`, `executionAnnotations`);
-`regression-mcp-server/docs/TOOLS.md` (`regression_start_test_run`'s
-"Read-only" line); `regression-mcp-server/src/test/java/com/aqa/mcp/RegressionMcpServerStdioIntegrationTest.java`
-(`assertExecutionToolContracts`).
 
 ## B. Debt
 
@@ -623,11 +585,12 @@ sibling tools in the same STDIO test. A `runId` that is a string but not
 `run-<32 hex>` fails `RunId.valid` inside
 `TestRunCoordinator.failureSummary` and raises
 `ExecutionPlanningException("INVALID_ARGUMENTS", "runId has an invalid
-format.")` — the malformed-`runId` path item D14 describes for these four
-report/artifact tools. A well-formed but unknown `runId` reaches
-`RUN_NOT_FOUND` via `RunStore.failureSummary`. Both pass the closed input
-schema (`additionalProperties: false`, `runId` a required string), so
-neither is stopped before the handler runs.
+format.")` — the same malformed-`runId` behaviour all four report/artifact
+tools share (documented in `regression-mcp-server/docs/TOOLS.md`, "Report and
+artifact tools" preamble and "Common error codes"). A well-formed but
+unknown `runId` reaches `RUN_NOT_FOUND` via `RunStore.failureSummary`. Both
+pass the closed input schema (`additionalProperties: false`, `runId` a
+required string), so neither is stopped before the handler runs.
 
 The basis is grep over the test tree plus reading each hit. Absence of a
 match excludes an error-envelope assertion written in one of the searched
@@ -644,14 +607,14 @@ zeros — well-formed per `RunId.valid`, matching no run) asserting
 foreign-`runId` assertion in
 `servesFailureArtifactToolsForARealFailingRunAndRejectsForeignRequests`.
 
-**Relationship to B12 and D14**: B12 is about the textual representation of
+**Relationship to B12**: B12 is about the textual representation of
 a response (the `content` text block versus `structuredContent`) going
 unasserted for every tool; B13 is about one handler's error branch never
-being executed by a test at all. D14 is about the code returning
-`INVALID_ARGUMENTS` rather than `RUN_NOT_FOUND` for a malformed `runId`
-from these tools, and `regression-mcp-server/docs/TOOLS.md` not documenting
-it; B13 relies on D14's established input as proof the catch is reachable,
-and adds only that no test drives it there.
+being executed by a test at all. The malformed-`runId` input B13 uses as
+proof the catch is reachable — a string that is not `run-<32 hex>`, which
+raises `INVALID_ARGUMENTS` from these four tools — is now documented in
+`regression-mcp-server/docs/TOOLS.md`; B13 adds only that no test drives the
+handler there.
 
 **Location**:
 `regression-mcp-server/src/main/java/com/aqa/mcp/RegressionMcpServer.java`
@@ -1562,62 +1525,6 @@ under the same review discipline as today's two hardcoded entries.
 (the two hardcoded `environments = List.of("dev")` profiles);
 `regression-mcp-server/src/test/java/com/aqa/mcp/execution/MavenInvocationFactoryTest.java`
 (neither test varies `environment`).
-
-### D14. A malformed `runId` returns `INVALID_ARGUMENTS` from the report/artifact tools but `RUN_NOT_FOUND` from the run-status tools, and `regression-mcp-server/docs/TOOLS.md` documents only one
-
-Module: regression-mcp-server | Cost: n/a
-
-**What**: `TestRunCoordinator.get` (and `cancel`, which delegates to `get`
-for a non-active id) throw `RUN_NOT_FOUND` when `RunId.valid(id)` is false
-— a syntactically malformed id and an unknown-but-well-formed id both
-produce `RUN_NOT_FOUND`. `TestRunCoordinator.summary`, `failureSummary`,
-`artifacts` and `readArtifact` instead throw
-`ExecutionPlanningException("INVALID_ARGUMENTS", "runId has an invalid
-format.")` for a malformed id, and only reach `RUN_NOT_FOUND` (via
-`RunStore.persisted`) for a well-formed-but-unknown id. So the same
-malformed `runId` string surfaces as `INVALID_ARGUMENTS` through
-`regression_get_test_summary` / `regression_get_failure_summary` /
-`regression_get_failure_artifacts` / `regression_read_failure_artifact`
-but as `RUN_NOT_FOUND` through `regression_get_test_run` /
-`regression_cancel_test_run`. All are structured errors in the
-`{"status":"error","error":{"code","message"}}` envelope — never an
-exception or a crash.
-
-`regression-mcp-server/docs/TOOLS.md` states, for the four report/artifact
-tools, "a missing or foreign `runId` returns `RUN_NOT_FOUND`", and its
-"Common error codes" section lists `RUN_NOT_FOUND` as "returned by
-`regression_get_test_run`, `regression_cancel_test_run`, and the four
-report/artifact tools" for "a `runId` [that] does not match any
-server-generated run", while listing `INVALID_ARGUMENTS` only as
-"schema-level input rejection". It documents `RUN_NOT_FOUND` for these
-tools and is silent on the app-layer `INVALID_ARGUMENTS` a malformed id
-actually produces from them.
-
-**Not a section-A defect**: `INVALID_ARGUMENTS` for a syntactically
-invalid id is neither wrong nor misleading — it is arguably more precise
-than `RUN_NOT_FOUND` (it distinguishes "you sent a malformed id" from
-"no such run"). The gap is that `regression-mcp-server/docs/TOOLS.md` is
-incomplete about it, not that the server returns a wrong answer.
-
-**Closed by observation, not work**: add one sentence to
-`regression-mcp-server/docs/TOOLS.md` noting that a `runId` failing the
-`run-<32 hex>` format check returns `INVALID_ARGUMENTS` from the four
-report/artifact tools
-(and `RUN_NOT_FOUND` from `regression_get_test_run` /
-`regression_cancel_test_run`), while a well-formed-but-unknown `runId`
-returns `RUN_NOT_FOUND` from all six — matching how item D12 proposes to
-document `ModuleValidationResult.truncated`. Alternatively, make the four
-report/artifact methods emit `RUN_NOT_FOUND` for a malformed id too, so
-all six agree; that is a client-contract change and should not be made
-without a reason.
-
-**Location**: `regression-mcp-server/src/main/java/com/aqa/mcp/execution/TestRunCoordinator.java`
-(`get`/`notFound`; `summary`/`failureSummary`/`artifacts`/`readArtifact`
-format checks); `regression-mcp-server/src/main/java/com/aqa/mcp/execution/RunId.java`
-(`valid`); `regression-mcp-server/docs/TOOLS.md` ("Report and artifact
-tools" preamble and "Common error codes");
-`regression-mcp-server/docs/classes/TestRunCoordinator.md` (§7, hypothesis
-H4).
 
 ### D15. `TestRunCoordinatorTest`'s process-tree ownership assertions have under-counted on four occasions across two methods, cause unestablished
 

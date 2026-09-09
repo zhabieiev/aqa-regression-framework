@@ -68,15 +68,25 @@ An inspection pass produced a full architecture map
 baseline note for the commit they were last fully verified against. The
 candidates below are that pass's prioritized output — planned work, not
 yet authorized. Corresponding
-debt items are catalogued in `docs/TECHNICAL_DEBT.md` (A3, B9-B10, C6,
+debt items are catalogued in `docs/TECHNICAL_DEBT.md` (B9-B10, C6,
 D12-D13); this list is refactoring/improvement candidates, kept separate
 from that debt catalogue per this file's own scope.
 
 **Ranked by cost (ascending):**
 
-1. **Fix `regression-mcp-server/docs/TOOLS.md`'s `openWorldHint` claim for `regression_start_test_run`**
-   (closes `docs/TECHNICAL_DEBT.md` item A3). Cost: 1 pass. Risk: none —
-   documentation-only.
+1. **Fix `regression-mcp-server/docs/TOOLS.md`'s `openWorldHint` claim for
+   `regression_start_test_run` — DONE (2026-09-09).** The tool's
+   "Read-only" line in `regression-mcp-server/docs/TOOLS.md` now reads
+   "open-world", matching the code
+   (`RegressionMcpServer.startTestRunTool` builds its annotations via
+   `executionAnnotations` with the open-world argument `true`) and the
+   assertion in
+   `RegressionMcpServerStdioIntegrationTest.assertExecutionToolContracts`.
+   The same pass corrected three further `regression-mcp-server/docs/TOOLS.md`
+   claims (the malformed-`runId` error code for the report/artifact tools,
+   the second meaning of `ARTIFACT_TOO_LARGE`, and what the 96 KiB / 2 MiB
+   response caps actually measure). The formerly-tracking debt item was
+   retired.
 2. **`TestRunCoordinator` capture-guard extraction**: the two-statement
    "capture, then keep-if-non-null" block (`Integer captured =
    capture(run); if (captured != null) skippedTests = captured;`) appears

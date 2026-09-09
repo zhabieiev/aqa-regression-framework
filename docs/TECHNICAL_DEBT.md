@@ -21,8 +21,8 @@ what action they call for:
   observation or verification when the triggering event occurs, not by
   proactive work. Each item states what to capture when that happens.
 
-Counted from this file's own `###` item headers, there are 33 items: 1 in
-section A, 11 in B, 7 in C, and 14 in D.
+Counted from this file's own `###` item headers, there are 35 items: 1 in
+section A, 12 in B, 7 in C, and 15 in D.
 
 Each item's identifier is its section letter plus a number (`A1`, `B2`,
 `B3`, ...), assigned in the order items appear in this file. New items are
@@ -657,6 +657,77 @@ unnoticed" column);
 `regression-mcp-server/docs/classes/TestRunCoordinator.md`,
 `regression-mcp-server/docs/classes/ToolSchemas.md` (all structural claims
 and line-number citations).
+
+### B15. The four report/artifact accessors' guard clauses are effectively untested
+
+Module: regression-mcp-server | Cost: 1 pass
+
+**What**: `TestRunCoordinator.summary`, `failureSummary`, `artifacts` and
+`readArtifact` each open with a single call to the shared
+`TestRunCoordinator.requireTerminal(id)` helper, which holds two guard
+clauses: `RunId.valid(id)` → `INVALID_ARGUMENTS`, and an in-memory `Active`
+non-terminal check → `RUN_NOT_TERMINAL`. That is eight (method, guard)
+pairs. Seven have no test at all. The eighth — `summary`'s in-memory
+terminal guard — is reached by exactly one test,
+`RegressionMcpServerStdioIntegrationTest.servesControlledExecutionToolsOverStdioAndCleansRunOnEof`,
+which issues a `regression_get_test_summary` call against a RUNNING active
+run and asserts the error **code** `RUN_NOT_TERMINAL` (not the message).
+That assertion is not load-bearing: with the coordinator guard removed the
+call falls through to `RunStore.readSummary`, whose own
+`!record.snapshot().terminal()` check rejects the persisted non-terminal
+record with a byte-identical `ExecutionPlanningException("RUN_NOT_TERMINAL",
+"The requested run is not terminal.")`, so the test still passes.
+
+**Consequence, stated plainly**: three of the four `requireTerminal(id)`
+call sites can be deleted outright and the full `regression-mcp-server`
+module suite (280 / 0 / 0 / 5) stays green; deleting the fourth
+(`summary`'s call) also leaves the suite green, for the same
+RunStore-re-check reason. No malformed-format `runId` is passed to any of
+the four methods in any test, so the `RunId.valid` half of the guard is
+entirely unexercised at the coordinator layer (`RunStore.readSummary` and
+`RunStore.terminalRecordForArtifacts` each re-check it too).
+
+**Evidence basis**: a source-and-test read performed during the candidate 6
+inspection (the extraction of `requireTerminal` from four identical
+prologues), not an executed mutation experiment. The test tree was searched
+for `.summary(`, `.failureSummary(`, `.artifacts(`, `.readArtifact(`,
+`RUN_NOT_TERMINAL`, `INVALID_ARGUMENTS` and the four tool-name constants,
+and each hit was read. `TestRunCoordinatorTest` references none of the four
+methods; `StaleRunRecoveryTest`'s hits are `RunStore.summary` /
+`RunStore.artifacts`, a different class; `RegressionMcpServerContractTest`
+calls `coordinator.artifacts(...)` once, on a run already awaited to
+terminal with the `Active` slot cleared, so neither guard runs.
+
+**Fix**: add coordinator-level tests that make each guard load-bearing — a
+malformed-format `runId` to each of the four methods asserting code **and**
+message `INVALID_ARGUMENTS` / `"runId has an invalid format."`; and an
+in-memory-non-terminal `Active` run asserting `RUN_NOT_TERMINAL` on a path
+where a fake or spied `RunStore` proves `store.xxx(id)` is not reached when
+the in-memory guard fires, so the assertion cannot be satisfied by the
+RunStore re-check alone. A null-`active` regression test — a call with no
+active run returns a structured error, never an NPE — locks in the
+`current != null` null-check, the one clause of `requireTerminal` whose
+removal the current suite does catch.
+
+**Relationship to B13**: B13 is that no test drives
+`regression_get_failure_summary`'s handler into its `catch`; B15 is the
+broader gap one layer down, in `TestRunCoordinator` itself, across all four
+accessors. B13's fix (STDIO error-envelope assertions) does not close
+B15's, because a STDIO assertion on `RUN_NOT_TERMINAL` / `INVALID_ARGUMENTS`
+is still satisfied by the RunStore re-check with the coordinator guard gone.
+
+**Location**:
+`regression-mcp-server/src/main/java/com/aqa/mcp/execution/TestRunCoordinator.java`
+(`requireTerminal` and its four callers `summary` / `failureSummary` /
+`artifacts` / `readArtifact`);
+`regression-mcp-server/src/main/java/com/aqa/mcp/execution/RunStore.java`
+(`readSummary`, `terminalRecordForArtifacts` — the `RunId.valid` and
+terminality re-checks that shadow the coordinator guard);
+`regression-mcp-server/src/test/java/com/aqa/mcp/RegressionMcpServerStdioIntegrationTest.java`
+(`servesControlledExecutionToolsOverStdioAndCleansRunOnEof` — the one
+non-load-bearing assertion);
+`regression-mcp-server/src/test/java/com/aqa/mcp/execution/TestRunCoordinatorTest.java`
+(where the new guard tests belong).
 
 ## C. Accepted characteristics
 
@@ -1586,6 +1657,62 @@ The retention path under test is `TestRunCoordinator.observe` in
 `regression-mcp-server/src/main/java/com/aqa/mcp/execution/TestRunCoordinator.java`.
 Related: item **D2** (the 2026-08-17 occasion, in full) and `HANDOFF.md`'s
 2026-08-29, 2026-08-31, and 2026-09-01 session entries.
+
+### D16. What `TestRunCoordinator`'s in-memory terminal guard adds over `RunStore` is not what its javadoc claims, and its one effective case may be unreachable
+
+Module: regression-mcp-server | Cost: n/a
+
+**What**: `TestRunCoordinator.requireTerminal` rejects a request whose
+`runId` matches the in-memory `Active` run when
+`!current.snapshot.terminal()`. `RunStore` independently re-checks both
+`RunId.valid` and terminality: `RunStore.readSummary` and
+`RunStore.terminalRecordForArtifacts` each throw
+`ExecutionPlanningException("RUN_NOT_TERMINAL", "The requested run is not
+terminal.")` against the **persisted** record. Enumerating the four
+in-memory / on-disk terminality combinations for a `runId` that matches the
+active run:
+
+| in-memory `Active.snapshot` | persisted record | with the coordinator guard | with the guard removed |
+|---|---|---|---|
+| non-terminal | non-terminal | `RUN_NOT_TERMINAL` (coordinator) | `RUN_NOT_TERMINAL` (RunStore, identical code + message) |
+| non-terminal | terminal | `RUN_NOT_TERMINAL` (coordinator) | request answered from the persisted terminal record |
+| terminal | non-terminal | guard passes (`!terminal()` is false); `RUN_NOT_TERMINAL` from RunStore | same |
+| terminal | terminal | guard passes; request answered | request answered |
+
+The guard changes the outcome in exactly one row — in-memory non-terminal
+while the persisted record is already terminal — where it turns an
+answerable request into a rejection. In the combination the two-line
+javadoc above `artifacts` cites as its motivation ("a still-RUNNING active
+run must never expose its capture set, even if a stale on-disk record has
+not yet observed the in-memory terminal state"), a still-RUNNING run has a
+non-terminal persisted record too (row 1), so `RunStore` rejects the
+request regardless and the guard changes nothing there.
+
+**Unproven, recorded explicitly**: whether row 2 — the persisted record
+reaching terminal state before the in-memory `Active.snapshot` does — is
+reachable at all. `persistTerminal` writes the terminal snapshot to the
+store and then reassigns `run.snapshot`, both inside `synchronized (run)`;
+a concurrent reader in `summary` / `failureSummary` / `artifacts` /
+`readArtifact` does not take that monitor and reads the `volatile
+run.snapshot` directly, so a window in which the store write has landed but
+the field reassignment has not is plausible — but it has not been
+demonstrated by a test or a trace, and no test in the suite reaches this
+combination.
+
+**Question left open** (not to be acted on in this pass): whether the guard
+should be kept as written, narrowed to the one combination it affects, or
+removed as fully shadowed by `RunStore`; and whether the two-line javadoc
+above `artifacts` should be corrected, since it names a motivating case
+that `RunStore` already covers. Item B15 is the related coverage gap; this
+item is the design question B15's fix should not pre-empt.
+
+**Location**:
+`regression-mcp-server/src/main/java/com/aqa/mcp/execution/TestRunCoordinator.java`
+(`requireTerminal`; the two-line javadoc above `artifacts`; `persistTerminal`
+and its `synchronized (run)` ordering);
+`regression-mcp-server/src/main/java/com/aqa/mcp/execution/RunStore.java`
+(`readSummary`, `terminalRecordForArtifacts` — the independent `RunId.valid`
+and terminality re-checks).
 
 ## Where module-level debt lives
 

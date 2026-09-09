@@ -1690,14 +1690,20 @@ request regardless and the guard changes nothing there.
 
 **Unproven, recorded explicitly**: whether row 2 — the persisted record
 reaching terminal state before the in-memory `Active.snapshot` does — is
-reachable at all. `persistTerminal` writes the terminal snapshot to the
-store and then reassigns `run.snapshot`, both inside `synchronized (run)`;
-a concurrent reader in `summary` / `failureSummary` / `artifacts` /
-`readArtifact` does not take that monitor and reads the `volatile
-run.snapshot` directly, so a window in which the store write has landed but
-the field reassignment has not is plausible — but it has not been
-demonstrated by a test or a trace, and no test in the suite reaches this
-combination.
+reachable at all. The mechanism that would open that window, read from
+source: `TestRunCoordinator.persistTerminal` runs its entire body inside a
+single `synchronized (run)` block on the `Active` monitor, and within that
+block it calls `store.update(...)` with the terminal snapshot on the
+statement immediately before `run.snapshot = terminalSnapshot` — the store
+write is first, the field assignment second. `TestRunCoordinator.Active.snapshot`
+is declared `volatile`. `TestRunCoordinator.requireTerminal` — the guard
+shared by `summary` / `failureSummary` / `artifacts` / `readArtifact` —
+reads `current.snapshot` with no synchronization on that monitor. A reader
+that runs between `store.update(...)` returning and the field assignment
+would therefore see the persisted record already terminal while the
+`volatile` `Active.snapshot` is still the pre-terminal value. That window
+is real in principle; it has not been demonstrated by a test or a trace,
+and no test in the suite reaches this combination.
 
 **Question left open** (not to be acted on in this pass): whether the guard
 should be kept as written, narrowed to the one combination it affects, or

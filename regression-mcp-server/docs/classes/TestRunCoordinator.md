@@ -691,19 +691,24 @@ injectable) and ~30 tests.
    `interruptedWaitInWaitForPersistsCancelledTerminalRecordAndReleasesLockAndSlot`,
    with no production change (H1). It asserts `status.json` **reaches a
    terminal state** (CANCELLED) — which also refuted O2.
-3. **execute()-side `skippedTests` guard (O1)** — STILL OPEN (B11): a
-   fixture where the try-block `capture` genuinely succeeds and the first
-   `persistTerminal` `store.update` then throws once. Assert the persisted
-   `skippedTests` equals the successful-capture value, not `null`.
+3. **execute()-side `skippedTests` guard (O1)** — DONE (PR #53, which
+   retired catalogue item B11):
+   `secondCaptureCallInTheRuntimeExceptionPathDoesNotOverwriteTheFirstCallsSkippedCount`
+   now drives the interleaving — the try-block `capture` succeeds and sets
+   `skippedTests`, then `persistTerminal`'s first attempt throws (at its
+   `exitValue()` line, ahead of `store.update`), so the
+   `catch (RuntimeException)` re-run of `capture` returns `null` and the
+   `if (captured != null)` guard keeps the first count. Its in-memory and
+   persisted `skippedTests == 1` assertions are both load-bearing.
 
 The `requireTerminal(id)` extraction (O10 / H5) is **done** — the candidate 6
 pass moved the four identical prologues into one private helper, verified by
 byte-identity of the removed blocks against the helper body rather than by
 the module suite, which pins almost none of those guards
 (`docs/TECHNICAL_DEBT.md` B15; the design question it left open is D16).
-With 1 and 2 green, the §13b `finishTerminally(...)` collapse is likewise
-close to a low-risk cleanup — item 3 is the remaining test that a collapse
-must not break.
+With items 1, 2 and 3 now all green, the §13b `finishTerminally(...)`
+collapse is likewise close to a low-risk cleanup — item 3's guard test is
+the one a collapse must keep passing.
 
 ---
 

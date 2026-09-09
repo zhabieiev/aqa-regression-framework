@@ -155,6 +155,62 @@ start of a session; update it at the end of one, per `CLAUDE.md`'s
 
 ## Most recent session
 
+2026-09-09 — fixed the execute() skipped-count guard test so it reaches the
+interleaving it was written to prove, branch
+`fix/b11-skipped-count-guard-test`, PR #53. Three commits:
+`regression-mcp-server/src/test/java/com/aqa/mcp/execution/TestRunCoordinatorTest.java`;
+then `docs/TECHNICAL_DEBT.md`; then `docs/ROADMAP.md` with `HANDOFF.md`. No
+production source, POM, or CI file touched.
+
+**The test change.** `secondCaptureCallInTheRuntimeExceptionPathDoesNotOverwriteTheFirstCallsSkippedCount`'s
+fixture `ExitValueFailsOnceProcess` now throws on the second `exitValue()`
+call — an `AtomicInteger` counter replaces the `AtomicBoolean` once-flag —
+instead of the first. The second call is `persistTerminal`'s `exitCode`
+computation on the normal-completion tail; throwing there, after the
+try-block `capture(run)` has already returned a real skipped count, produces
+the interleaving: `catch (RuntimeException)` re-runs `capture(run)`, which
+returns null because the first capture moved the persisted capture status off
+`PENDING`, and the guard `if (captured != null) skippedTests = captured;`
+keeps the first count. The old fixture threw on the first `exitValue()` call,
+which is `execute()`'s `terminal = process.exitValue() == 0 ? PASSED :
+FAILED` — before the try-block capture — so the catch's capture was the only
+one and the guard ran as a plain assignment.
+
+**Why `terminal.state()` is now PASSED, not ERROR.** The throw is downstream
+of `persistTerminal`'s first statement `firstCause(run, PASSED)`, which
+CAS-latches `run.cause = PASSED`. When `catch (RuntimeException)` retries
+`persistTerminal` with `firstCause(run, ERROR)`, that call reads the
+already-latched PASSED and persists PASSED. The state assertion is updated to
+PASSED with an inline comment; the two `skippedTests()` assertions are
+unchanged and are now load-bearing — with the guard replaced by a plain
+`skippedTests = capture(run)`, the test fails on `terminal.skippedTests()`
+(null vs 1), not on the state assertion, verified by corrupting the guard and
+running the test in isolation. Full module suite unchanged.
+
+**Debt catalogue.** `docs/TECHNICAL_DEBT.md` item B11 is retired; the
+identifier is not reused. The item count and per-section breakdown in the
+introductory prose were recomputed from the file's own `###` headers (the
+count lives only in that file). D10's three references to B11 — the deferral
+paragraph, the "Closed by observation" note, and the Location line — are
+reworded to be self-contained; D10 stays, tracking the separate
+`recoverIfUnowned` guard, and B14's illustrative list drops the retired B11.
+`docs/ROADMAP.md`'s capture-guard-extraction candidate no longer names B11 as
+an open precondition — the extraction's merge-vs-overwrite behaviour is now
+pinned by the fixed test.
+
+**Correcting the prior inspection.** The read-only inspection that preceded
+this pass concluded the fixture change could keep the existing `state ==
+ERROR` assertion. That was wrong: it missed that `persistTerminal`'s first
+statement latches `run.cause` before the throw, so any throw inside
+`persistTerminal` makes the catch-path retry persist the latched (non-ERROR)
+cause. Reaching the interleaving necessarily makes the state PASSED.
+
+This entry follows `CLAUDE.md`'s `## Documentation upkeep`: PR #53 is named by
+number only, no live marker, the debt count is left to its owning file, and
+references are structural.
+
+`mvn -pl regression-mcp-server -am test`: 280 / 0 / 0 / 5.
+
 2026-09-09 — corrected four `regression-mcp-server/docs/TOOLS.md` claims and
 retired the two debt items that tracked them, branch
 `docs/tools-error-and-bounds-corrections`, PR #52. Four commits:

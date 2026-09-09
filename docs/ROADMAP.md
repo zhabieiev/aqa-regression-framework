@@ -102,16 +102,15 @@ from that debt catalogue per this file's own scope.
    as written. Open choice for the implementing pass: scope the helper to
    `execute()` only, or generalise it (over a `runId` plus a fallback
    `Integer`) to cover `recoverIfUnowned` too.
-   Cost: 1 pass. Risk: currently unprotected — no
-   test pins the merge-vs-overwrite behaviour this extraction must preserve.
+   Cost: 1 pass. Risk: the merge-vs-overwrite behaviour this extraction must
+   preserve is now pinned by
    `secondCaptureCallInTheRuntimeExceptionPathDoesNotOverwriteTheFirstCallsSkippedCount`
-   is named for it but, as `docs/TECHNICAL_DEBT.md` item B11 establishes,
-   never reaches that interleaving — its fixture throws from `exitValue()`
-   before the first `capture(run)`, so the guard there runs only as a plain
-   assignment. B11's fix (a fixture forcing `persistTerminal`'s first
-   `RunStore.update` to throw once) is a precondition: until it exists,
-   replacing the guard with `skippedTests = capture(run)` would pass the
-   whole suite unnoticed.
+   — its fixture makes the try-block `capture(run)` return a real skipped
+   count, then makes `persistTerminal` throw, so `catch (RuntimeException)`
+   re-runs `capture(run)` (now `null`, the capture status is no longer
+   `PENDING`) and the guard keeps the first count; the test's two
+   `skippedTests()` assertions read `null` if the guard is removed. The
+   formerly-tracking `docs/TECHNICAL_DEBT.md` debt item was retired.
 3. **Characterization tests for `TestRunCoordinator`'s `execute()` terminal
    paths — DONE (2026-08-28).** All four are now covered: normal
    completion, the `RuntimeException` catch, the `InterruptedException`

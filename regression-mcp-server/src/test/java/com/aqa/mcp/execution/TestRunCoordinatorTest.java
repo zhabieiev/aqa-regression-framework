@@ -346,13 +346,21 @@ class TestRunCoordinatorTest {
         assertThat(coordinator.get(run.runId()).state()).isEqualTo(TestRunState.PASSED);
     }
 
-    /** ReportCapture.capture publishes and transitions the persisted capture status away from PENDING the first
-     * time it runs, so a second capture(run) call inside the catch(RuntimeException) path always returns null.
-     * Forces persistTerminal's first attempt (in the try block, right after a real captured Surefire report has
-     * already produced a non-null skipped count) to throw by making the launched process's exitValue() fail
-     * exactly once, so execute() falls into the catch(RuntimeException) block and calls capture(run) a second
-     * time. The final persisted snapshot must still carry the count the first call already computed, not the
-     * null the redundant second call returns. */
+    /** Proves execute()'s `if (captured != null) skippedTests = captured;` guard in the catch(RuntimeException)
+     * path preserves an already-computed skipped count when the catch-path capture(run) returns null.
+     *
+     * Interleaving: the launched process's first exitValue() succeeds, so execute() assigns terminal = PASSED
+     * and runs the try-block capture(run) (CAPTURE-1), which parses the seeded Surefire report and sets
+     * skippedTests = 1. persistTerminal is entered on the normal-completion tail; its first statement,
+     * firstCause(run, PASSED), latches run.cause = PASSED, and its exitCode line then makes the second
+     * exitValue() call, which throws -- before persistTerminal reaches store.update. execute() lands in
+     * catch(RuntimeException), where capture(run) (CAPTURE-2) returns null (CAPTURE-1 already moved the capture
+     * status off PENDING); the guard keeps skippedTests = 1; firstCause(run, ERROR) returns the already-latched
+     * PASSED; and the catch-path persistTerminal writes the terminal snapshot with state PASSED, skippedTests 1.
+     *
+     * The state is PASSED, not ERROR: the run genuinely exited 0, and the throw only interrupts the first
+     * persist attempt. Both skippedTests() assertions are load-bearing -- replace the guard with a plain
+     * `skippedTests = capture(run)` and CAPTURE-2's null is persisted, so both return null. */
     @Test
     void secondCaptureCallInTheRuntimeExceptionPathDoesNotOverwriteTheFirstCallsSkippedCount() throws Exception {
         ControlledProcessLauncher inner = launcher("PASS");
@@ -364,7 +372,9 @@ class TestRunCoordinatorTest {
         RunSnapshot run = coordinator.start(request(), Map.of());
         RunSnapshot terminal = awaitTerminal(coordinator, run.runId());
 
-        assertThat(terminal.state()).isEqualTo(TestRunState.ERROR);
+        // PASSED, not ERROR: the run exited 0, and persistTerminal's firstCause latched run.cause = PASSED
+        // before the transient-persist failure, so the catch(RuntimeException) retry inherits the latched cause.
+        assertThat(terminal.state()).isEqualTo(TestRunState.PASSED);
         assertThat(terminal.skippedTests()).isEqualTo(1);
         assertThat(new RunStore(root).persisted(run.runId()).snapshot().skippedTests()).isEqualTo(1);
     }
@@ -641,10 +651,15 @@ class TestRunCoordinatorTest {
         void fire() { assertThat(task).isNotNull(); task.run(); }
     }
 
-    /** Delegates the actual launch to a real ControlledProcessLauncher, first seeding the run's Surefire staging
+    /** Delegates the launch to a real ControlledProcessLauncher, first seeding the run's Surefire staging
      * directory with a genuine report (one passed, one skipped test), then wraps the returned real process so its
-     * exitValue() throws exactly once -- forcing persistTerminal's first attempt to fail after capture(run) has
-     * already computed a real skipped count. */
+     * SECOND exitValue() call throws. Interleaving produced: execute()'s first exitValue() succeeds so terminal
+     * is assigned PASSED; the try-block capture(run) (CAPTURE-1) parses the seeded report and returns 1, so
+     * skippedTests = 1; persistTerminal's exitCode line then throws (the second exitValue() call), which is after
+     * persistTerminal's firstCause(run, PASSED) has latched run.cause = PASSED; execute() falls into
+     * catch(RuntimeException), where capture(run) (CAPTURE-2) returns null because CAPTURE-1 already moved the
+     * persisted capture status off PENDING, the guard keeps skippedTests = 1, firstCause(run, ERROR) returns the
+     * latched PASSED, and the catch-path persistTerminal persists state PASSED with skippedTests == 1. */
     private static final class SingleSkippedTestReportThenExitValueFailureOnceLauncher implements MavenProcessLauncher {
         private final MavenProcessLauncher delegate;
         SingleSkippedTestReportThenExitValueFailureOnceLauncher(MavenProcessLauncher delegate) { this.delegate = delegate; }
@@ -661,9 +676,20 @@ class TestRunCoordinatorTest {
         }
     }
 
+    /** Throws {@link IllegalStateException} on the SECOND {@code exitValue()} call and delegates on every other
+     * call. On {@code execute()}'s no-cause path the calls are: (1) {@code execute()}'s
+     * {@code terminal = process.exitValue() == 0 ? PASSED : FAILED} -- succeeds, so the try-block
+     * {@code capture(run)} that follows runs and returns a non-null skipped count; (2) the normal-completion
+     * {@code persistTerminal}'s {@code exitCode} computation -- throws. That throw is after
+     * {@code persistTerminal}'s first statement {@code firstCause(run, PASSED)} has already latched
+     * {@code run.cause = PASSED}, so when {@code catch (RuntimeException)} retries {@code persistTerminal} its
+     * {@code firstCause(run, ERROR)} returns the latched PASSED and the run is persisted PASSED, not ERROR;
+     * (3) the catch-path {@code persistTerminal}'s {@code exitCode} computation -- succeeds, and that
+     * {@code persistTerminal} writes the terminal record. Still exactly one throw, as the class name says --
+     * just on the second call, not the first. */
     private static final class ExitValueFailsOnceProcess extends Process {
         private final Process delegate;
-        private final AtomicBoolean thrown = new AtomicBoolean();
+        private final AtomicInteger exitValueCalls = new AtomicInteger();
         ExitValueFailsOnceProcess(Process delegate) { this.delegate = delegate; }
         @Override public java.io.OutputStream getOutputStream() { return delegate.getOutputStream(); }
         @Override public java.io.InputStream getInputStream() { return delegate.getInputStream(); }
@@ -671,7 +697,10 @@ class TestRunCoordinatorTest {
         @Override public int waitFor() throws InterruptedException { return delegate.waitFor(); }
         @Override public boolean waitFor(long timeout, TimeUnit unit) throws InterruptedException { return delegate.waitFor(timeout, unit); }
         @Override public int exitValue() {
-            if (thrown.compareAndSet(false, true)) throw new IllegalStateException("fixture forces exactly one persistTerminal failure");
+            if (exitValueCalls.incrementAndGet() == 2) {
+                throw new IllegalStateException(
+                        "fixture: second exitValue() call -- forces persistTerminal to throw after CAPTURE-1 has already returned a skipped count");
+            }
             return delegate.exitValue();
         }
         @Override public void destroy() { delegate.destroy(); }

@@ -21,8 +21,8 @@ what action they call for:
   observation or verification when the triggering event occurs, not by
   proactive work. Each item states what to capture when that happens.
 
-Counted from this file's own `###` item headers, there are 34 items: 1 in
-section A, 12 in B, 7 in C, and 14 in D.
+Counted from this file's own `###` item headers, there are 33 items: 1 in
+section A, 11 in B, 7 in C, and 14 in D.
 
 Each item's identifier is its section letter plus a number (`A1`, `B2`,
 `B3`, ...), assigned in the order items appear in this file. New items are
@@ -418,59 +418,6 @@ fix would actually save.
 `evaluate` method's module loop); `regression-mcp-server/src/main/java/com/aqa/mcp/validation/JavaSourceScanner.java`
 (`scan`, no caching).
 
-### B11. `TestRunCoordinator.execute()`'s skipped-count guard is not exercised by the test named for it
-
-Module: regression-mcp-server | Cost: 1 pass
-
-**What**: `TestRunCoordinatorTest.secondCaptureCallInTheRuntimeExceptionPathDoesNotOverwriteTheFirstCallsSkippedCount`
-is meant to prove the `if (captured != null) skippedTests = captured;`
-guard in `execute()` preserves an already-computed skipped-test count when
-a later `capture(run)` call returns `null`. It does not reach that
-interleaving. The fixture's `ExitValueFailsOnceProcess.exitValue()` throws
-on its first call, and — tracing `execute()` with no cause latched — the
-first `process.exitValue()` call is `terminal = process.exitValue() == 0
-? PASSED : FAILED`, which runs **before** the try-block `capture(run)`.
-So the throw lands in `catch (RuntimeException)` having never run the
-try-block capture; the catch block's `capture(run)` is then the first and
-only capture, it returns a real count, and `if (captured != null)` is a
-plain assignment on that path. The test still asserts something true (the
-`RuntimeException` path captures and persists a skipped count) but never
-demonstrates the guard.
-
-The guard is genuinely load-bearing on a narrow interleaving nothing
-tests: the try-block `capture` succeeds and sets `skippedTests`, then
-`persistTerminal` throws a `RuntimeException` (realistically `RunStore.update`
-wrapping an `IOException`), then `catch (RuntimeException)` re-runs
-`capture(run)` which now returns `null` because the persisted capture
-status is no longer `PENDING`, and the guard keeps the earlier count.
-Replacing it with `skippedTests = capture(run)` would persist `null` and
-lose the count there, and the whole suite would still pass.
-
-**Relationship to D10**: D10 (the recovery-path sibling) covers the
-analogous guard in `recoverIfUnowned`. D10 defers to this item for the
-`execute()`-side guard rather than characterising its coverage itself,
-because the test named for that guard
-(`secondCaptureCallInTheRuntimeExceptionPathDoesNotOverwriteTheFirstCallsSkippedCount`)
-does not reach the interleaving, as traced above. The early-cause,
-normal-completion and `InterruptedException` paths each only ever call
-`capture` once, so a plain assignment would not regress them — only the
-`RuntimeException` path after a successful try-block capture.
-
-**Fix**: a fixture that makes `persistTerminal`'s first `RunStore.update`
-throw exactly once (e.g. a wrapping `RunStore`/`AtomicMover`), leaving
-`exitValue()` alone, so line-order is try-block `capture` succeeds →
-`persistTerminal` throws → `catch` → second `capture` returns `null` →
-guard keeps the first value. Assert the persisted `skippedTests` equals
-the first capture's value, not `null`.
-
-**Location**: `regression-mcp-server/src/main/java/com/aqa/mcp/execution/TestRunCoordinator.java`
-(`execute`, the four `Integer captured = capture(run); if (captured !=
-null) skippedTests = captured;` sites and `persistTerminal`);
-`regression-mcp-server/src/test/java/com/aqa/mcp/execution/TestRunCoordinatorTest.java`
-(`secondCaptureCallInTheRuntimeExceptionPathDoesNotOverwriteTheFirstCallsSkippedCount`
-and its `ExitValueFailsOnceProcess` fixture);
-`regression-mcp-server/docs/classes/TestRunCoordinator.md` (§11 O1, §13).
-
 ### B12. No test asserts anything about a tool response's text representation
 
 Module: regression-mcp-server | Cost: 1 pass
@@ -643,7 +590,7 @@ CI-green) and are reconciled piecemeal after later merges."
 summary or any prior report." Since 2026-08-27 the module has taken about
 a dozen merges — the `ToolSchemas` extraction, the `moduleErrorResult` /
 `errorResult` merge, the single-serialization change, the
-B11 / B12 / B13 / D10 documentation arc — and none of these four documents
+B12 / B13 / D10 documentation arc — and none of these four documents
 has had its substance re-checked against the tree. Only numbers have been
 reconciled, piecemeal, by whichever pass noticed them.
 
@@ -1364,12 +1311,20 @@ yet nothing checks what value ends up on the resulting `RunSnapshot`. The
 branch executes under existing coverage, but its *value* is unverified.
 
 The analogous overwrite guard in `execute()` — `if (captured != null)
-skippedTests = captured;` at its four `capture(run)` call sites — is the
-subject of item **B11**. B11 establishes that the test named for it,
-`TestRunCoordinatorTest.secondCaptureCallInTheRuntimeExceptionPathDoesNotOverwriteTheFirstCallsSkippedCount`,
-does not reach the interleaving that would exercise it, so the
-`execute()`-side guard is unproven for the same reason this one is. B11
-owns that question; this item is only about the `recoverIfUnowned` sibling.
+skippedTests = captured;` at its four `capture(run)` call sites — is now
+covered by
+`TestRunCoordinatorTest.secondCaptureCallInTheRuntimeExceptionPathDoesNotOverwriteTheFirstCallsSkippedCount`:
+its fixture makes the try-block `capture(run)` return a real count, then
+makes `persistTerminal` throw before its `store.update`, so
+`catch (RuntimeException)` re-runs `capture(run)` — now `null`, the capture
+status is no longer `PENDING` — and the guard keeps the first count. The
+test asserts terminal state `PASSED` (`persistTerminal`'s first statement
+`firstCause(run, PASSED)` latches the cause before the throw, so the
+catch-path retry inherits `PASSED`) and asserts both `skippedTests()`
+values equal `1`; those two assertions are load-bearing — replacing the
+guard with a plain `skippedTests = capture(run)` makes both return `null`.
+This item is only about the `recoverIfUnowned` sibling, which remains
+untested.
 
 **Open question**: whether `recoverIfUnowned`'s branch is reachable with a
 genuinely non-null `captured` value in practice at all. For a run orphaned
@@ -1385,8 +1340,10 @@ can make it non-null under a controlled, hand-written fixture.
 **Closed by observation, not work**: add an assertion on `skippedTests` to
 `restartPublishesValidatedStagedCaptureBeforeItsTerminalRecoveryState` (or a
 new test alongside it) that the persisted `skippedTests` reflects the
-captured count — the value assertion B11 proposes for the `execute()`-side
-guard, applied to the recovery path — and separately, when a genuine
+captured count — the same kind of value assertion that now pins the
+`execute()`-side guard in
+`TestRunCoordinatorTest.secondCaptureCallInTheRuntimeExceptionPathDoesNotOverwriteTheFirstCallsSkippedCount`,
+applied to the recovery path — and separately, when a genuine
 server-restart recovery is next observed against a run that was actually
 mid-Surefire-execution, record whether the staging directory left behind
 anything `ReportCapture` could parse.
@@ -1401,7 +1358,8 @@ guarded call sites);
 (`restartPublishesValidatedStagedCaptureBeforeItsTerminalRecoveryState`);
 `regression-mcp-server/src/test/java/com/aqa/mcp/execution/TestRunCoordinatorTest.java`
 (`secondCaptureCallInTheRuntimeExceptionPathDoesNotOverwriteTheFirstCallsSkippedCount`
-— see item B11 for why it does not exercise the `execute()`-side guard).
+— the test that now pins the `execute()`-side guard; this item covers the
+separate `recoverIfUnowned` guard).
 
 ### D11. Four `StaticJavaParser`-based test fixtures may depend on another test class's `ThreadLocal` mutation
 

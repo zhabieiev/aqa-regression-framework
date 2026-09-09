@@ -57,7 +57,7 @@ tool declares):
   modules and environments are supported; consult it directly rather than
   hardcoding this list elsewhere, since a third profile may be registered
   later.
-- Read-only: no (execution/destructive/non-idempotent/not open-world per
+- Read-only: no (execution/destructive/non-idempotent/open-world per
   its `ToolAnnotations`).
 - Input, all required except `tags`: `module` (string), `environment`
   (string), `headless` (boolean), `timeoutSeconds` (integer). Optional:
@@ -95,11 +95,14 @@ tool declares):
 
 ## Report and artifact tools
 
-All four require a **terminal**, server-generated run: a missing or foreign
-`runId` returns `RUN_NOT_FOUND`, a run that is not yet terminal returns
-`RUN_NOT_TERMINAL`, and report/artifact data unavailable on an otherwise-valid
-terminal run returns `NOT_FOUND` (see "Common error codes" below for the
-precise distinction between the three).
+All four require a **terminal**, server-generated run: a well-formed `runId`
+that matches no run returns `RUN_NOT_FOUND`, a `runId` string that does not
+match the `run-<32 hex>` format returns `INVALID_ARGUMENTS`, a run that is
+not yet terminal returns `RUN_NOT_TERMINAL`, and report/artifact data
+unavailable on an otherwise-valid terminal run returns `NOT_FOUND` (see
+"Common error codes" below for the precise distinction, including how the
+malformed-`runId` code differs from `regression_get_test_run` /
+`regression_cancel_test_run`).
 
 ### `regression_get_test_summary`
 - Purpose: returns the published, authoritative Surefire summary for a
@@ -117,9 +120,12 @@ precise distinction between the three).
   `failureRecords[]` (each: `failureId`, `type`, `suite`, `testCase`,
   `message`, `stackTrace`, `allure` object, `recordTruncated`),
   `allureAvailability`, `detailsTruncated`.
-- Bounded response size: 96 KiB total serialized response
-  (`RegressionMcpServer.MAX_FAILURE_SUMMARY_RESPONSE_BYTES`); exceeding it
-  returns a `REPORT_MALFORMED` error instead of a partial response.
+- Bounded response size: the cap is checked against the UTF-8 byte length of
+  the serialized `{"status":"ok","data":{ ... }}` payload alone — capped at
+  96 KiB (`RegressionMcpServer.MAX_FAILURE_SUMMARY_RESPONSE_BYTES`) — not
+  against the full wire response, which also carries that payload a second
+  time as the result's `structuredContent` and adds JSON-RPC framing.
+  Exceeding the cap returns `REPORT_MALFORMED` instead of a partial response.
 
 ### `regression_get_failure_artifacts`
 - Purpose: lists the server-published artifacts captured for a terminal run.
@@ -137,9 +143,14 @@ precise distinction between the three).
   string).
 - Bounds: MIME type must be one of `image/png`, `image/jpeg`,
   `text/plain`, `application/json`, `text/xml`
-  (`UNSUPPORTED_MIME_TYPE` error otherwise); total serialized response
-  capped at 2 MiB (`RegressionMcpServer.MAX_ARTIFACT_READ_RESPONSE_BYTES`,
-  `ARTIFACT_TOO_LARGE` error otherwise).
+  (`UNSUPPORTED_MIME_TYPE` error otherwise). Response size: the cap is
+  checked against the UTF-8 byte length of the serialized
+  `{"status":"ok","data":{ ... }}` payload alone — capped at 2 MiB
+  (`RegressionMcpServer.MAX_ARTIFACT_READ_RESPONSE_BYTES`) — not against the
+  full wire response, which also carries that payload a second time as the
+  result's `structuredContent` and adds JSON-RPC framing. `ARTIFACT_TOO_LARGE`
+  is returned when that payload exceeds the cap, and also when the artifact
+  payload cannot be serialized at all.
 
 ## Architecture-validator tools
 
@@ -177,22 +188,30 @@ rule.
 
 Not an exhaustive list of every error code in the server, but the ones most
 relevant to normal client use: `INVALID_ARGUMENTS` (schema-level input
-rejection), `INVALID_TIMEOUT` (timeout outside 30-1800), `INVALID_TAG_EXPRESSION`
+rejection, and — from `regression_get_test_summary`,
+`regression_get_failure_summary`, `regression_get_failure_artifacts` and
+`regression_read_failure_artifact` only — a `runId` that is a string but does
+not match the `run-<32 hex>` format), `INVALID_TIMEOUT` (timeout outside
+30-1800), `INVALID_TAG_EXPRESSION`
 (malformed Cucumber tag expression), `UNSUPPORTED_MODULE`
 (`regression_start_test_run`'s `module` does not match a profile
 registered in `ExecutionProfileRegistry` — currently
 `regression-nextjs-commerce` or `regression-jhipster`), `UNSUPPORTED_CAPABILITY`
 (`regression_start_test_run`'s `environment` or `headless` value is not
-supported by the module's execution profile), `RUN_NOT_FOUND` (a `runId`
-does not match any server-generated run — returned by
+supported by the module's execution profile), `RUN_NOT_FOUND` (a well-formed
+`runId` matches no server-generated run — returned by
 `regression_get_test_run`, `regression_cancel_test_run`, and the four
-report/artifact tools), `RUN_NOT_TERMINAL` (report/artifact tool called on
+report/artifact tools; `regression_get_test_run` and
+`regression_cancel_test_run` also return it for a malformed `runId`, where
+the four report/artifact tools return `INVALID_ARGUMENTS` instead),
+`RUN_NOT_TERMINAL` (report/artifact tool called on
 a still-active run), `NOT_FOUND` (report data or an artifact is
 unavailable for an otherwise valid, terminal run — for example a run that
 predates report capture, an unavailable Surefire report, or an unknown
 `artifactId`), `REPORT_MALFORMED` / `REPORT_INDEX_CORRUPT` (published
 report data failed its own bounded/structural check), `ARTIFACT_TOO_LARGE`
-(artifact read response exceeds its 2 MiB cap), `UNSUPPORTED_MIME_TYPE`
+(the serialized `regression_read_failure_artifact` payload exceeds its 2 MiB
+cap, or that payload cannot be serialized at all), `UNSUPPORTED_MIME_TYPE`
 (artifact's MIME type is not on the allow-list), `FEATURE_FILE_TOO_LARGE` /
 `SOURCE_FILE_TOO_LARGE` (a scanned file exceeds its 1 MiB cap),
 `REPOSITORY_ERROR` (a discovery tool's underlying `pom.xml`/module

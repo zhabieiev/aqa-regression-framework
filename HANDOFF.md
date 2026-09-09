@@ -155,6 +155,78 @@ start of a session; update it at the end of one, per `CLAUDE.md`'s
 
 ## Most recent session
 
+2026-09-09 — corrected four `regression-mcp-server/docs/TOOLS.md` claims and
+retired the two debt items that tracked them, branch
+`docs/tools-error-and-bounds-corrections`, PR #52. Four commits:
+`regression-mcp-server/docs/TOOLS.md`; then `docs/TECHNICAL_DEBT.md` with
+`regression-mcp-server/docs/TEST_MAP.md` and
+`regression-mcp-server/docs/classes/TestRunCoordinator.md`; then
+`docs/ROADMAP.md`; and `HANDOFF.md` in this one. No production source, test,
+POM, or CI file touched.
+
+**The four `TOOLS.md` corrections.** (1) `regression_start_test_run`'s
+"Read-only" line said "not open-world"; the code builds it with the
+open-world annotation `true` (`RegressionMcpServer.startTestRunTool` via
+`executionAnnotations`) and
+`RegressionMcpServerStdioIntegrationTest.assertExecutionToolContracts`
+asserts that — corrected to "open-world". (2) A `runId` that is a string but
+not `run-<32 hex>` returns `INVALID_ARGUMENTS` from the four report/artifact
+tools and `RUN_NOT_FOUND` from `regression_get_test_run` /
+`regression_cancel_test_run`; a well-formed-but-unknown `runId` returns
+`RUN_NOT_FOUND` from all six. The doc documented only `RUN_NOT_FOUND` for the
+report/artifact tools — added to the report/artifact preamble and the
+"Common error codes" list. (3) `ARTIFACT_TOO_LARGE` is also returned when the
+artifact payload cannot be serialized at all, not only when it exceeds the
+2 MiB cap. (4) The 96 KiB and 2 MiB caps are checked against the serialized
+`{status,data}` payload alone, not the full wire response, which carries that
+payload again as `structuredContent` plus JSON-RPC framing — the "total
+serialized response" wording was replaced with what the check measures. No
+derived raw-artifact-size figure was introduced.
+
+**Debt items retired.** `docs/TECHNICAL_DEBT.md` items A3 (the openWorldHint
+doc mismatch) and D14 (the malformed-`runId` code divergence, undocumented)
+were both closed by the `TOOLS.md` corrections and removed; their identifiers
+are retired, not reused, and the identifier-example enumeration in the intro
+no longer lists A3, as it already omits the retired A2. The item count and
+per-section breakdown in that file's introductory prose were recomputed from
+its own `###` headers; the count lives only in that file. Inbound references
+were made self-contained rather than left pointing at a gap: B13's
+"Relationship to B12 and D14" section and its malformed-`runId` sentence, the
+`RegressionMcpServerStdioIntegrationTest` row in
+`regression-mcp-server/docs/TEST_MAP.md`, and O6 / the H4 row / the §7
+cross-reference in
+`regression-mcp-server/docs/classes/TestRunCoordinator.md`. Historical dated
+`HANDOFF.md` entries that mention A3 or D14 are left as the record of the
+sessions that logged them, as retired A2 / B1 / B8 are treated there.
+`docs/ROADMAP.md`'s ranked entry for the openWorldHint fix is marked done in
+place with its number kept, following the already-done characterization-tests
+entry and avoiding disturbance to the list's and `HANDOFF.md`'s position
+references.
+
+**Read-only inspection finding, not scheduled or rejected work.** The
+terminal-state guard for the four report/artifact tools is not implemented in
+`RegressionMcpServer` — its handlers delegate it; the authoritative
+"is this run terminal" decision is made in `RunStore.readSummary` and
+`RunStore.terminalRecordForArtifacts`, with in-memory pre-checks in
+`TestRunCoordinator.summary` / `failureSummary` / `artifacts` / `readArtifact`
+— so no `requireTerminal`-style extraction at the server layer is available.
+Separately, a read-only cross-check noted that `docs/ROADMAP.md`'s ranked
+entry for collapsing `TestRunCoordinator`'s four `execute()` paths calls
+itself de-gated because its characterization-test prerequisite is done, while
+`docs/TECHNICAL_DEBT.md` item B11 (the `execute()` skipped-count overwrite
+guard, still unproven by any test) and the dossier's §12 both name B11 as a
+precondition a collapse must not break; the two are not strictly contradictory
+— they concern different things, path coverage versus one guard — but the
+"de-gated" phrasing omits B11 as a residual precondition. Left for a later
+authorized pass; no document was changed for it.
+
+This entry follows `CLAUDE.md`'s `## Documentation upkeep` rules: it names
+PR #52 by number without asserting its status, carries no live marker, points
+at `docs/TECHNICAL_DEBT.md` as the count's owner without restating the figure,
+and uses structural references throughout.
+
+`mvn validate`: BUILD SUCCESS.
+
 2026-09-08 — closed the documentation arc: added a `## Documentation
 upkeep` section to `CLAUDE.md` and recorded the historical-trailer decision
 in `docs/ROADMAP.md`'s "## Decisions", branch

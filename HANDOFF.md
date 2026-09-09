@@ -155,6 +155,17 @@ start of a session; update it at the end of one, per `CLAUDE.md`'s
 
 ## Most recent session
 
+2026-09-09 — extracted the shared terminal-run guard in `TestRunCoordinator`:
+the character-identical prologue of `summary`, `failureSummary`, `artifacts`
+and `readArtifact` is now one private `requireTerminal(String id)` all four
+call first. Branch `refactor/require-terminal-extraction`, PR #54; three
+commits (the extraction; `docs/TECHNICAL_DEBT.md` + the dossier; this
+entry), no test, POM, or CI file touched. The proof was a byte-identity
+`diff` of each of the four removed blocks against the helper body, not the
+module suite, which pins almost none of these guards; suite unchanged at
+280 / 0 / 0 / 5 before and after. Two catalogue items logged: B15 (the
+coverage gap) and D16 (what the in-memory guard adds over `RunStore`).
+
 2026-09-09 — fixed the execute() skipped-count guard test so it reaches the
 interleaving it was written to prove, branch
 `fix/b11-skipped-count-guard-test`, PR #53. Three commits:
@@ -1410,9 +1421,11 @@ The real remaining `TestRunCoordinator` work, none of it yet scheduled:
   `secondCaptureCallInTheRuntimeExceptionPath…` is named for it but does not
   reach the interleaving. Needs a fixture that makes `persistTerminal`'s
   first `RunStore.update` throw once after a successful try-block `capture`.
-- **The `requireTerminal(id)` extraction** (dossier §11 O10 / H5) — the
-  four report/artifact methods share a character-identical guard prologue
-  (`RunId.valid` + in-memory-`Active` non-terminal check); extract it.
+- **The `requireTerminal(id)` extraction** (dossier §11 O10 / H5) — done on
+  this branch (`refactor/require-terminal-extraction`, PR #54): the
+  character-identical guard prologue shared by `summary`, `failureSummary`,
+  `artifacts` and `readArtifact` is now the single private
+  `TestRunCoordinator.requireTerminal` method they all call first.
 - **The four-`execute()`-path collapse into one terminal transition**
   (dossier §13b, `docs/ROADMAP.md` item 6) — now unblocked by the two new
   path tests; still gated on B11 (the guard test a collapse must preserve)

@@ -189,41 +189,33 @@ public final class TestRunCoordinator implements AutoCloseable {
         }
     }
 
-    public SurefireSummary summary(String id) {
+    private void requireTerminal(String id) {
         if (!RunId.valid(id)) throw new ExecutionPlanningException("INVALID_ARGUMENTS", "runId has an invalid format.");
         Active current = active.get();
         if (current != null && current.snapshot.runId().equals(id) && !current.snapshot.terminal()) {
             throw new ExecutionPlanningException("RUN_NOT_TERMINAL", "The requested run is not terminal.");
         }
+    }
+
+    public SurefireSummary summary(String id) {
+        requireTerminal(id);
         return store.summary(id);
     }
 
     public SurefireSummary failureSummary(String id) {
-        if (!RunId.valid(id)) throw new ExecutionPlanningException("INVALID_ARGUMENTS", "runId has an invalid format.");
-        Active current = active.get();
-        if (current != null && current.snapshot.runId().equals(id) && !current.snapshot.terminal()) {
-            throw new ExecutionPlanningException("RUN_NOT_TERMINAL", "The requested run is not terminal.");
-        }
+        requireTerminal(id);
         return store.failureSummary(id);
     }
 
     /** Deliberately gated the same way as {@link #summary}/{@link #failureSummary}: a still-RUNNING active run must
      * never expose its capture set, even if a stale on-disk record has not yet observed the in-memory terminal state. */
     public List<FailureArtifact> artifacts(String id) {
-        if (!RunId.valid(id)) throw new ExecutionPlanningException("INVALID_ARGUMENTS", "runId has an invalid format.");
-        Active current = active.get();
-        if (current != null && current.snapshot.runId().equals(id) && !current.snapshot.terminal()) {
-            throw new ExecutionPlanningException("RUN_NOT_TERMINAL", "The requested run is not terminal.");
-        }
+        requireTerminal(id);
         return store.artifacts(id);
     }
 
     public ArtifactContent readArtifact(String id, String artifactId) {
-        if (!RunId.valid(id)) throw new ExecutionPlanningException("INVALID_ARGUMENTS", "runId has an invalid format.");
-        Active current = active.get();
-        if (current != null && current.snapshot.runId().equals(id) && !current.snapshot.terminal()) {
-            throw new ExecutionPlanningException("RUN_NOT_TERMINAL", "The requested run is not terminal.");
-        }
+        requireTerminal(id);
         return store.readArtifact(id, artifactId);
     }
 

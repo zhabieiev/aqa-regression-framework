@@ -301,9 +301,12 @@ argument shapes above.
 - **`cancel` is idempotent and returns immediately** with the current
   (usually still non-terminal) snapshot; the caller is expected to poll
   `get` for the terminal `CANCELLED`.
-- **`summary`/`failureSummary`/`artifacts`/`readArtifact` throw
-  `RUN_NOT_TERMINAL`** while the in-memory `Active` run for that id is
-  non-terminal, even if `status.json` has not yet caught up.
+- **`summary`/`failureSummary`/`artifacts`/`readArtifact` delegate
+  straight to the matching `RunStore` method**, which throws
+  `RUN_NOT_TERMINAL` when the **persisted** `status.json` record for that
+  id is not terminal (`RunStore.readSummary`,
+  `RunStore.terminalRecordForArtifacts`). There is no in-memory pre-check
+  in the coordinator.
 - **`close` is idempotent, bounded (~10 s), best-effort** — used from both
   the shutdown hook and the stdin-EOF callback, possibly concurrently.
 
@@ -421,12 +424,15 @@ swallows its own `InterruptedException` and re-asserts the flag), returns
 the pre-terminal in-memory snapshot. Cancellation *completes* asynchronously
 on the worker.
 
-**`summary` / `failureSummary` / `artifacts` / `readArtifact`** —
-`INVALID_ARGUMENTS` (malformed id / `artifactId`) → `RUN_NOT_TERMINAL`
-(in-memory active non-terminal) → then `RunStore` codes (`RUN_NOT_FOUND`,
-`NOT_FOUND` with detail `PRE_STAGE14_RUN`/`SUREFIRE_UNAVAILABLE`/
-`ARTIFACT_NOT_FOUND`, `REPORT_MALFORMED`, `REPORT_INDEX_CORRUPT`,
-`RUN_STATE_CORRUPT`, `UNSUPPORTED_MIME_TYPE`).
+**`summary` / `failureSummary` / `artifacts` / `readArtifact`** — each
+delegates straight to the matching `RunStore` method, which originates
+every code: `INVALID_ARGUMENTS` (malformed `runId`; or, in `readArtifact`,
+a malformed `artifactId`, which `RunStore.readArtifact` checks before the
+`runId`) → `RUN_NOT_FOUND` (unknown id) → `RUN_NOT_TERMINAL` (the
+**persisted** `status.json` record is not terminal) → `NOT_FOUND` with
+detail `PRE_STAGE14_RUN`/`SUREFIRE_UNAVAILABLE`/`ARTIFACT_NOT_FOUND`,
+`REPORT_MALFORMED`, `REPORT_INDEX_CORRUPT`, `RUN_STATE_CORRUPT`,
+`UNSUPPORTED_MIME_TYPE`.
 
 **`execute` (worker thread, no caller).** All four paths funnel to
 `persistTerminal`. A throw from `capture` or `persistTerminal` *inside a
@@ -639,30 +645,34 @@ Cosmetic; not logged.
 (`run.tracker == null ? java.util.List.of() : run.tracker.identities()`).
 The only FQN-despite-import in the file. Cosmetic; not logged.
 
-### O10 — the four report/artifact guard blocks are extracted into `requireTerminal`
+### O10 — the four report/artifact accessors delegate straight to `RunStore` (the in-memory guard was extracted, then deleted)
 
-`summary`, `failureSummary`, `artifacts` and `readArtifact` each open with a
-single call to the private `requireTerminal(String id)` helper, which holds
-the two guards — `RunId.valid(id)` → `INVALID_ARGUMENTS`, then an in-memory
-`Active` non-terminal check
-(`current != null && current.snapshot.runId().equals(id) && !current.snapshot.terminal()`)
-→ `RUN_NOT_TERMINAL`. Before the candidate 6 pass this five-line prologue
-was character-identical in all four methods (only the trailing
-`store.xxx(...)` call differed); it is now written once, and byte-identity
-of the four removed blocks against the helper body was that pass's
-verification rather than the module test run. The `RunId.valid` half is
-redundant with `RunStore`'s own re-check (`RunStore.readSummary`,
-`RunStore.terminalRecordForArtifacts`, which each re-validate the id and
-re-check terminality of the persisted record); what the in-memory
-`!terminal()` half adds over `RunStore` is narrower than the `artifacts`
-javadoc claims, and is recorded — with the question of whether the guard
-should be kept, narrowed or removed — as `docs/TECHNICAL_DEBT.md` item D16,
-with the parallel test-coverage gap as item B15. `get` carries a partial
-version of the same shape — a `RunId.valid` check whose failure is
-`RUN_NOT_FOUND` rather than `INVALID_ARGUMENTS`, and no terminal guard — and
-is deliberately **not** a caller of `requireTerminal`: it must return a
-snapshot for a non-terminal run. Refactor-relevant (§H5); not separately
-logged.
+`summary`, `failureSummary`, `artifacts` and `readArtifact` are now one
+statement each — `return store.xxx(...);`. The candidate 6 pass had first
+collapsed their character-identical prologue — `RunId.valid(id)` →
+`INVALID_ARGUMENTS`, then an in-memory `Active` non-terminal check →
+`RUN_NOT_TERMINAL` — into one private `requireTerminal(String id)` helper.
+`docs/TECHNICAL_DEBT.md` item D16 then asked whether that in-memory
+pre-check earned its keep, since `RunStore.readSummary` and
+`RunStore.terminalRecordForArtifacts` already re-validate the id
+(byte-identical `INVALID_ARGUMENTS` envelope) and re-check terminality
+against the persisted record (byte-identical `RUN_NOT_TERMINAL` envelope)
+for all four accessors. D16 was closed by deleting the helper: the
+pre-check changed the client-visible outcome in exactly one
+in-memory/on-disk terminality combination — in-memory `Active.snapshot`
+non-terminal while the persisted record was already terminal — a transient
+window that `get`, which serves the same in-memory snapshot for the active
+run, never exposed as a contradiction to a client that polls status first.
+The readArtifact error precedence shifted for one input shape (a
+non-terminal run plus a malformed `artifactId` now yields
+`INVALID_ARGUMENTS` rather than `RUN_NOT_TERMINAL`), accepted because no
+test and no `regression-mcp-server/docs/TOOLS.md` statement pinned it. The
+four `TestRunCoordinatorTest.*RejectsARunNonTerminalInMemoryAndOnDisk`
+characterization tests pin `RunStore`'s rejection through the coordinator.
+`get` still carries a partial version of the same shape — a `RunId.valid`
+check whose failure is `RUN_NOT_FOUND` rather than `INVALID_ARGUMENTS`, and
+no terminal guard — because it must return a snapshot for a non-terminal
+run.
 
 ---
 

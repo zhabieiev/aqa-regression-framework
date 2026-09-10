@@ -505,9 +505,9 @@ class TestRunCoordinatorTest {
     // anti-vacuity guards: coordinator.get(id) pins the in-memory side (get serves Active.snapshot for a
     // run id that matches the active run), and a freshly constructed RunStore.persisted(id) pins the
     // on-disk side. Without both, the test would also pass against a cleared active slot or a terminal
-    // run and would pin nothing. These tests pass whether or not TestRunCoordinator.requireTerminal is
-    // present, because RunStore.readSummary and RunStore.terminalRecordForArtifacts re-check terminality
-    // against the persisted record and throw a byte-identical
+    // run and would pin nothing. These tests pass with or without any in-memory pre-check in the
+    // coordinator, because RunStore.readSummary and RunStore.terminalRecordForArtifacts re-check
+    // terminality against the persisted record and throw a byte-identical
     // ExecutionPlanningException("RUN_NOT_TERMINAL", "The requested run is not terminal.").
 
     @Test

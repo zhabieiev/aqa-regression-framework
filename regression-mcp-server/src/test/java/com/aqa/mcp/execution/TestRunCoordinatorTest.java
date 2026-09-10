@@ -498,6 +498,88 @@ class TestRunCoordinatorTest {
         assertThat(worker.heldTaskInterrupted()).isFalse();
     }
 
+    // --- Characterization: the four report/artifact accessors reject a non-terminal run ---------------
+    // Each test drives one accessor through TestRunCoordinator against a run that is non-terminal in BOTH
+    // places -- the in-memory Active.snapshot and the persisted status.json record -- and pins the
+    // RUN_NOT_TERMINAL rejection. The two assertions immediately before each accessor call are mandatory
+    // anti-vacuity guards: coordinator.get(id) pins the in-memory side (get serves Active.snapshot for a
+    // run id that matches the active run), and a freshly constructed RunStore.persisted(id) pins the
+    // on-disk side. Without both, the test would also pass against a cleared active slot or a terminal
+    // run and would pin nothing. These tests pass with or without any in-memory pre-check in the
+    // coordinator, because RunStore.readSummary and RunStore.terminalRecordForArtifacts re-check
+    // terminality against the persisted record and throw a byte-identical
+    // ExecutionPlanningException("RUN_NOT_TERMINAL", "The requested run is not terminal.").
+
+    @Test
+    void summaryRejectsARunNonTerminalInMemoryAndOnDisk() {
+        TestRunCoordinator coordinator = coordinator(launcher("WAIT"), new ManualTimeoutScheduler());
+        RunSnapshot run = coordinator.start(request(), Map.of());
+        awaitState(coordinator, run.runId(), TestRunState.RUNNING);
+
+        assertThat(coordinator.get(run.runId()).terminal()).as("in-memory Active.snapshot non-terminal").isFalse();
+        assertThat(new RunStore(root).persisted(run.runId()).snapshot().terminal()).as("persisted record non-terminal").isFalse();
+
+        assertThatThrownBy(() -> coordinator.summary(run.runId()))
+                .isInstanceOf(ExecutionPlanningException.class)
+                .extracting(error -> ((ExecutionPlanningException) error).code()).isEqualTo("RUN_NOT_TERMINAL");
+
+        coordinator.cancel(run.runId());
+        awaitTerminal(coordinator, run.runId());
+    }
+
+    @Test
+    void failureSummaryRejectsARunNonTerminalInMemoryAndOnDisk() {
+        TestRunCoordinator coordinator = coordinator(launcher("WAIT"), new ManualTimeoutScheduler());
+        RunSnapshot run = coordinator.start(request(), Map.of());
+        awaitState(coordinator, run.runId(), TestRunState.RUNNING);
+
+        assertThat(coordinator.get(run.runId()).terminal()).as("in-memory Active.snapshot non-terminal").isFalse();
+        assertThat(new RunStore(root).persisted(run.runId()).snapshot().terminal()).as("persisted record non-terminal").isFalse();
+
+        assertThatThrownBy(() -> coordinator.failureSummary(run.runId()))
+                .isInstanceOf(ExecutionPlanningException.class)
+                .extracting(error -> ((ExecutionPlanningException) error).code()).isEqualTo("RUN_NOT_TERMINAL");
+
+        coordinator.cancel(run.runId());
+        awaitTerminal(coordinator, run.runId());
+    }
+
+    @Test
+    void artifactsRejectsARunNonTerminalInMemoryAndOnDisk() {
+        TestRunCoordinator coordinator = coordinator(launcher("WAIT"), new ManualTimeoutScheduler());
+        RunSnapshot run = coordinator.start(request(), Map.of());
+        awaitState(coordinator, run.runId(), TestRunState.RUNNING);
+
+        assertThat(coordinator.get(run.runId()).terminal()).as("in-memory Active.snapshot non-terminal").isFalse();
+        assertThat(new RunStore(root).persisted(run.runId()).snapshot().terminal()).as("persisted record non-terminal").isFalse();
+
+        assertThatThrownBy(() -> coordinator.artifacts(run.runId()))
+                .isInstanceOf(ExecutionPlanningException.class)
+                .extracting(error -> ((ExecutionPlanningException) error).code()).isEqualTo("RUN_NOT_TERMINAL");
+
+        coordinator.cancel(run.runId());
+        awaitTerminal(coordinator, run.runId());
+    }
+
+    @Test
+    void readArtifactRejectsARunNonTerminalInMemoryAndOnDisk() {
+        TestRunCoordinator coordinator = coordinator(launcher("WAIT"), new ManualTimeoutScheduler());
+        RunSnapshot run = coordinator.start(request(), Map.of());
+        awaitState(coordinator, run.runId(), TestRunState.RUNNING);
+
+        assertThat(coordinator.get(run.runId()).terminal()).as("in-memory Active.snapshot non-terminal").isFalse();
+        assertThat(new RunStore(root).persisted(run.runId()).snapshot().terminal()).as("persisted record non-terminal").isFalse();
+
+        // The artifactId is a well-formed 32-hex string, so run terminality is the sole rejection trigger
+        // here (a malformed artifactId would let RunStore.readArtifact reject on format first).
+        assertThatThrownBy(() -> coordinator.readArtifact(run.runId(), "0".repeat(32)))
+                .isInstanceOf(ExecutionPlanningException.class)
+                .extracting(error -> ((ExecutionPlanningException) error).code()).isEqualTo("RUN_NOT_TERMINAL");
+
+        coordinator.cancel(run.runId());
+        awaitTerminal(coordinator, run.runId());
+    }
+
     private TestRunCoordinator coordinator(ControlledProcessLauncher launcher, TestRunCoordinator.TimeoutScheduler scheduler) {
         launchers.add(launcher);
         TestRunCoordinator coordinator = new TestRunCoordinator(root, this::validator, launcher, scheduler, ignored -> runtime());

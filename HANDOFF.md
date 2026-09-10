@@ -155,6 +155,55 @@ start of a session; update it at the end of one, per `CLAUDE.md`'s
 
 ## Most recent session
 
+2026-09-10 — resolved `docs/TECHNICAL_DEBT.md` item D16 by deleting the
+in-memory terminal guard from the report accessors: `TestRunCoordinator`'s
+private `requireTerminal(String id)`, the four calls to it in `summary` /
+`failureSummary` / `artifacts` / `readArtifact`, and the two-line Javadoc
+above `artifacts` are gone; each accessor is now a single `return
+store.xxx(...)`. `RunStore.readSummary` and
+`RunStore.terminalRecordForArtifacts` already re-validate the `runId` and
+re-check terminality against the persisted record for all four accessors,
+with byte-identical `INVALID_ARGUMENTS` / `RUN_NOT_TERMINAL` envelopes; the
+guard changed the client-visible outcome only in the transient window
+where the persisted record was terminal while the in-memory
+`Active.snapshot` was not, which `TestRunCoordinator.get` (serving that
+same snapshot) never exposed as a contradiction to a client that polls
+`regression_get_test_run` first. Branch
+`refactor/d16-remove-in-memory-terminal-guard`, PR #55; five commits
+(characterization tests; the deletion; `docs/TECHNICAL_DEBT.md` +
+`regression-mcp-server/docs/classes/TestRunCoordinator.md` +
+`regression-mcp-server/docs/TEST_MAP.md`; this entry; and a follow-up
+reconciling the dossier's H5 row and its section 12 `D16` citation, which
+the deletion left stale — section 7's line citations, section 1's
+line-count claims and section 12's DONE-vs-TEST-FIRST contradiction stay
+with catalogue item B14). Proof was a scripted
+`sed` transformation of `TestRunCoordinator.java` at `b6e9ddd` applying
+exactly the three deletions, then `diff` against the working tree —
+`EXIT=0`, byte-identical — since the module suite pins none of the deleted
+checks. The four
+`TestRunCoordinatorTest.*RejectsARunNonTerminalInMemoryAndOnDisk` tests
+(committed first, green on unmodified production code) pin `RunStore`'s
+`RUN_NOT_TERMINAL` rejection through each accessor, each with two
+anti-vacuity assertions (`coordinator.get(id)` non-terminal, fresh
+`RunStore.persisted(id)` non-terminal). `mvn -pl regression-mcp-server -am
+test` with `target/classes` and `target/test-classes` deleted first:
+284 / 0 / 0 / 5 both before and after the deletion (the recorded 280
+baseline plus the four new tests; the 5 skips are the Windows
+symlink-escape tests). Accepted behaviour change: a
+`regression_read_failure_artifact` call carrying a non-terminal run and a
+malformed `artifactId` now returns `INVALID_ARGUMENTS` /
+`"artifactId has an invalid format."` rather than `RUN_NOT_TERMINAL`, and a
+call with a malformed `runId` and a malformed `artifactId` now reports the
+`artifactId` message rather than the `runId` message (same code) —
+`RunStore.readArtifact` validates the `artifactId` first; no test asserted
+the old precedence and `regression-mcp-server/docs/TOOLS.md` documents no
+ordering guarantee. D16 was deleted from `docs/TECHNICAL_DEBT.md` (item
+tally 35 → 34, D:15 → D:14); B15 was re-scoped to the remaining
+RunStore-layer malformed-`runId` coverage gap (`RunStore.readArtifact` has
+no such test, no accessor is passed a malformed `runId` through the
+coordinator, and no test asserts the `"runId has an invalid format."`
+message).
+
 2026-09-09 — extracted the shared terminal-run guard in `TestRunCoordinator`:
 the character-identical prologue of `summary`, `failureSummary`, `artifacts`
 and `readArtifact` is now one private `requireTerminal(String id)` all four

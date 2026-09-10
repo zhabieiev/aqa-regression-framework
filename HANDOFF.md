@@ -169,10 +169,14 @@ where the persisted record was terminal while the in-memory
 `Active.snapshot` was not, which `TestRunCoordinator.get` (serving that
 same snapshot) never exposed as a contradiction to a client that polls
 `regression_get_test_run` first. Branch
-`refactor/d16-remove-in-memory-terminal-guard`, PR #55; four commits
+`refactor/d16-remove-in-memory-terminal-guard`, PR #55; five commits
 (characterization tests; the deletion; `docs/TECHNICAL_DEBT.md` +
 `regression-mcp-server/docs/classes/TestRunCoordinator.md` +
-`regression-mcp-server/docs/TEST_MAP.md`; this entry). Proof was a scripted
+`regression-mcp-server/docs/TEST_MAP.md`; this entry; and a follow-up
+reconciling the dossier's H5 row and its section 12 `D16` citation, which
+the deletion left stale — section 7's line citations, section 1's
+line-count claims and section 12's DONE-vs-TEST-FIRST contradiction stay
+with catalogue item B14). Proof was a scripted
 `sed` transformation of `TestRunCoordinator.java` at `b6e9ddd` applying
 exactly the three deletions, then `diff` against the working tree —
 `EXIT=0`, byte-identical — since the module suite pins none of the deleted
